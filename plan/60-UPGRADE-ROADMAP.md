@@ -72,14 +72,29 @@
 
 ### UP1 · 构建链：Vite + singlefile + glsl 【地基】
 
+> 🔴 **本节已被 `plan/80-UP1-build-chain.md` 拆并纠正（2026-09-24）—— 三处，施工以包文档为准：**
+> 1. **UP1a 只做「打包 + 双入口并存」，`src/**` 零改动。** `.glsl` 抽离**移出本包**：
+>    `src/*.js` 要同时当经典脚本用，`import … from './x.glsl'` 在经典 `<script>` 里是 `SyntaxError`，
+>    会**直接打断免构建入口**。「着色器双入口供给」方案未裁 → **UP1b**。
+> 2. **tree-shaking 吃不到，下表的「669 KB → 200~250 KB」作废。** 全模块用 `var THREE = window.THREE` 拿全局，
+>    构建入口必须 `window.THREE = THREE` → **命名空间逃逸 → Rollup 无法摇树**。
+>    实测 `THREE.X` 成员 **51 个**、无动态访问 → 理论上可手写 shim 换回，但会引入「漏成员即静默 `undefined`」的陷阱，
+>    **裁决不做**（同 `glitterSpec` 那类静默漂移）。→ **UP1b**。
+> 3. **交付物是 `dist/` 目录，不是单个 HTML。** `bgmFile` 是运行时字符串而非 `import`，打包器不管它 →
+>    `dist/index.html` 旁边必须有 `dist/assets/audio/`（7.3 MB）。
+>    「双击即开」按**目录**判 —— 与今天 `index.html` 需要同目录 `assets/` **同理，无退化**。
+>
+> **UP1a 的真实收益只有两条：`three/examples/jsm` 解锁（UP2/UP3 的唯一前置）+ HMR。体积不设目标。**
+
 | | |
 |---|---|
 | **现状** | 13 个 `<script>` 标签（`index.html:29-41`）· `vendor/three.min.js` UMD **669,884 B** · shader 是 JS 字符串数组拼接 |
-| **方案** | `package.json` + **Vite** + `vite-plugin-singlefile`（保双可双击）+ `vite-plugin-glsl`（`.glsl` 真文件 + `#include`） |
-| **🔴 关键决策** | **不要一次性 ESM 化 `src/`**。全局 `SW` 命名空间是模块间契约（契约 §1），ESM 化会打断它。<br>**UP1a**：Vite 只做「打包 + shader 抽离」，`src/*.js` 保持 IIFE，entry 依序 import<br>**UP1b**（可选，后议）：再考虑 ESM 化 + `SW` 改显式 import |
-| **收益** | HMR · `.glsl` 带高亮/lint/`#include`（`60-water.js` 那一大坨字符串数组消失）· tree-shaking（669 KB → 估 200~250 KB，实测为准）· **解锁 examples/jsm（UP2/UP3 的前置）** |
-| **成本 / 风险** | 中 / 中（产物字节变化 → 见 §2） |
-| **验收** | `npm run build` 产出单 HTML · **http 下 15/15 断言仍过** · `file://` 双击仍能开（singlefile 保证） |
+| **方案** | `package.json` + **Vite** + `vite-plugin-singlefile`（保双可双击）<br>**UP1a**：只做打包 + 双入口 · **UP1b**（后议）：`.glsl` 抽离 + tree-shaking |
+| **🔴 关键决策** | **不要一次性 ESM 化 `src/`**。全局 `SW` 命名空间是模块间契约（契约 §1），ESM 化会打断它。<br>**UP1a**：`src/*.js` 保持 IIFE 与字符串 shader，构建入口依序 import<br>**UP1b**（可选，后议）：`.glsl` 真文件 + 51 成员 shim 摇树 + 漂移守卫 |
+| **收益** | **解锁 examples/jsm（UP2/UP3 的前置）** · HMR<br>~~`.glsl` 高亮/lint/#include~~（→ UP1b）· ~~tree-shaking 669→200 KB~~（**吃不到**，→ UP1b） |
+| **成本 / 风险** | 中 / 中（🔴 **R1：Vite 默认产出 `type="module"`，`file://` 下可能打不开** → 备选 `format:'iife'` / `target:'es2018'`，判据是硬门） |
+| **验收** | **14 条，见 `80-UP1-build-chain.md` §5** —— 产出单 HTML 于 `dist/` · **两条入口各跑 15/15 断言** · 两入口读数一致 · `index.html` 与 `src/**` **零改动** · 音频能播 · 体积诚实记录 |
+| **包文档** | **`plan/80-UP1-build-chain.md`**（含边界、纠正、风险与配置起点） |
 
 ### UP2 · 后期处理管线 【视觉收益最大】
 

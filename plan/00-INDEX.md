@@ -102,6 +102,16 @@
 | **2** | 1 | **WP5 收尾 + 验证** | WP1~WP4 全部 ✅ **且 WP1e 两轮 / WP3b 完成** |
 | **2.5** | 0（主控直裁，不开包） | **AM-008 收官裁决**：静帧审美 · `splash` · **#13 换口径** · 资产与归档 | WP5 ✅ 之后 |
 
+### Tier 1 / 2 升级波次（WP1~WP5 全部收官后，见 `60-UPGRADE-ROADMAP.md`）
+
+| 波次 | 包数 | 包 | 前置 |
+| --- | --- | --- | --- |
+| **3** | **1** | **UP1a 构建链地基**（`80-UP1-build-chain.md`）—— Vite + singlefile，**双入口并存** | 基线 `baseline-pre-tier12` ✅ |
+| 4 | 3 | **UP4 贴图** ∥ **UP6 Playwright** ∥ **UP8 shader 减负** | UP1a ✅（UP4/UP8 都需构建入口的资产管线） |
+| 5 | 1 | **UP5 音频**（母带 + 声像 + foley） | 与 4 并行安全，但 ② 要改 `playSlap` 签名 → **AM-012** |
+| 6 | 2 | **UP2 后期 bloom** → **UP3 HDRI** | **UP2/UP3 都碰 `30-scene.js` → 必须串行**；均需 UP1a |
+| 后议 | 1 | **UP1b**（tree-shaking + `.glsl` 抽离） | 需先裁「着色器双入口供给」方案，见 `80-UP1-build-chain.md` §2.2 |
+
 **当前状态**：🟢 **全项目收官（2026-09-24 05:05）** —— WP1 ✅ / WP1b ✅ / WP1c ✅ / WP1d ✅ / WP1e 两轮 ✅ /
 WP2 ✅ / WP3 ✅ / WP3b ✅ / WP4 ✅ / **WP5 ✅（15/15 断言 + 16/16 环境判据）** / **AM-008 ✅ 已裁并落地**。
 **`caustics` 已裁：一律 `false`（AM-007 §4 关闭）** —— 不要再问这件事。
@@ -151,6 +161,12 @@ WP2 ✅ / WP3 ✅ / WP3b ✅ / WP4 ✅ / **WP5 ✅（15/15 断言 + 16/16 环境
 > **`file://` 从硬红线降为「降级档」、主目标改为本地 http(s) 服务**。
 > 拍板后再拆 `AM-009 ~ AM-012`，**当前 §5 仍是有效契约**。
 
+> 🆕 **Tier 1/2 的第一个工作包**：`80-UP1-build-chain.md`（**只做 UP1a**）
+> —— Vite 构建链地基，**两条入口并存**（免构建 `index.html` 逐字节不变 + 构建版 `dist/`）。
+> 它的唯一目的是**解锁 `three/examples/jsm`**（UP2 的 `EffectComposer` / UP3 的 `RGBELoader` 都卡在这）。
+> ⚠️ **该包对上游路线图做了三处纠正**（吃不到 tree-shaking · `.glsl` 抽离后置 UP1b · 交付物是 `dist/` 目录），
+> **以包文档 §2 为准，不要照 roadmap §3 原文施工。**
+>
 > 🆕 **升级动工前的仓库基线**：`70-REPO-BASELINE.md`（tag **`baseline-pre-tier12`**）
 > —— 版本控制口径（什么入库 / 什么忽略 / 为什么）、`.gitignore` 与 `.gitattributes` 的裁决依据、
 > Tier 1/2 新增文件的覆盖情况、`dist/` 分发策略、**公开前的授权复核清单**、回退命令。
