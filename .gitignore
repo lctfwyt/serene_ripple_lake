@@ -1,0 +1,103 @@
+# ===========================================================================
+# still_water · .gitignore
+# 建立于 2026-09-24（基线提交前，为 Tier 1 / Tier 2 升级预留）
+#
+# 判定原则（只有一条）：
+#   「**不能再造**的东西一律入库，能被一条命令重建的产物一律忽略。」
+#
+# 由此推出的三条裁决，见 plan/70-REPO-BASELINE.md §2：
+#   · plan/shots-wp5/*.png      → **入库**（升级后渲染全变，这版再也拍不出来）
+#   · assets/audio/bgm-cand1.mp3→ **入库**（MiniMax 已下线，实际不可再生）
+#   · plan/wp5-assert.json      → **忽略**（脚本每次重跑都改写它 → 纯 diff 噪声）
+# ===========================================================================
+
+# ---------- 1. 本机状态 / 编辑器（绝不入库）----------
+.workbuddy/
+.codebuddy/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------- 2. 操作系统垃圾 ----------
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# ---------- 3. 依赖（UP1：Vite）----------
+node_modules/
+.pnpm-store/
+.yarn/
+jspm_packages/
+bower_components/
+
+# ---------- 4. 构建产物（UP1：vite build）----------
+# 注：singlefile 产物 dist/index.html 是**交付物**，但一条命令即可重建。
+#     入库只会让它每次构建都产生 diff → 不入库。
+#     需要分发时：手动拷出，或挂 GitHub Release 附件（见 70-REPO-BASELINE §4）。
+dist/
+dist-ssr/
+build/
+.vite/
+*.tsbuildinfo
+
+# ---------- 5. 测试 / 验证产物（UP6：Playwright）----------
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+coverage/
+
+# ---------- 6. 凭据（绝不入库）----------
+# 本项目的 secret 一律放仓库外的 ~/.workbuddy/secrets.env
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets.json
+!secrets.example.json
+
+# ---------- 7. Python 工具链（UP5：pyloudnorm / 音频脚本）----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# ---------- 8. 音频处理临时产物（UP5：LUFS 归一 / 无缝循环）----------
+audio-build/
+*.norm.mp3
+*.tmp.wav
+*.crossfade.wav
+
+# ---------- 9. 一次性诊断件 ----------
+# 项目纪律：临时脚本一律 `_` 前缀，用完即删（见 plan/_STATUS.md §清理）
+# ⚠️ 注意：plan/_STATUS.md 是**正式台账**，不是临时件 —— 别被本段误导
+_*.js
+_*.mjs
+_*.py
+_*.png
+_*.json
+_diag/
+_dl/
+_wp5-shots/
+
+# ---------- 10. 验证脚本的输出（可重跑重建）----------
+# wp5-assert.js / wp5-env.js 每次运行都会重写这些文件。
+# 全部读数已转录进 plan/_STATUS.md 与 plan/02-AMENDMENTS.md AM-008。
+plan/wp5-assert.json
+plan/wp5-env.json
+
+# ---------- 11. 日志 ----------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

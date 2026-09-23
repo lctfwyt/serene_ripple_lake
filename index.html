@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>静水 · still water</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b1418;
+    font-family:"PingFang SC","Microsoft YaHei","Source Han Sans SC",system-ui,sans-serif;}
+  #c{display:block;width:100%;height:100%;}
+  #ui{position:fixed;inset:0;pointer-events:none;}
+  #ui > *{pointer-events:auto;}
+  #hint{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+    color:rgba(255,255,255,.72);font-size:13px;letter-spacing:.14em;
+    opacity:0;transition:opacity .8s ease;}
+  #hint.on{opacity:1;}
+  /* WebGL 不可用时的静态兜底 —— 先写，别等出事再补 */
+  #fallback{position:fixed;inset:0;display:none;
+    background:linear-gradient(180deg,#8fb8c9 0%,#4a7d92 46%,#1d3b47 100%);}
+  #fallback.on{display:block;}
+</style>
+</head>
+<body>
+<div id="fallback"></div>
+<canvas id="c"></canvas>
+<div id="ui"></div>
+<div id="hint">轻触水面</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="src/00-config.js"></script>
+<script src="src/10-audio.js"></script>
+<script src="src/20-time.js"></script>
+<script src="src/30-scene.js"></script>
+<script src="src/40-lakebed.js"></script>
+<script src="src/50-ripple.js"></script>
+<script src="src/60-water.js"></script>
+<script src="src/70-input.js"></script>
+<script src="src/80-ui.js"></script>
+<script src="src/85-fallback.js"></script>
+<script src="src/90-debug.js"></script>
+<script src="src/99-main.js"></script>
+<script>
+  // 启动：try/catch 兜底，失败就显示 #fallback，不要白屏
+  try { SW.boot(); }
+  catch (e) {
+    console.error('[still_water] boot failed', e);
+    document.getElementById('fallback').classList.add('on');
+    document.getElementById('c').style.display = 'none';
+  }
+</script>
+</body>
+</html>

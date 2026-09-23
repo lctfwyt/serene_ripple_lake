@@ -1,0 +1,53 @@
+# ===========================================================================
+# still_water · .gitattributes
+# 建立于 2026-09-24（基线提交前）
+#
+# 两件事：
+#   1) 明示二进制，防止换行符转换损坏资产
+#   2) vendor/*.min.js 标记为二进制 —— 这不是洁癖，是**保字节锁**
+#      详见下方注释
+# ===========================================================================
+
+# 默认：git 自动判断文本，入库统一 LF（与本机 core.autocrlf=true 行为一致）
+* text=auto
+
+# ---------- 着色器 ----------
+# UP1 引入 vite-plugin-glsl 后会有真正的 .glsl 文件。
+# 强制 LF：GLSL 预处理器对行尾敏感，且跨平台构建不该产生无意义 diff。
+# （现在还没有 .glsl 文件，所以这条不引发任何重规范化）
+*.glsl  text eol=lf
+*.vert  text eol=lf
+*.frag  text eol=lf
+*.wgsl  text eol=lf
+
+# ---------- 二进制资产：禁止任何转换 ----------
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.webp   binary
+*.avif   binary
+*.gif    binary
+*.hdr    binary
+*.exr    binary
+*.ktx2   binary
+*.basis  binary
+*.mp3    binary
+*.wav    binary
+*.ogg    binary
+*.flac   binary
+*.ttf    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+
+# ---------- 三方压缩包：不参与 diff ----------
+# `binary` = `-text -diff`。
+# 为什么必须声明：vendor/three.min.js 当前是**纯 LF、恰好 669884 字节**，
+# 而本机 core.autocrlf=true —— 一旦它被当成文本，某次 checkout 就会把它
+# 换成 CRLF，字节数漂成 ~677k。契约里「硬锁 r160 = 669884 B」的记录随之失效。
+# 声明 binary 后 git 原样存取，指纹恒为：
+#   sha256 170c6789f43217c96b3170f4b42fafe135de7f7cd48497a4218f9757ee1d49fa
+vendor/*.min.js  binary
+
+# ---------- 第三方字体/库的散文说明保持可读 diff ----------
+vendor/*.md  text
