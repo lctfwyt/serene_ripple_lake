@@ -28,6 +28,47 @@ Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无�
 几个常用项：`exposure` 整体明暗 · `fogDensity` 按天走（keyframe 里）· `glitterDetail` / `glitterRough` 反光带破碎感与宽度 ·
 `caustics` 湖底水下光斑（**默认 `false`**，置 `true` 才开；强度已做昼夜调制）· `pebbleScaleNear` / `pebbleScaleFar` 石头尺寸（**两层必须同区间**）。
 
+## 开发 / 构建（可选）
+
+**只想看效果 → 直接双击 `index.html`，本节可以整段跳过。**
+本节只服务「要改代码」或「要调 `three/examples/jsm`」的场景。
+
+```bash
+npm install     # 依赖：three 精确锁 0.160.0 + vite + vite-plugin-singlefile
+npm run dev     # 开发服务器 → http://localhost:5173/ ，改 src/ 即时生效（HMR）
+npm run build   # 产出 dist/ —— 单文件 HTML + 随行音频
+```
+
+### 两条入口并存
+
+| 入口 | 形态 | 用途 |
+|---|---|---|
+| `index.html` | 13 个经典 `<script>` + `vendor/three.min.js` | **交付形态**：`file://` 双击即开，零安装 |
+| `app/` → `dist/` | 单文件 HTML（JS/CSS 已内联）**+ 必须随行 `dist/assets/audio/`** | 开发；以及需要 `three/examples/jsm` 时 |
+
+- 两条入口**渲染同一套画面**：`plan/wp5-assert.js` 各跑一遍都是 **15/15**（同一条判据、同一画布口径 1280×720）。
+- 🔴 **构建版不能只拷那个 HTML**：`P.bgmFile` / `SLAP_FILES` 是**运行时字符串**，打包器不管它们 →
+  必须连 `dist/assets/audio/`（7.3 MB）一起拷，否则没声音。分发时整个 `dist/` 目录一起走。
+- ⚠ **改样式 / DOM 要改两处**：`index.html` 与 `app/index.html` 是**刻意分开的两份** ——
+  前者是"逐字节冻结"的交付物，构建入口不许碰它，只能另抄一份。改的时候别只改一边。
+- ⚠ `package.json` **故意不写 `"type": "module"`**：`plan/wp5-assert.js` 是 CommonJS，
+  加上这个字段它会立刻以 `require is not defined` 挂掉。所以配置文件叫 **`vite.config.mjs`**（不是 `.js`）。
+- 若 `npm run dev` 后 `localhost` 打不开，加 `--host 127.0.0.1`（Vite 8 默认只绑 IPv6 回环）。
+
+### 为什么构建版没有变小
+12 个模块全用 `var THREE = window.THREE` 取全局 → 构建入口必须 `window.THREE = THREE` →
+**命名空间逃逸**，打包器无法摇树。**体积 ≈ 与免构建版持平**（实测 829 KB / 14 请求 → 713 KB / 1 请求，
+差的 14% 只来自 minify 我方源码，**不是摇树**），
+这是**已知代价**，换来的是"零风险"：不手写 51 成员 shim，就没有"漏一个成员 = 静默 `undefined`"的坑。
+
+### 自检
+```bash
+npm run assert        # 免构建入口 15 条断言
+npm run assert:dist   # 构建入口 15 条断言（同一脚本，URL 参数化）
+```
+另：`npm run dev` 后开 `http://localhost:5173/jsm-smoke.html` 可看 `three/examples/jsm` 是否可达
+（`EffectComposer` / `UnrealBloomPass` / `RGBELoader` —— **UP2 / UP3 的前置**）。
+
 ## 文件
 | 文件 | 职责 |
 |---|---|
@@ -45,6 +86,10 @@ Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无�
 | `src/85-fallback.js` | 三层降级：reduced-motion · WebGL 兜底 · 移动端 |
 | `src/90-debug.js` | `?debug=1` 面板 + `window.__probe/__seek/__clock/__hold` |
 | `assets/audio/` | BGM + 拍击采样 |
+| `package.json` · `package-lock.json` | 依赖与脚本（**`package-lock.json` 必须入库**） |
+| `vite.config.mjs` | 构建配置：singlefile + 音频随行 + dev HMR 垫片（**见上方"开发 / 构建"**） |
+| `app/` | 构建入口：`index.html` / `main.js` / `three-global.js` / `jsm-smoke.*`（dev-only） |
+| `dist/` | 构建产物（**不入库**，`npm run build` 重建） |
 
 ## 资产与授权
 - **three.js r160** —— MIT

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>静水 · still water</title>
+<!--
+  app/index.html —— UP1a 构建入口（Vite root）
+  ================================================================
+  ⚠ 本文件是**根 index.html 的镜像**，两者必须保持结构一致：
+     根 index.html  = 免构建入口（13 个经典 <script>，file:// 双击即开，**逐字节冻结**）
+     app/index.html = 构建入口（唯一 import 入口 main.js，产物 dist/index.html）
+  之所以要抄一份 CSS/DOM 而不是共用：根 index.html 属于「不许碰」清单（UP1a §1.2 / §5-#10），
+  构建入口只能另起一份。**代价**：改样式要改两处 —— 已在 README「开发 / 构建」里写明。
+  ================================================================
+-->
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b1418;
+    font-family:"PingFang SC","Microsoft YaHei","Source Han Sans SC",system-ui,sans-serif;}
+  #c{display:block;width:100%;height:100%;}
+  #ui{position:fixed;inset:0;pointer-events:none;}
+  #ui > *{pointer-events:auto;}
+  #hint{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+    color:rgba(255,255,255,.72);font-size:13px;letter-spacing:.14em;
+    opacity:0;transition:opacity .8s ease;}
+  #hint.on{opacity:1;}
+  /* WebGL 不可用时的静态兜底 —— 先写，别等出事再补 */
+  #fallback{position:fixed;inset:0;display:none;
+    background:linear-gradient(180deg,#8fb8c9 0%,#4a7d92 46%,#1d3b47 100%);}
+  #fallback.on{display:block;}
+</style>
+</head>
+<body>
+<div id="fallback"></div>
+<canvas id="c"></canvas>
+<div id="ui"></div>
+<div id="hint">轻触水面</div>
+
+<!-- 唯一的脚本入口。模块顺序在 main.js 里，与根 index.html 的 <script> 顺序逐条对齐。 -->
+<script type="module" src="/main.js"></script>
+</body>
+</html>

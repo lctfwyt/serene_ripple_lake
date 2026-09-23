@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>三入口 · examples/jsm 解锁自检（dev-only）</title>
+<style>
+  body{margin:0;padding:24px 28px;background:#0b1418;color:#cfe3ea;
+    font:13px/1.75 "PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  h1{font-size:15px;font-weight:600;letter-spacing:.1em;margin:0 0 4px;}
+  p.sub{margin:0 0 18px;opacity:.55;font-size:11.5px;letter-spacing:.06em;}
+  #out > div{padding:5px 0;border-bottom:1px solid rgba(255,255,255,.07);}
+  #out span{opacity:.7;}
+  .bad{color:#ff9f9f;}
+  .sum{margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.16);
+    font-size:13px;letter-spacing:.08em;}
+  code{background:rgba(255,255,255,.07);padding:1px 5px;border-radius:3px;}
+</style>
+</head>
+<body>
+<h1>examples/jsm 解锁自检</h1>
+<p class="sub">UP1a §5-#8 · 只在 dev server 下可用（<code>npm run dev</code> → <code>/jsm-smoke.html</code>）· 不接入渲染管线</p>
+<div id="out">运行中…</div>
+<script type="module" src="/jsm-smoke.js"></script>
+</body>
+</html>

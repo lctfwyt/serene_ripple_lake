@@ -1,0 +1,20 @@
+{
+  "name": "still-water",
+  "version": "1.0.0",
+  "private": true,
+  "description": "静水 · still water —— Three.js 治愈湖面。双入口：免构建 index.html（file:// 双击即开）+ Vite 构建版 dist/",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "assert": "node plan/wp5-assert.js",
+    "assert:dist": "node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1"
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

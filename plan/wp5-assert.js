@@ -20,7 +20,10 @@ const fs = require('fs');
 
 const PORT = 9361;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const URL = 'file:///D:/projects/still_water/index.html?debug=1';
+// UP1a：URL 参数化（可选 argv[2]）。不带参数时**与改动前逐字节等价**。
+//   免构建入口：node plan/wp5-assert.js
+//   构建入口　：node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1
+const URL = process.argv[2] || 'file:///D:/projects/still_water/index.html?debug=1';
 const USER_DIR = path.join(os.tmpdir(), 'sw-wp5-assert');
 const SHOT_DIR = 'D:/projects/still_water/plan/shots-wp5';
 
