@@ -1,4 +1,4 @@
-// src/65-post.js —— 所有者：UP2（AM-009 · 开工口径 90-WAVE4 §5）
+// src/65-post.js —— 所有者：UP2（AM-009 · 开工口径 90-WAVE4 §5；复核返工轮见 §6a）
 // 后期处理管线：EffectComposer + RenderPass + UnrealBloomPass（阈值抬高，只吃高光/反光柱）
 //   + GradePass（轻 vignette / film grain，线性光域）+ OutputPass（收尾：renderer 同款 ACES + sRGB）。
 //
@@ -20,16 +20,44 @@
   var T = window.THREEPOST;   // 加载期检测（script 顺序：three-post 在本文件之前）
   var NOP = /[?&]nopost=1(?:&|$)/.test(window.location.search);
 
+  // —— grain 噪点纹理（AM-009 复核返工：替换 sin-hash）——
+  // mulberry32 固定种子 → 256×256 单通道 R8 纹理。完全确定性：同种子必同图样 →
+  //   帧指纹可复现不依赖运行时状态。NearestFilter（整纹素取值，无插值模糊）+ Repeat
+  //  （逐帧整纹素平移回卷）。shader 内零 sin、零大参数哈希。
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function buildNoiseTexture(THREE) {
+    var S = 256, data = new Uint8Array(S * S), rnd = mulberry32(0x57111);
+    for (var i = 0; i < data.length; i++) { data[i] = (rnd() * 256) | 0; }
+    var tex = new THREE.DataTexture(data, S, S, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
   // Grade pass：vignette + film grain。跑在**线性光域**（OutputPass 的 ACES 之前）——
   //   这正是胶片颗粒的物理形态（线性光噪声）；振幅随亮度缩放（暗部有下限、亮部不过曝）。
-  // 时基 uTime 由 render(dt) 累加 —— ?debug=1 下 SW.debug.dtFor 钉死 dt → 像素断言可复现。
+  // 时基：uOffPx 由 render(dt) 按 _t（dtFor 钉控累加）导出的**整数帧号**驱动 ——
+  //   同相位必同帧号必同偏移 → 像素断言 / 帧指纹逐位可复现。
   var GradeShader = {
     name: 'SWGradeShader',
     uniforms: {
       tDiffuse: { value: null },
-      uTime: { value: 0 },
+      tNoise: { value: null },      // init 时挂 buildNoiseTexture() 产物
+      uOffPx: { value: null },      // init 时挂 THREE.Vector2（本帧整纹素偏移，像素单位）
       uVignette: { value: 0.16 },
-      uGrain: { value: 0.05 },
+      uGrain: { value: 0.02 },
       uAspect: { value: 1.7778 }
     },
     vertexShader: [
@@ -41,19 +69,19 @@
     ].join('\n'),
     fragmentShader: [
       'uniform sampler2D tDiffuse;',
-      'uniform float uTime, uVignette, uGrain, uAspect;',
+      'uniform sampler2D tNoise;',
+      'uniform vec2 uOffPx;',
+      'uniform float uVignette, uGrain, uAspect;',
       'varying vec2 vUv;',
-      'float hash(vec2 p) {',
-      //  mod(uTime,64)：防止长时间运行后 sin 入参过大导致精度塌缩
-      '  return fract(sin(dot(p, vec2(127.1, 311.7)) + mod(uTime, 64.0) * 17.13) * 43758.5453);',
-      '}',
       'void main() {',
       '  vec4 c = texture2D(tDiffuse, vUv);',
       '  // vignette：距中心的椭圆距离（按宽高比校正），只压角落，中心不动',
       '  vec2 d = (vUv - 0.5) * vec2(uAspect, 1.0);',
       '  c.rgb *= 1.0 - uVignette * smoothstep(0.45, 0.98, length(d));',
-      '  // grain：按 1280x720 基准网格取噪点（跨 DPR 尺寸一致），亮度相关缩放',
-      '  float n = hash(floor(vUv * vec2(1280.0, 720.0))) - 0.5;',
+      '  // grain：320x180 基准网格（每颗粒 4x4 px 团簇 —— 35mm 胶片扫描粒径的真实形态，',
+      '  //   也让 PNG 压缩可利用块内相关性）+ 256x256 定种噪点纹理 Repeat 回卷。',
+      '  //   floor(vUv*grid)+整数偏移后 /256 采样 —— 每帧图样整纹素平移，无亚纹素漂移、无 sin。',
+      '  float n = texture2D(tNoise, (floor(vUv * vec2(320.0, 180.0)) + uOffPx) * 0.00390625).r - 0.5;',
       '  float lum = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));',
       '  c.rgb += n * 2.0 * uGrain * (0.15 + lum);',
       '  gl_FragColor = c;',
@@ -107,6 +135,8 @@
 
       var grade = new T.ShaderPass(GradeShader);
       grade.uniforms.uAspect.value = w / h;
+      grade.uniforms.tNoise.value = buildNoiseTexture(THREE);   // 定种噪点（确定性）
+      grade.uniforms.uOffPx.value = new THREE.Vector2(0, 0);    // 逐帧整纹素偏移（render 里更新）
       composer.addPass(grade);
 
       // OutputPass 必须最后：r160 对 RT 不做 tonemap/色彩空间 → 只有末位渲到画布时它才施加 ACES+sRGB
@@ -126,9 +156,14 @@
       var P = SW.P;
       this.bloomPass.enabled = !!P.bloom;
       var u = this.gradePass.uniforms;
-      u.uTime.value = this._t;
       u.uVignette.value = P.vignetteAmp;
       u.uGrain.value = P.grainAmp;
+      // 帧号 = _t·60 整量化（_t 由 dtFor 钉控累加 → 同相位必同帧号）；互质步长 17/43
+      //   平移整纹素（Repeat 回卷），偏移序列周期 256 帧。uOffPx 为 null 时是 probe 场景，跳过。
+      if (u.uOffPx.value) {
+        var f = Math.floor(this._t * 60 + 0.5);
+        u.uOffPx.value.set((f * 17) % 256, (f * 43) % 256);
+      }
       try {
         this.composer.render(dt);
       } catch (e) {

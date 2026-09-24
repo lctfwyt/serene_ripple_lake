@@ -313,8 +313,9 @@ var P = {
   toneMapped: 'ACES', exposure: 1.0,
 
   // 后期处理 —— AM-009 新增（UP2 落地）；?nopost=1 运行时整链关闭（同 debug 处理，字面量不变）
+  //   grainAmp 0.05→0.02：主控复核指示（返工轮，grain 换定种噪点纹理 + 振幅降档，93-UP2-bloom.md §6a）
   bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85,
-  vignetteAmp: 0.16, grainAmp: 0.05,
+  vignetteAmp: 0.16, grainAmp: 0.02,
 
   // 交互
   splash: true, cameraSway: false, swayAmp: 0.002,
