@@ -50,6 +50,44 @@ vendor/*.min.js  binary
 
 ---
 
+## three.js r160 · 后处理子集（`three-post.min.js`，**本项目构建物**）
+
+> ⚠ 与上面的 `three.min.js` 性质不同：它**不是 upstream 原件**，而是由本仓构建脚本
+> 从 `node_modules/three@0.160.0/examples/jsm` 打出的 bundle。存在理由：r160 UMD
+> 不含 postprocessing，免构建入口（`file://`）接 bloom（UP2）需要它。
+
+| 项 | 值 |
+|---|---|
+| 文件 | `three-post.min.js` |
+| 字节数 | **25,676** |
+| SHA-256 | `dcc9544789042013748e0cdeb9be9148ffccdbc995e8651f7d063a324de8ed86` |
+| 来源 | three@**0.160.0**（与 `three.min.js` 锁同版本）`examples/jsm`：EffectComposer / Pass / MaskPass / RenderPass / ShaderPass / UnrealBloomPass / OutputPass + CopyShader / LuminosityHighPassShader |
+| 格式 | IIFE，加载时副作用挂 **`window.THREEPOST`**（EffectComposer, RenderPass, ShaderPass, UnrealBloomPass, OutputPass, CopyShader, LuminosityHighPassShader） |
+| 三本体 | **不含** —— `import … from 'three'` 被映射到 `window.THREE`（stub）。composer 与场景共享同一个 three 实例，规避跨实例风险 |
+| 许可证 | MIT —— 压缩剥除了内嵌许可头 → **必须保留 `LICENSE.three.txt`** |
+
+### 重建 / 校验
+
+```bash
+node plan/build-vendor-post.mjs      # 重建并打印 sha256（应与上表一致）
+sha256sum vendor/three-post.min.js
+```
+
+### 冒烟验证（2026-09-24，系统 Chrome headless · file:// · swiftshader）
+
+加载 `vendor/three.min.js` + `three-post.min.js` 后：`EffectComposer → RenderPass →
+UnrealBloomPass → OutputPass → render()` 全链无异常，追加 `ShaderPass(CopyShader)`
+再渲染一帧亦通过，console/page error **0**。即 bundle 内部类与 UMD `window.THREE`
+的跨实例互操作已被真实 WebGL 验证。
+
+### 一致性约束（升 three 必读）
+
+- 本 bundle 与 `three.min.js` **必须同版本**：两者都出自 three r160。将来若换 three
+  版本（注意：r161+ 无 UMD），**两者必须一起换**，且重跑本构建脚本 + 冒烟。
+- `plan/build-vendor-post.mjs` 依赖 `rolldown`（vite 8 的传递依赖），无新增直接依赖。
+
+---
+
 ## 许可证合规
 
 MIT 许可证要求分发时保留版权声明与许可声明。`three.min.js` 文件**头部内嵌**了完整的
