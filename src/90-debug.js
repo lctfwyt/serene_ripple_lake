@@ -39,6 +39,16 @@
     var buf = new Uint8Array(w * 2 * 4);
     r.render(SW.scene.scene, SW.scene.camera);
     gl.readPixels(0, h - 2, w, 2, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    // ★ 主控 2026-09-24 修复「?debug=1 全屏闪」：
+    //   上面这次 r.render() 是**裸渲染**——直接画进屏幕 backbuffer，不带 bloom / vignette。
+    //   而 SW.debug.update() 位于主渲染**之后**（99-main.js 冻结的渲染循环：scene.render →
+    //   ui.update → debug.update），所以这帧裸画面会残留到下一帧才被覆盖；采样节流 300ms →
+    //   约 3.3 次/秒的亮度骤降。bloom 上线后裸帧与后期帧差异剧增，才从"几乎看不出"变成"一直闪"。
+    //   读完像素立刻用主渲染入口把正确画面画回去。dt=0 ⇒ lakebed.tick(0)（_causticTime += 0）、
+    //   post.render(0)（_t += 0）均不推进任何相位 → 读数语义与可复现性零影响，只多一帧 GPU。
+    try {
+      if (SW.scene && SW.scene.render) { SW.scene.render(0); }
+    } catch (e) { /* 恢复失败最多留一帧裸画面，不影响读数 */ }
     var s = 0;
     for (var i = 0; i < w * 2; i++) {
       s += 0.2126 * buf[i * 4] + 0.7152 * buf[i * 4 + 1] + 0.0722 * buf[i * 4 + 2];
@@ -201,11 +211,17 @@
 
       var defs = [
         // [SW.P 字段, bloomPass 属性, 标签, min, max, step, 小数位]
+        //  · bloom 三参：init 时烘焙进 pass → 直写 SW.post.bloomPass 同名属性
+        //  · glitter 三参：60-water 每帧读 SW.P（478 行附近）→ 改 P 即实时生效
+        //  · ⚠ #13/#5 断言按当前默认（detail 0.16 / rough 0.065）标定，大幅调整后固化前跑 npm run assert
         ['bloomStrength',  'strength',  'bloom 强度 ', 0,    1.5,  0.01,  2],
         ['bloomThreshold', 'threshold', 'bloom 阈值 ', 0,    1,    0.01,  2],
         ['bloomRadius',    'radius',    'bloom 半径 ', 0,    1,    0.01,  2],
         ['vignetteAmp',    null,        'vignette   ', 0,    0.4,  0.005, 3],
-        ['grainAmp',       null,        'grain      ', 0,    0.05, 0.001, 3]
+        ['grainAmp',       null,        'grain      ', 0,    0.05, 0.001, 3],
+        ['glitterDetail',  null,        'glit 细节  ', 0,    0.35, 0.005, 3],
+        ['glitterRough',   null,        'glit 粗糙  ', 0.005,0.3,  0.005, 3],
+        ['glitterJitter',  null,        'glit 抖动  ', 0,    0.5,  0.005, 3]
       ];
 
       defs.forEach(function (d) {
