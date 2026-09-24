@@ -1,0 +1,9 @@
+{
+  "_note": "UP6 开工前一刻的冻结件哈希（90-WAVE4 §1：plan/wp5-assert.js 与 plan/wp5-env.js 本波次禁改）。由 node plan/pw/verify-frozen.mjs 核对。",
+  "_recordedAt": "2026-09-24T19:21:00+08:00",
+  "_source": "sha256sum plan/wp5-assert.js plan/wp5-env.js（UP8 954e8a0 / UP5 5574ca9 + 040e952 之后、UP6 动手之前）",
+  "files": {
+    "plan/wp5-assert.js": "8ac52579f41a342a16056810385fb677b17c95f574a9d9aabe93291591345904",
+    "plan/wp5-env.js": "bd9dd0e8fc115cce0a3ffe243a9f58ac9ec6218a6d31445c2d519ce61869ad2a"
+  }
+}

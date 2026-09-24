@@ -10,12 +10,19 @@
     "assert": "node plan/wp5-assert.js",
     "assert:dist": "node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1",
     "assert:shots": "node plan/wp5-assert.js --shots",
-    "audio:baseline": "python plan/92-audio-baseline.py"
+    "audio:baseline": "python plan/92-audio-baseline.py",
+    "pw": "playwright test --config=plan/pw/playwright.config.mjs",
+    "pw:update": "playwright test --config=plan/pw/playwright.config.mjs --update-snapshots",
+    "pw:compare": "node plan/pw/compare-readings.mjs",
+    "pw:frozen": "node plan/pw/verify-frozen.mjs",
+    "pw:dist": "node plan/pw/verify-dist.mjs check",
+    "pw:dist:snapshot": "node plan/pw/verify-dist.mjs snapshot"
   },
   "dependencies": {
     "three": "0.160.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "vite": "^8.3.0",
     "vite-plugin-singlefile": "^2.3.3"
   }
