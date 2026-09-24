@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "assert": "node plan/wp5-assert.js",
-    "assert:dist": "node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1"
+    "assert:dist": "node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1",
+    "assert:shots": "node plan/wp5-assert.js --shots"
   },
   "dependencies": {
     "three": "0.160.0"

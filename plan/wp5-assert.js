@@ -10,9 +10,12 @@
 // 像素读取走页面内 gl.readPixels（同 90-debug.js 的 topRowL 手法），不落 PNG、不依赖 Pillow。
 //
 // 运行（路径全为绝对路径，从任意目录都行）：
-//   C:/Users/wuyutong/.workbuddy/binaries/node/versions/22.22.2-3/node.exe plan/wp5-assert.js
-// 输出：plan/wp5-assert.json（全部读数）+ plan/shots-wp5/（四态静帧，文件名与 hour 一一对应）
-// 2026-09-24 实测：15/15 通过（原口径）· AM-008 §3 换口径后复跑仍 15/15。
+//   node plan/wp5-assert.js                    # 免构建入口 · 15 条断言（不写静帧）
+//   node plan/wp5-assert.js <URL>              # 指定入口（UP1a 参数化）
+//   node plan/wp5-assert.js --shots            # 额外导出四态静帧到 plan/shots-wp5/
+// 输出：plan/wp5-assert.json（全部读数）；静帧仅在 --shots 时写（AM-013）
+// 2026-09-24 实测：15/15 通过（原口径）· AM-008 §3 换口径后复跑仍 15/15
+//   · UP1a 两条入口各自 15/15（免构建 / dist），读数一致。
 const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
@@ -23,7 +26,16 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 // UP1a：URL 参数化（可选 argv[2]）。不带参数时**与改动前逐字节等价**。
 //   免构建入口：node plan/wp5-assert.js
 //   构建入口　：node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1
-const URL = process.argv[2] || 'file:///D:/projects/still_water/index.html?debug=1';
+//
+// AM-013：截帧改为**显式开关**，默认只跑断言、不写静帧。
+//   🔴 原因：四态静帧是**时间驱动**的（水面 uTime 自走），**同一入口跑两次也拍不出逐字节相同的帧**
+//      （实测：同入口两次 PSNR 20.9~30.5dB / 跨入口 20.0~46.1dB —— 两者同量级，
+//       说明差异由波纹相位主导，不是入口实现差异）。
+//      而它同时在 git 里追踪 → 凡是跑一次断言就产生 4 个「假改动」。
+//   → 出静帧要显式：node plan/wp5-assert.js --shots
+const ARGS = process.argv.slice(2);
+const WANT_SHOTS = ARGS.includes('--shots');
+const URL = ARGS.find((a) => !a.startsWith('--')) || 'file:///D:/projects/still_water/index.html?debug=1';
 const USER_DIR = path.join(os.tmpdir(), 'sw-wp5-assert');
 const SHOT_DIR = 'D:/projects/still_water/plan/shots-wp5';
 
@@ -235,7 +247,7 @@ function check(id, name, ok, detail) {
 }
 
 (async () => {
-  fs.mkdirSync(SHOT_DIR, { recursive: true });
+  if (WANT_SHOTS) { fs.mkdirSync(SHOT_DIR, { recursive: true }); }
   try { fs.rmSync(USER_DIR, { recursive: true, force: true }); } catch (e) {}
   const chrome = spawn(CHROME, [
     '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${USER_DIR}`,
@@ -437,33 +449,40 @@ function check(id, name, ok, detail) {
     const au = await ev('window.__probe()');
     check(8, '音频态 running', au.audioCtx === 'running', `audioCtx=${au.audioCtx}  bgmGain=${au.bgmGain}`);
 
-    // ---------------------------------------------------------- 四态静帧
+    // ---------------------------------------------------------- 四态静帧（AM-013：**仅 --shots 时执行**）
     // ⚠ 截图前必须清两个东西，否则帧不能用来做审美裁决（WP5 第一轮就是这样出的脏帧）：
     //   ① `#dbg` 面板 —— 本脚本只能用 `?debug=1` 起页（注入 API 只在 debug 模式暴露），面板必然在；
     //   ② 残留波场 —— 本轮的 #3 注入过 4 个源、#8 的点击又 emit 了一个，source 会留到 screenshot。
     //   `#ui` / `#hint` **保留**（与 WP5 那套干净帧口径一致，它们本就是交付画面的一部分）。
-    await ev(`(function(){
-      var d = document.getElementById('dbg');
-      if (d) { d.style.display = 'none'; }
-      return !!d;
-    })()`);
-    for (let w = 0; w < 40; w++) {                      // 等波场归零（>4.5s 模拟时间即自然老化）
-      const a = await ev('SW.ripple.probe().active');
-      if (a === 0) { break; }
-      await sleep(250);
-    }
-    const resid = await ev('SW.ripple.probe().active');
-    if (resid !== 0) { await ev('(function(){ for (var i=0;i<90;i++){ SW.ripple.step(0.25); } return SW.ripple.probe().active; })()'); }
-    console.log(`\n截帧前：debug 面板已隐藏 · 残留波场 active=${await ev('SW.ripple.probe().active')}`);
+    //
+    // ⚠ 这四张帧**不可复现**（水面自走相位）→ 不要拿它做逐像素回归基线，也不要因为它 diff 了就以为改坏了。
+    //   它的用途只有一个：**给人看**的审美样本。判据一律走数值断言。
+    if (WANT_SHOTS) {
+      await ev(`(function(){
+        var d = document.getElementById('dbg');
+        if (d) { d.style.display = 'none'; }
+        return !!d;
+      })()`);
+      for (let w = 0; w < 40; w++) {                      // 等波场归零（>4.5s 模拟时间即自然老化）
+        const a = await ev('SW.ripple.probe().active');
+        if (a === 0) { break; }
+        await sleep(250);
+      }
+      const resid = await ev('SW.ripple.probe().active');
+      if (resid !== 0) { await ev('(function(){ for (var i=0;i<90;i++){ SW.ripple.step(0.25); } return SW.ripple.probe().active; })()'); }
+      console.log(`\n截帧前：debug 面板已隐藏 · 残留波场 active=${await ev('SW.ripple.probe().active')}`);
 
-    // 文件名带 tag + 中文态名 + hour，跑一次只产一套（不再出现「原始名 / 中文名」两套重复帧）
-    const TAG = [['5.5','dawn','晨雾'], ['12.5','noon','正午'], ['18.5','dusk','黄昏'], ['22.5','night','星夜']];
-    for (const [h, tag, cn] of TAG) {
-      await ev(`window.__seek(${h})`); await sleep(1700);
-      const r = await send('Page.captureScreenshot', { format: 'png' });
-      fs.writeFileSync(path.join(SHOT_DIR, `${tag}-${cn}-h${h.replace('.','_')}.png`), Buffer.from(r.data, 'base64'));
+      // 文件名带 tag + 中文态名 + hour，跑一次只产一套（不再出现「原始名 / 中文名」两套重复帧）
+      const TAG = [['5.5','dawn','晨雾'], ['12.5','noon','正午'], ['18.5','dusk','黄昏'], ['22.5','night','星夜']];
+      for (const [h, tag, cn] of TAG) {
+        await ev(`window.__seek(${h})`); await sleep(1700);
+        const r = await send('Page.captureScreenshot', { format: 'png' });
+        fs.writeFileSync(path.join(SHOT_DIR, `${tag}-${cn}-h${h.replace('.','_')}.png`), Buffer.from(r.data, 'base64'));
+      }
+      console.log('四态静帧 → ' + SHOT_DIR);
+    } else {
+      console.log('\n（跳过四态静帧；需要时加 --shots。见文件头 AM-013 注：它不可复现，别拿来做回归基线）');
     }
-    console.log('四态静帧 → ' + SHOT_DIR);
 
     // ---------------------------------------------------------- console 洁净度
     // #6 是「≥60 帧中位」，所以这里只报错不判负（判据 #5 归 §6 全流程）
