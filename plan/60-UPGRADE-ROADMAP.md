@@ -126,7 +126,7 @@ UP1a 实测（2026-09-24）：四态静帧是**时间驱动**的（水面 `uTime
 
 | | |
 |---|---|
-| **现状** | grep `EffectComposer\|bloom\|vignette\|grain\|postprocess` → **0 命中**。完全无后期 |
+| **现状** | grep 关键词 `EffectComposer / bloom / vignette / grain / postprocess` → **0 命中**。完全无后期 |
 | **方案** | `EffectComposer` + `RenderPass` + `UnrealBloomPass`（**阈值调高，只吃反光柱/高光**）+ `OutputPass` + 轻 vignette / film grain |
 | **🔴 技术难点** | 现有 RT 链是 `sceneRT`（带 `DepthTexture`，供水面折射读取，`30-scene.js:95-112`）。加 composer 后必须保证：**折射读「水面渲染前」的 sceneRT，bloom 读「水面渲染后」的合成帧**。<br>正确顺序：`湖底 → sceneRT(折射源) → 水面采样 sceneRT → composer(RenderPass 取水面帧) → bloom → OutputPass → 屏幕`<br>**sceneRT 与 composer 的 RT 必须是两个独立 RT** —— 合并会让折射击中自己（水里有水） |
 | **收益** | **镜面高光 + bloom = 治愈感翻倍**，全案性价比最高的一笔 |
