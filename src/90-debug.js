@@ -175,6 +175,7 @@
       ].join(';');
       pre = document.createElement('div');
       panel.appendChild(pre);
+      this._buildSliders();
       document.body.appendChild(panel);
 
       // 只有 debug 模式才暴露；契约 §5 明确要求默认不得暴露
@@ -183,6 +184,89 @@
       window.__clock = function (t) { return SW.debug.clock(t); };
       window.__hold = function (b) { return SW.debug.hold(b); };
       return this;
+    },
+
+    // —— 后期参数滑杆（主控 2026-09-24：雨桐调 taste 用）——
+    // 仅 ?debug=1 存在。grain/vignette 走 SW.P（65-post 每帧读，立即生效）；
+    // bloom 三参 init 时已烘焙进 pass → 直接写 SW.post.bloomPass 的同名属性并回写 SW.P 保持一致。
+    // 不落盘：刷新即回到 00-config.js 默认值；「重置」按钮回 SW.P0。
+    // 时序：dbg.init 早于 post 的 ready → 先建 UI 挂「启动中」提示，ready 后再定性（激活/未激活）。
+    _buildSliders: function () {
+      var box = document.createElement('div');
+      box.id = 'dbg-sliders';
+      box.style.cssText = [
+        'pointer-events:auto', 'margin-top:6px', 'padding-top:6px',
+        'border-top:1px solid rgba(216,230,234,.25)'
+      ].join(';');
+
+      var defs = [
+        // [SW.P 字段, bloomPass 属性, 标签, min, max, step, 小数位]
+        ['bloomStrength',  'strength',  'bloom 强度 ', 0,    1.5,  0.01,  2],
+        ['bloomThreshold', 'threshold', 'bloom 阈值 ', 0,    1,    0.01,  2],
+        ['bloomRadius',    'radius',    'bloom 半径 ', 0,    1,    0.01,  2],
+        ['vignetteAmp',    null,        'vignette   ', 0,    0.4,  0.005, 3],
+        ['grainAmp',       null,        'grain      ', 0,    0.05, 0.001, 3]
+      ];
+
+      defs.forEach(function (d) {
+        var field = d[0], passProp = d[1], label = d[2], min = d[3], max = d[4], step = d[5], dec = d[6];
+        var row = document.createElement('div');
+        row.style.cssText = 'white-space:nowrap;margin:2px 0';
+        var lab = document.createElement('span');
+        lab.textContent = label;
+        var input = document.createElement('input');
+        input.type = 'range'; input.min = min; input.max = max; input.step = step;
+        input.value = SW.P[field];
+        input.style.cssText = 'width:110px;vertical-align:middle;accent-color:#7fb8c9;height:14px';
+        var val = document.createElement('span');
+        val.textContent = Number(SW.P[field]).toFixed(dec);
+        val.style.cssText = 'display:inline-block;width:48px;text-align:right';
+        input.addEventListener('input', function () {
+          var v = parseFloat(input.value);
+          SW.P[field] = v;
+          if (passProp && SW.post && SW.post.bloomPass) { SW.post.bloomPass[passProp] = v; }
+          val.textContent = v.toFixed(dec);
+        });
+        row.appendChild(lab); row.appendChild(input); row.appendChild(val);
+        box.appendChild(row);
+      });
+
+      var reset = document.createElement('button');
+      reset.textContent = '重置默认';
+      reset.style.cssText = 'pointer-events:auto;margin-top:4px;font:inherit;color:inherit;' +
+        'background:rgba(216,230,234,.12);border:1px solid rgba(216,230,234,.3);border-radius:4px;padding:1px 8px;cursor:pointer';
+      reset.addEventListener('click', function () {
+        var P0 = SW.P0;
+        defs.forEach(function (d) {
+          SW.P[d[0]] = P0[d[0]];
+          if (d[1] && SW.post && SW.post.bloomPass) { SW.post.bloomPass[d[1]] = P0[d[0]]; }
+        });
+        var rows = box.querySelectorAll('input');
+        defs.forEach(function (d, i) {
+          rows[i].value = P0[d[0]];
+          rows[i].nextSibling.textContent = Number(P0[d[0]]).toFixed(d[6]);
+        });
+      });
+      box.appendChild(reset);
+
+      var hint = document.createElement('div');
+      hint.style.cssText = 'opacity:.75';
+      hint.textContent = '（后期链启动中…）';
+      box.appendChild(hint);
+
+      // ready 之后定性：激活 → 撤提示；未激活（?nopost=1 / THREEPOST 缺失）→ 收起滑杆只留说明
+      SW.bus.on('ready', function () {
+        if (SW.post && SW.post.active) {
+          hint.style.display = 'none';
+        } else {
+          hint.textContent = '（后期链未激活：?nopost=1 或 THREEPOST 缺失 → 参数无效）';
+          box.querySelectorAll('div,input,button').forEach(function (el) {
+            if (el !== hint) { el.style.display = 'none'; }
+          });
+        }
+      });
+
+      panel.appendChild(box);
     },
 
     update: function (dt) {
