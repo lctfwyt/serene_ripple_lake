@@ -51,7 +51,7 @@
 
 同页钉控（`seek(22.5)` + `hold`）后 `render()+readPixels` 抽 160×90 亮度网格：
 
-| 对比 | mean\|ΔL\| | max\|ΔL\| | 结论 |
+| 对比 | mean ‖ΔL‖ | max ‖ΔL‖ | 结论 |
 |---|---|---|---|
 | nopost vs nopost 重复跑 | 2.7/255 | 59.9/255 | 抖动地板（启动期相位漂移） |
 | nopost vs **post** | **13.9/255** | **113/255** | **效果 = 地板 5.1×**，bloom+grain+vignette 真实可见 |
