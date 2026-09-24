@@ -65,6 +65,8 @@ npm run build   # 产出 dist/ —— 单文件 HTML + 随行音频
 ```bash
 npm run assert        # 免构建入口 15 条断言
 npm run assert:dist   # 构建入口 15 条断言（同一脚本，URL 参数化）
+python plan/92-audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰值 / 常量漂移 / 接缝研究
+                                             # 需 numpy · soundfile · pyloudnorm · scipy
 ```
 另：`npm run dev` 后开 `http://localhost:5173/jsm-smoke.html` 可看 `three/examples/jsm` 是否可达
 （`EffectComposer` / `UnrealBloomPass` / `RGBELoader` —— **UP2 / UP3 的前置**）。
@@ -97,6 +99,9 @@ npm run assert:dist   # 构建入口 15 条断言（同一脚本，URL 参数化
   ⚠️ **授权范围需自行确认** —— 用于公司 / 商用项目前先核对生成平台条款
 - **备用 BGM `bgm-cand1.mp3`** —— 同批生成的另一首候选（3.8 MB，**不在运行路径**）。想换：
   `cp assets/audio/bgm-cand1.mp3 assets/audio/bgm-stillwater.mp3` 后刷新
+  🔴 **换完必须重算常量**：`src/10-audio.js` 里的 `BGM_LUFS_RAW` / `BGM_TRIM` / `BGM_TRUE_DUR` /
+  `SLAP_LUFS_TRIM` 都是**针对当前资产实测**的，换了资产就不对（不会静音，但母带目标与循环出点会失准）。
+  跑 `python plan/92-audio-baseline.py --emit-js`，它会列出每项差多少、并给出可直接粘贴的新值。
 - **拍击采样 `slap1~4.wav`** —— sounds-mp3（免费商用、免署名）
 - 其余**全部程序化生成**，零外部依赖
 

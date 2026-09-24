@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "assert": "node plan/wp5-assert.js",
     "assert:dist": "node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1",
-    "assert:shots": "node plan/wp5-assert.js --shots"
+    "assert:shots": "node plan/wp5-assert.js --shots",
+    "audio:baseline": "python plan/92-audio-baseline.py"
   },
   "dependencies": {
     "three": "0.160.0"
