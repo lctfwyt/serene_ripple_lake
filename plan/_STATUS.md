@@ -45,6 +45,7 @@
 | UP5 后置 Python 链 | 09-24 19:18 | ✅ | audio-baseline.py 交叉验证 0.04 LU，更正 3 条错误结论 | — |
 | UP6 Playwright | 09-24 20:20 | ✅ | 15+16 全包进 PW；钉相位后帧指纹逐位可复现；哨兵证明像素回归有效 | 三条待裁 → 主控已全部答复 |
 | 波次 4 主控复核 | 09-24 20:10 | ✅ | 三包通过；新查 #7 退化 + 4 项修正（编号冲突/基线入库/双写纪律/CRLF） | 见 98-ARCHIVE 末节 |
+| 主控 vendor 后处理 bundle | 09-24 21:40 | ✅ | 应 UP2 请示：three-post.min.js（25.7KB，挂 `THREEPOST`）冒烟 0 报错，免构建接 bloom 阻塞解除 | 溯源+重建命令见 vendor/README.md |
 
 > 各包详情：包文档 `## 完工记录` 节，或报告文件 `90a-UP8-report.md` / `91-UP5-audio.md` / `92-UP6-playwright.md`。
 
