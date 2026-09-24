@@ -6,6 +6,11 @@
 //                 ③ 俯角 25° → 掠射角变大 → Fresnel 反射分量偏弱，F0 按水重取
 //                 ④ 俯视压缩了波纹的屏幕尺度 → normalGain 可上调（见 _STATUS.md 调参项）
 //   AM-002 §7.2 — GGX specular + **两层法线**（大波纹 FBO + 高频细节），3 相位去闪烁
+//   UP8   §2   — 收敛（2026-09-24，`plan/90-WAVE4.md`）：① uProbe 的 8 个诊断分支改**编译期**
+//                （`material.defines.WP_PROBE`，仅 `?debug=1` 时定义）→ 交付形态的着色器里
+//                不再有调试代码。② 删掉 55 行「用 JS 重算 GLSL 的 D/Vis/Fs」的 `glitterSpec()`，
+//                `probe().glitterSpec` 改为**直读 `uGlitterGain`**（字段名与 0~1 量程不变）。
+//                **不改画面行为、不改任何 uniform 名、不改 SW.water 方法签名、不动 swDetail()（归 UP4）。**
 //
 // 三条铁律（WP2 §3）：水面绝不进 sceneRT · depth 纹理 NEAREST · RT 与主 pass 同相机投影。
 // 前两条由 WP1 在 30-scene.js 里保证；第三条这里直接用**同一个 camera 对象**当 rtCamera，
@@ -158,7 +163,11 @@
     'uniform float uGlitterGain;',
     'uniform float uWaterRough;',
     'uniform float uWaterMetal;',
+    // ★ UP8：uProbe 仅在 ?debug=1 时定义 WP_PROBE → 交付形态下这个 uniform 连声明都不进程序，
+    //   three 的 WebGLUniforms 只遍历**活动** uniform，所以 uniforms.uProbe 留着也不会被上传。
+    '#ifdef WP_PROBE',
     'uniform float uProbe;',
+    '#endif',
     'varying vec2 vField;',
     'varying vec3 vWorld;',
     'varying vec4 vClip;',
@@ -263,6 +272,12 @@
     //    4 = body（吸收+水色后）　5 = refl（天空反射）　6 = bed（折射采样到的湖底）
     //    7 = mix(body, refl, Fr)（菲涅尔之后、高光之前）
     //    8 = specular 项强度 (D*Vis*Fs)，用于诊断白光范围
+    //
+    //    ★ UP8 收敛（2026-09-24）：整段用 `#ifdef WP_PROBE` 包住 —— 只有 `?debug=1` 起页时
+    //      `material.defines` 才带 WP_PROBE，**交付形态（非 debug）下这 8 个分支不参与编译**：
+    //      调试代码不再进生产着色器，热路径顺带省掉 8 次区间比较。
+    //      （断言一律用 `?debug=1` 起页，所以这里读数不变；非 debug 一致性由 UP8 单独验证。）
+    '#ifdef WP_PROBE',
     '  if (uProbe > 6.5 && uProbe < 7.5) { gl_FragColor = vec4(mix(body, refl, clamp(Fr, 0.0, 1.0)), 1.0); return; }',
     '  if (uProbe > 3.5 && uProbe < 4.5) { gl_FragColor = vec4(body, 1.0); return; }',
     '  if (uProbe > 4.5 && uProbe < 5.5) { gl_FragColor = vec4(refl, 1.0); return; }',
@@ -271,6 +286,7 @@
     '  if (uProbe > 0.5 && uProbe < 1.5) { gl_FragColor = vec4(sD.x * 0.5 + 0.5, sD.y * 0.5 + 0.5, 0.0, 1.0); return; }',
     '  if (uProbe > 1.5 && uProbe < 2.5) { gl_FragColor = vec4(sR.x * 0.5 + 0.5, sR.y * 0.5 + 0.5, 0.0, 1.0); return; }',
     '  if (uProbe > 2.5 && uProbe < 3.5) { gl_FragColor = vec4(eff * 0.25, thick * 0.25, pw * 60.0, 1.0); return; }',
+    '#endif',
     '  gl_FragColor = vec4(col, 1.0);',
     '  #include <tonemapping_fragment>',
     '  #include <colorspace_fragment>',
@@ -288,66 +304,23 @@
     return 2 * Math.tan(cam.fov * 0.5 * Math.PI / 180) / h;
   }
 
-  // ============================================== glitterSpec：probe 用的解析求值
-  // 沿「光源方位线」扫描水面取镜面项的峰值（BRDF 部分 × glitterGain，钳到 0~1）。
-  // 为什么能反映"柱"的强弱：镜面点必然落在 cam.xz + t·normalize(L.xz) 上
-  //   （反射条件 L = (−V.x, V.y, −V.z) → P 在光源水平投影方向），
-  //   光越低 → 镜面点越远 → 视角越掠射 → Fresnel 越高 → 柱越亮。
-  //   这正是"月光柱是夜景现象、正午几乎消失"的物理成因，也正好对上 §5 的断言口径。
+  // ============================================== glitterSpec：反光增益（直读 uniform）
+  // ★ UP8 收敛（2026-09-24）：这里原本是 55 行 JS —— 把 GLSL 的 D / Vis / Fs 沿「光源方位线」
+  //   重算一遍，只为给 probe 一个"预测的镜面峰值"。两个问题：
+  //     ① shader 一改它就**静默漂移**（改 shader 的人不会记得同步这段 JS）—— 典型维护陷阱；
+  //     ② 它是冗余的：返回值只被 probe 消费，而"柱到底能不能被看见"的硬判据已经
+  //        由 **断言 #13 直读像素**承担（24 相位中位 2.144 / 亮带质心 49.6%）。
+  //   现改为**直读已有 uniform**（不重算）：语义从「预测的镜面峰值」→「反光增益」。
+  //   · 字段名 `glitterSpec` 与 0~1 量程**不变** → `90-debug.js` 与 `wp5-assert.js #7` 一行不用改。
+  //   · 钳到 0~1 是因为 `TimeState.glitterGain` 本身可 >1（实测夜 1.20 / 午 0.15）——
+  //     做钳制而不是去改 #7 的阈值，避免动到别人拥有的断言。
+  //   · 柱的**几何**可行性由 #9 / #10 / #12（仰角 · 方位）覆盖，可读性由 #13（像素）覆盖，
+  //     判据覆盖面没有缺口（见 `plan/90-WAVE4.md §2` 坑 1）。
   function glitterSpec() {
-    var cam = SW.scene.camera, sun = SW.scene.sun;
-    if (!cam || !sun || !u) { return 0; }
-    var waterY = (SW.scene.CAM && typeof SW.scene.CAM.waterY === 'number') ? SW.scene.CAM.waterY : 1.55;
-    var Lx = sun.position.x, Ly = sun.position.y, Lz = sun.position.z;
-    var ll = Math.sqrt(Lx * Lx + Ly * Ly + Lz * Lz);
-    if (ll < 1e-6) { return 0; }
-    Lx /= ll; Ly /= ll; Lz /= ll;
-    var hl = Math.sqrt(Lx * Lx + Lz * Lz);
-    if (Ly <= 0.02 || hl < 1e-5) { return 0; }
-    var hx = Lx / hl, hz = Lz / hl;
-
-    var camY = cam.position.y - waterY;
-    if (camY <= 0.05) { return 0; }
-    cam.updateMatrixWorld();
-    var fwd = new THREE.Vector3();
-    cam.getWorldDirection(fwd);
-    var pt = new THREE.Vector3();
-
-    var ar = Math.max(SW.P.glitterRough, (u.uWaterRough.value || 0) * 0.25);
-    var a2 = ar * ar + SW.P.glitterDetail * SW.P.glitterDetail * DETAIL_ALPHA_W;
-    var F0 = 0.02 + 0.30 * (u.uWaterMetal.value || 0);
-    var gain = u.uGlitterGain.value;
-    var best = 0;
-    var STEPS = 64, t0 = 0.6, t1 = 90;
-    for (var i = 0; i < STEPS; i++) {
-      var t = t0 * Math.pow(t1 / t0, i / (STEPS - 1));
-      var px = cam.position.x + hx * t, pz = cam.position.z + hz * t;
-      // 只统计**画面内**的采样点：柱滑出视野就该读到 0，否则 probe 会撒谎
-      pt.set(px, waterY, pz).project(cam);
-      if (pt.x < -1 || pt.x > 1 || pt.y < -1 || pt.y > 1 || pt.z < -1 || pt.z > 1) { continue; }
-      var vx = cam.position.x - px, vy = camY, vz = cam.position.z - pz;
-      var vl = Math.sqrt(vx * vx + vy * vy + vz * vz);
-      if (vl < 1e-5) { continue; }
-      var Vx = vx / vl, Vy = vy / vl, Vz = vz / vl;
-      var Hx = Vx + Lx, Hy = Vy + Ly, Hz = Vz + Lz;
-      var hn = Math.sqrt(Hx * Hx + Hy * Hy + Hz * Hz);
-      if (hn < 1e-5) { continue; }
-      Hx /= hn; Hy /= hn; Hz /= hn;
-      var NoH = Hy;                       // N = 竖直向上（未扰动）
-      var NoV = Vy, NoL = Ly;
-      if (NoH <= 0 || NoV <= 0 || NoL <= 0) { continue; }
-      var VoH = Vx * Hx + Vy * Hy + Vz * Hz;
-      if (VoH <= 0) { continue; }
-      var dd = NoH * NoH * (a2 - 1) + 1;
-      var D = a2 / (Math.PI * dd * dd);
-      var gv = NoL * Math.sqrt(a2 + (1 - a2) * NoV * NoV);
-      var g2 = NoV * Math.sqrt(a2 + (1 - a2) * NoL * NoL);
-      var Vis = 0.5 / Math.max(gv + g2, 1e-4);
-      var Fs = F0 + (1 - F0) * Math.pow(1 - VoH, 5);
-      var v = D * Vis * Fs * gain;
-      if (v > best) { best = v; }
-    }
-    return Math.min(1, best);
+    if (!u) { return 0; }
+    var g = u.uGlitterGain.value;
+    if (typeof g !== 'number' || !isFinite(g)) { return 0; }
+    return g < 0 ? 0 : (g > 1 ? 1 : g);
   }
 
   // ============================================== TimeState → uniforms
@@ -431,10 +404,17 @@
       uniforms.uWaterMetal = { value: 0.0 };
       uniforms.uProbe = { value: 0 };
 
+      // ★ UP8 收敛：WP_PROBE 只在 `?debug=1` 时定义 —— uProbe 的 8 个诊断分支因此
+      //   **不进交付着色器**（`SW.P.debug` 由 00-config.js 在脚本加载时按 query 置好，
+      //   早于本模块 init，所以这里直读是安全的）。交付形态可量化省下热路径 8 次区间比较。
+      var defines = {};
+      if (P.debug) { defines.WP_PROBE = ''; }
+
       mat = new THREE.ShaderMaterial({
         uniforms: uniforms,
         vertexShader: VERT,
         fragmentShader: FRAG,
+        defines: defines,
         fog: true,
         transparent: false,
         side: THREE.FrontSide,
@@ -510,6 +490,8 @@
         tris: tris,
         // —— AM-002 §5 / §7.4：WP5 的断言要读这两个 ——
         glitterGain: u ? u.uGlitterGain.value : 0,
+        // ★ UP8：语义已由「预测的镜面峰值」改为「**直读的反光增益**」（钳 0~1），
+        //   调用方（90-debug.js / wp5-assert.js #7）无需改动 —— 见上方函数头注释。
         glitterSpec: glitterSpec(),
         // —— §7.4 第 3 条：证明两层法线都在（不是只有一层） ——
         normalLayers: 2,

@@ -25,6 +25,8 @@
 | **WP5** | 2026-09-24 04:50 | **收尾 + 降级 + 验证**（唯一跑无头断言的包）。① **整文件替换 `src/85-fallback.js`** —— 三层降级：reduced-motion（锁走时 + 关相机晃动 + **钉住 `SW.water.uniforms.uTime`**，点击仍出涟漪）· WebGL 兜底（`Object.defineProperty(SW,'boot',{set})` 装拦截器，boot 前探 WebGL，失败直接铺 `#fallback`+隐藏 canvas/ui、**不进入任何模块 init**、console 0 报错）· 移动端一次性降级（`fieldSize 256` / 砾石 `50+70` / `caustics false` / DPR 夹 1.5，用 `defineProperty` 包 `devicePixelRatio`）。② **新建 `README.md`**（按 AM-007 §7 全部重写）。③ **15 条数值断言 + 16 条环境判据全过**。④ 清理 46 个临时件 + `_diag/`，两个验证脚本按 §6.1 的留档口子归档进 `plan/wp5-assert.js` / `plan/wp5-env.js`。**未碰**任何其它 WP 的文件，**未改** `SW.P` 任何契约字段的默认值 | 见下方「WP5 遗留」—— **四条已于 05:05 由 AM-008 全部关闭** |
 | **UP1a** | 2026-09-24 06:28 | **构建链地基：Vite 8.3.0 + `vite-plugin-singlefile` 2.3.3，双入口并存**（`80-UP1-build-chain.md`，只做 UP1a）。**新建**：`package.json`（three 精确 `0.160.0`，**故意不写 `type:module`**）· `package-lock.json` · `vite.config.mjs`（root=`app` / outDir=`../dist` / singlefile + 音频随行插件 + **dev-only HMR 垫片**）· `app/index.html` · `app/main.js`（13 条 import 逐条对齐 `index.html:29-41`）· `app/three-global.js`（`window.THREE = THREE`）· `app/jsm-smoke.html` + `app/jsm-smoke.js`（dev-only 解锁自检）。**改**：`plan/wp5-assert.js` **仅 1 行**（URL 参数化 `process.argv[2]`，默认值不变）· `README.md` 增补「开发 / 构建」。**未碰**：`index.html` · `src/**`（12 个）· `vendor/**` · `assets/**` · `plan/shots-wp5/**` · 其余 `plan/*.md`。**§5 判据 14/14 全过** —— ①`three 0.160.0` 三处一致（声明/lock/实测）②`dist/index.html` 剥注释后**只有 1 个** `<script type="module">`，`src=`/`href=` 取值 **0 个**、无 `<link>`、无 `import(`、无 `@vite/client` ③`file://` 双击 dist（**不加** flag）`SW.ready true`·`REVISION 160`·画布 1280×720·**JS 错误 0** ④`file://` 双击原 `index.html` 回归同上 ⑤两条入口**各 15/15**（`1306,876`→1280×720，hHalf 28.53°）⑥与基线一致：`#5 chromaStep 2.108@sun`（基线 2.108）·`#13` 24 相位中位 **2.138 / 2.124**（基线 2.144）、亮带质心 **633.9 / 640.5**（基线 634.3）·`#14` **0.809**（基线 0.809）·`#15` **0.4377/0.4548**（基线同）·`#6` 湖底 std **15.06 / 15.01**（基线 15.06）·`calls 6`/`tris 53088`（基线同）· 四态 R−B **4.26/−32.05/40.67/−32.82**（dist 4.26/−32.09/40.67/−32.83）、亮度 **137.4/157.54/131.19/83.06**（dist 137.45/157.47/131.2/83.10）⑦两入口读数一致：15 条 detail **12 条逐字相同**，3 条只差噪声位（#3 hitFrac 19.0%↔19.1% · #6 std 15.06↔15.01 · #13 2.138↔2.124 / 质心差 0.5% 画宽）；**确定性读数全同**（6 时段升/方位/sunI/gGain/gSpec · `lod` 全字段 · chromaStep per 表 · REVISION · 画布尺寸）；R−B 与亮度差 **≤0.05** ⑧`examples/jsm` **已解锁**：真实 `WebGLRenderer`（WebGL 2.0）建出 `EffectComposer`（RT 64×64 · passes 1）+ `UnrealBloomPass` + `RGBELoader` 全 `ok:true` ⑨dev HMR：改 `src/80-ui.js` 一行文案 → `#snd` `声音 开`→`声音 开✦`，`window.__hmrMark` **未变（没整页刷新）** ⑩`git diff baseline-pre-tier12 -- index.html src/` **输出为空** ⑪`vendor/three.min.js` sha256 `170c6789…d49fa` / 669884 B 未变（**顺带确认 provenance**：npm 包内 `three@0.160.0/build/three.min.js` 与之 sha256 **完全一致**，故 `vendor` 可随时从依赖重建）⑫音频实测：首手势后 `mode=file`·`bgmEl.src=bgm-stillwater.mp3`·`readyState 4`·`paused false`·`currentTime 1.394→3.907`（**真在走**）·`duration 146.832s`；`slapReady true`·5 次点击 → `slaps 0→5`·`lastHandPeak 0.6` ⑬**体积**：免构建 `849,083 B (829.2 KB) / 14 请求`（index.html 1902 + vendor 669884 + src 177297）→ 构建版 `dist/index.html 729,857 B (712.8 KB) / 1 请求`（gzip 195.09 kB），**−119,226 B（−14.0%）**；`dist/` 含 6 个音频共 `8,423,223 B / 7 文件`。⚠ **不是 tree-shaking**（逃逸已排除摇树）：节省来自 minify 我方 177 KB 源码（→≈59 KB）+ three ESM 与 UMD 体量基本持平（669,884 vs 670,681）→ 与 §2.1「持平或略降」吻合 ⑭README 增补三条命令 + 产物位置 + 双入口说明 + 体积为何不变 + 自检命令 | ① 🎉 **R1 未触发** —— 默认配置（**未**启用 `format:'iife'` / `target:'es2018'` 任一退路）下 `file://` 双击 dist 直接可用。**原因**：内联的 `<script type="module">` **不需要 fetch**，`file://` 的 CORS 拦截只作用在被外链/被 `import` 的模块上；`inlineDynamicImports` 又把动态导入全并掉 → 无任何跨源请求。**退路清单原样保留、未使用**。② 🔴 `dist/index.html` **单独拷会没声音**（`P.bgmFile`/`SLAP_FILES` 是运行时字符串，打包器不管）→ 分发必须连 `dist/assets/audio/`（7.3 MB）一起；已在 README 红字写明。③ `index.html` 与 `app/index.html` 的 CSS/DOM 是**两份**（前者逐字节冻结、构建入口不许碰）→ 改样式要改两处，已标注为已知成本。④ `package.json` **故意不写 `"type": "module"`** —— 加上后 `plan/wp5-assert.js` 的 CJS `require` 立刻 `ERR_REQUIRE_ESM` 挂掉；故配置文件名取 **`vite.config.mjs`**（叫 `.js` 会触发 Vite「ESM 语法在 CJS 中被加载」的**未来弃用警告**，现已消除）。⑤ **超出 §1.1 文件清单**：新增 `app/jsm-smoke.html` / `app/jsm-smoke.js` 两个 dev-only 文件，为 §5-#8「写一个 smoke test」所需；**不进 dist**（已验 dist 内只有 `index.html` + `assets/`）。⑥ dev HMR 垫片**只白名单 `src/80-ui.js`** —— 其余 11 个模块重执行会丢掉 init 建立的内部状态（如 `30-scene.js` → `SW.scene.renderer` 变 `undefined`，循环立刻炸），故仍走 Vite 默认整页刷新；这是**刻意的保守选择**，不是遗漏。垫片经 `transform` 钩子**追加在内存里、不落盘**，故 §10 的 `src/**` 零改动成立。⑦ 构建版首屏 `bootMs 138.7` vs 免构建 `51.1`（**未列为判据，仅记录**）—— 单块 730 KB 内联模块的解析/编译比 14 个分散经典脚本慢，但请求数 14→1。⑧ Vite 8 默认**只绑 `[::1]`**；本机 HTTP 通道走 IPv4 → `npm run dev` 若打不开需 `--host 127.0.0.1`（已写进 README）。⑨ `plan/shots-wp5/` 四态静帧被两轮断言跑覆写，**已 `git checkout baseline-pre-tier12` 还原**（它们是升级前证据，UP1a 不该动）。⑩ 下一包 **UP1b**（后议）：`.glsl` 抽离 + 51 成员 shim 换回摇树 + 漂移守卫 —— 均**不在本包**，见 §2.1/§2.2 |
 
+| **UP8** | 2026-09-24 18:10 | **水面 shader 收敛**（口径 `plan/90-WAVE4.md §2`；**只改 `src/60-water.js`**，+41/−59 = 净 **−18 行**，524→506）：① `uProbe` 的 **8 个诊断分支 + uniform 声明改编译期**（`#ifdef WP_PROBE`，`material.defines` 仅 `?debug=1` 时带）→ 交付着色器的 **GLSL 里 `uProbe` 出现 0 次**（余 4 处全在 JS 注释，不进 shader 串）② 删 **55 行**「用 JS 重算 GLSL 的 D/Vis/Fs」的 `glitterSpec()` → `probe().glitterSpec` 改**直读 `uGlitterGain`（钳 0~1）**。**裁决 = 方案 A**（字段名与 0~1 量程不变 → `90-debug.js` 与 `wp5-assert.js` **一行未动**；B 要删断言、超本包权限）。**验收 6/6** —— 15/15 断言 · `#13` 24 相位中位 **2.138**（doc 基线 2.144±0.02 ✓ / 本机改前 2.127）/ 亮带质心 **635.1**（634.3±8 ✓ / 改前 639.3）· `calls 6` / `tris 53088` 未变 · `#7` 夜 `1.000` / 午 `0.150` **原阈值成立** · 🔴 **坑 2：非 debug 一致性 16 项 `\|Δ\|` 全 `0.0000`**（≤0.02；活动 uniform 表 `hasUProbe` 真/假 为硬证据）· console 0 · 契约公开面机器核对（4 方法 / 31 个 `uniforms.*` 赋值 / 26 个 GLSL 声明 集合 diff **全一致**；`SW.P` 只多一处**读** `debug`、非新增字段；`swDetail()` 区段 sha256 一致 = **未碰**）。未碰 `plan/wp5-assert.js`（sha256 `8ac52579…5904` 未变）· `plan/wp5-env.js` 同 · 临时脚本 `_up8-nodebug.js` 已删 | ① ⚠ **`#7` 语义已由「预测镜面峰值」→「直读反光增益」**（字段名/量程不变，故 `90-debug.js` / `wp5-assert.js` / 契约 §5 三处**都不必改**）：午端余量 0.05，是 TimeState 定值、**无相位噪声** → **若后续改 `20-time.js` 的 `glitterGain`，需同步复核 #7**。② 建议 **UP2 开包时沿用本包的「钉 `uTime` + `uProbe=0` 对齐」手法**做 bloom 前后基线（比两次独立跑断言比可靠）。③ 报告：`plan/90a-UP8-report.md` |
+
 ### 🔴 WP3 遗留：反光柱「数值成立、视觉不成立」 —— ✅ **已解决（AM-006 + 实测自验）**
 
 > **2026-09-24 04:05 结案**：AM-006 应用后实测 —— 夜间列剖面 **peak/median = 2.225**（改前 1.28），
@@ -608,5 +610,31 @@ horizonRow(从顶部算) = 0.5 − 俯角° / 42        ← fov = 42 固定
 | `assets/audio/slap.mp3`（460 KB，29s 源料） | **已删** —— 唯一用途「切出 4 段采样」已完成，`slap1~4.wav` 都在运行路径上，源料不再被任何代码引用 |
 | `assets/audio/bgm-cand1.mp3`（3.8 MB，备用候选） | **保留**并写进 `README.md`「资产与授权」（附一行替换命令），避免成为无出处的孤儿文件 |
 | `_wp5-shots/`（8 张，含两套重复帧） | **已并入 `plan/shots-wp5/`**（4 张，单一命名），原目录删除 |
+
+---
+
+## ★ UP8 完工（2026-09-24 18:10）—— 波次 4 的第一个包
+
+> 口径：`plan/90-WAVE4.md §0 / §1 / §2 / §6`。**全文见 `plan/90a-UP8-report.md`**（含原始输出）。
+> **只改 `src/60-water.js`** —— `git status --short` 全程只有 `M src/60-water.js` + 本文件 + 新报告；
+> `git diff --stat -- plan/` 在写报告前**输出为空**。
+
+**一句话**：两处真债都收掉了，**画面零变化**。
+
+| 验收 | 实测 |
+|---|---|
+| ① 15 条断言 | **15/15** |
+| ② 🔴 `#13` 与基线一致 | 24 相位中位 **2.138**（doc 2.144±0.02 → 带宽内，Δ=0.006；本机改前 2.127）· 亮带质心 **635.1**（634.3±8 → 带宽内，Δ=0.8；改前 639.3）· 相位范围 1.908~2.266 |
+| ② `calls` / `tris` | **6 / 53088** —— 不变 |
+| ③ 坑 2 非 debug 一致性 | **16/16 项 `\|Δ\| = 0.0000`**（阈值 ≤0.02）→ **逐位相同**，不是"刚好合格" |
+| ④ console · `anyNaN` | `JS 错误 0` · `Log error 0` · `anyNaN false`（坑 2 两阶段亦 `{console:0,log:0,exc:0}`） |
+| ⑤ 契约公开面 | 4 个方法名 / 31 个 `uniforms.*` 赋值 / 26 个 GLSL uniform 声明 —— **集合 diff 全一致**；`SW.P` 只多**读** `debug`（非新增键） |
+| ⑥ 不许碰的两处 | `plan/wp5-assert.js` sha256 `8ac52579…5904` **未变** · `swDetail()` 区段 sha256 `741b56f9…a59f` **一致**（归 UP4） |
+
+**坑 1 的裁决 = A**，理由与后果（`glitterSpec` 各时段新旧值对照表）见报告 §1②。
+**关键证据（坑 2）**：活动 uniform 表 —— debug 页 `hasUProbe=true` / 交付页 `hasUProbe=false`；
+两页 `programs` 均为 10、对照量 `uGlitterGain` / `uSunDir` 均在 → **差异只来自 `WP_PROBE` 这一个宏**。
+
+**本包未改「波次 4」状态行**（那是主控的实时状态栏）—— 波次 4 现为 **UP8 ✅ / UP5 ⬜ / UP6 ⬜**。
 
 
