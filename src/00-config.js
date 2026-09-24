@@ -60,7 +60,15 @@
     audioMode: 'auto', bgmVolume: 0.60, handVolume: 0.80, ambVolume: 0.50,
     duckAmount: 0.45, duckDown: 0.05, duckUp: 0.70,
     handBand: [400, 1400, 0.8], handDecay: 0.62,
-    bgmFile: 'assets/audio/bgm-stillwater.mp3',
+    // UP11 / AM-015：BGM 由单曲改为**曲目列表** —— 进页面从列表里随机一首、右上前端可选。
+    //   本字段只给「有哪些曲、按什么顺序」，**不含任何母带数值**：
+    //   每首的 `trim`（响度配平）与 `trueDur`（真实内容时长）都按资产实测，
+    //   一律留在 `10-audio.js` 的 `BGM_TRACKS` 表里 —— 那里才是唯一真值源，
+    //   也是 `npm run audio:baseline` 漂移报警要盯的地方（换了资产必须重算，见下表注释）。
+    //   ⚠ 表里没有的文件名也能放进来：`10-audio.js` 会按「未知资产」降级
+    //     （trim 退回原曲值、不做真实时长封顶），不会静音、只是母带目标与循环出点不保证。
+    //   文件名的取名与顺序由雨桐定（2026-09-25）：**bgm-mingjing.mp3**（明镜）· **bgm-weifeng.mp3**（微风）。
+    bgmFiles: ['assets/audio/bgm-mingjing.mp3', 'assets/audio/bgm-weifeng.mp3'],
     // UP9 / AM-010（海鸟 + 咔嗒）：
     //   birds     海鸟环境层总开关（false = 一声不出，连排放定时器都空转）
     //   uiVolume  UI 音效总线音量（时间刻度尺的咔嗒）；**第四条**总线，与 bgm/hand/amb 并列进 limiter

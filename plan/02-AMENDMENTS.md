@@ -18,8 +18,9 @@
 
 ## 1. 当前未决变更单
 
-**无。** AM-001 ~ AM-013 全部应用并关闭（见 §2）。
+**无。** AM-001 ~ AM-015 全部应用并关闭（见 §2）。
 AM-009（UP2 后期处理管线）已应用并关闭（UP2 · 2026-09-24 22:05；22:35 复核返工轮收口，全文移 `98b-AMENDMENTS-ARCHIVE-v1.md` §AM-009）。
+AM-015（UP11 BGM 选曲器）已应用并关闭（UP11 · 2026-09-25 04:5x，全文见 §6；包文档 `96-UP11-bgm-picker.md`）。
 
 ---
 
@@ -41,6 +42,7 @@ AM-009（UP2 后期处理管线）已应用并关闭（UP2 · 2026-09-24 22:05�
 | **AM-009** | 09-24 | UP2 后期处理管线（bloom + vignette/grain + OutputPass 收尾）；复核返工 grain（主控 22:1x 裁：sin-hash → 定种噪点纹理 + amp 0.02） | UP2 / 契约§1§2§6 | ✅ 22:35（返工轮见 93 §6a）；全文移 98b 归档 |
 | AM-011 | 09-25 | 时间刻度尺：`#hour` 由 range 改 24h 环形刻度尺（UP10 · 波次 5） | UP10 / 契约§2.8§7 | ✅ 09-25 00:55；全文移 98b 归档 |
 | AM-014 | 09-25 | 刻度尺手感：松手惯性 + 拖动时中线突出层 + 命中区 padding（UP10 增量） | UP10 / `80-ui.js` | ✅ 09-25 01:2x；全文移 98b 归档（AM-012/13 编号冲突待裁，顺延 AM-014） |
+| AM-015 | 09-25 | BGM 选曲器：单曲 → 曲目列表（进页面随机一首 + 右上 chip 切听）+ 两首 BGM 改名 | UP11 / `10-audio.js`·`00-config.js`·`80-ui.js` | ✅ 09-25 04:5x；契约 §2.1/§2.8/§4/§6/§7 已改；pw `full.png` 待主控重录 |
 | **AM-010** | 09-25 | UP9 海鸟环境音 + 咔嗒音效 API：海鸟层（`bird1~6`）+ `SW.audio.sfxTick(step)`（UP10 刻度尺消费） | UP9 / `10-audio.js`·`00-config.js`·README | ✅ 09-25 01:5x；全文见 §5 |
 
 ---
@@ -123,3 +125,87 @@ About 页自述「site is **not intended for commercial use**」且素材「coll
 - 上一版（16 kHz 重采样 + 合成混响 + 压高频）被否：「不好听」。
 - 终版：**只做淡入淡出 + 拖尾 + 电平归一**；「远处」靠**播放音量**（`BIRD_TRIM`）实现，
   **不**烘进资产。切点不落在下一声刚起头处；段与段允许重叠。
+
+---
+
+## 6. AM-015 · UP11 BGM 选曲器 + 两首 BGM 改名（✅ 已应用）
+
+**1 · 背景 / 依据**
+- 需求原文：「BGM 有备选，希望前端能选听哪首，刚进页面播放随机一首」。包文档 `96-UP11-bgm-picker.md`，
+  口径以 `90-WAVE5.md` 为准。
+- 硬约束（实测）：① `file://` 下 `fetch` / `decodeAudioData` 全被拦 → BGM 只能走 `<audio>` 元素池；
+  ② 随机只用 `rng`，**禁 `Math.random`**；③ `BGM_TRIM` 与 `BGM_TRUE_DUR=146.832 s` 都是
+  **按当前那一首实测**的 → 换曲必须两个一起换，否则循环接缝会尾静音或截断。
+
+**2 · 变更内容**
+- 契约面：§2.1 `SW.audio` 追加 `bgmInfo()` / `setBgmTrack(i)`；§2.8 + §4 新增控件 `#sw-bgm`；
+  §6 `bgmFile` → `bgmFiles`；§7 四个文件的所有者链更新。
+- 代码面（`10-audio.js` 主体，`00-config.js` 仅音频段，`80-ui.js` 一个控件）：
+  - `BGM_TRACKS` **唯一真值源**：每首一组 `{ file, label, lufsRaw, trim, trueDur }`。
+    首项直接**引用** `BGM_TRIM` / `BGM_TRUE_DUR` 两标量（零重复字面量 → `audio-baseline.py`
+    的漂移检测仍全绿）；次项写实测值 + 算式（`10^((-16.00+15.40)/20) = 0.9333`）。
+  - 切歌序列：淡出 `SWITCH_OUT=0.22 s` → 静音窗内 `pause → currentTime=0 → 换 src → load`
+    → `play` + `playing` 事件淡入 `SWITCH_IN=0.34 s`（+900 ms 兜底定时器）。
+    **换元素 ≠ 换源**：`createMediaElementSource` 按元素建，接两次图会让峰值翻倍 → 一元素一曲。
+  - `bgmTrimCur`（**正在响**那首的 trim）与 `bgmTrack`（**选中**）分离：下标立刻跟手，
+    电平在静音窗口才换 → 淡出过程中不插进 0.34 dB 的电平台阶。
+  - 随机抽签走独立 mulberry32 流 `seed ^ (Date.now() & 0x7fffffff)` —— **不消耗**既有 `rng`
+    序列（否则 20-determinism 的逐帧复现被打乱）。`?bgm=<n>` 可钉死首播曲目（验收专用）。
+  - 建池时机**未提前**：BGM(0) → slap(4.0 s) → tick(5.2 s) → bird(6.5 s) 原样保留（硬约束 ③）。
+- 资产面：`bgm-stillwater.mp3` → **`bgm-mingjing.mp3`**（曲名「明镜」）、
+  `bgm-cand1.mp3` → **`bgm-weifeng.mp3`**（曲名「微风」）；sha256 与字节数未动（`git mv`）。
+- UI 形态（`80-ui.js`）：右上 `#snd` 正下方一行「**BGM：** + 每曲一枚 chip」，追加在时段面板**之后**
+  （护住 pw `ui-panel.png` 取样的 `#ui > div.first()`）。与 `#snd` **逐字同源**的 token
+  （padding 6/13、radius 14、描边 .22、字号 11、字距 .08em、blur 6px），只在面透明度上更透一档
+  （.26 → .20），另加 `.on` 选中态。
+
+**3 · 影响面（不与他人重叠）**
+| 文件 | 归属 |
+|---|---|
+| `src/10-audio.js` | UP11（所有者链 WP4 → UP9 → UP11） |
+| `src/00-config.js` **仅音频段** | UP11（经主控授权） |
+| `src/80-ui.js` | UP11（所有者链 WP3 → UP10 → UP11） |
+| `assets/audio/bgm-*.mp3` ×2 | 改名（WP4 资产，本包 `git mv`） |
+| `plan/audio-baseline.py` | 输入文件名 + expected 集合同步 |
+| `README.md` / `vite.config.mjs` 注释 | 同步（旧 `cp` 换曲说明已删） |
+| 冻结件 `wp5-assert.js` / `wp5-env.js` / 断言阈值 / `plan/pw/**` | **未碰** |
+
+**4 · 验收判据 + 实测结果**
+| # | 判据 | 结果 |
+|---|---|---|
+| 1 | 免构建 + dist 双入口结构/命名/布局 | ✅ 118/118（含"DOM 与 CSSOM 里无下拉残留"的反向把关） |
+| 2 | 进页面随机一首 · chip 选中态 = 实际播放曲目 | ✅ idx 0/1 均复现；`aria-pressed` 有且仅有一枚 true |
+| 3 | 双向切歌：src / trim / trueDur / 循环出点 | ✅ 明镜↔微风 各一次；`loopOut = trueDur − 0.03`（146.802 / 172.783） |
+| 4 | 切歌包络不卡 0、元素音量恒等式 | ✅ `switchFade` 1 → 0.53 → 1；`elVol` 逐帧等于 `clamp(vol×trim)×duck×fade×switchFade` |
+| 5 | `?bgm=1` 钉选 | ✅ 起播即「微风」+ 用微风那套常量 |
+| 6 | 兜底/降级：资产判死 → 合成、未知文件名 | ✅ 控件压暗 `.off`、`setBgmTrack` 返回 false 不抛错 |
+| 7 | 两首母带常量不漂移（硬约束 ②） | ✅ `npm run audio:baseline` 全绿（`BGM_TRIM` 差 3e-5、`BGM_TRUE_DUR` 差 11 ms、守卫 1.0 > 0.332） |
+| 8 | 15 条断言不退化（双入口） | ✅ `npm run assert` 15/15 · `assert:dist` 15/15 |
+| 9 | 窄屏 UI 不重叠 | ✅ `env-narrow` 零违规（`sw-bgm@197,56 156×25`，#snd 底 47 → 间隙 9 px） |
+| 10 | pw 像素基线 | ⚠ `full.png` **变红待主控重录**：差异 2866 px 全在 `#sw-bgm` bbox `x[1100,1257] y[56,80]` 内、零外溢；`ui-panel.png` / `bed-clip.png` 未受影响 |
+| 11 | 禁 `Math.random` | ✅ 全库 grep 仅命中注释 |
+
+**5 · 修掉的一处既有缺陷（预存，本包把它变成必现）**
+`tryFileBgm()` 建图后**从未刷新元素音量**：`bgmMode` 要等起播后 ~0.9 s 才置位，而那时
+`currentTime` 已越过 `LOOP_FADE_IN` → 循环包络恒为 1、提前 return → `elVolApply()` 一次都不执行，
+元素停在 `el.volume = P.bgmVolume`（0.60）**比母带目标响 0.94 dB**，直到首次 duck 或第一圈回卷才纠正。
+修法：建图分支之后补一行 `elVolApply()`。**本包自造的 bug 一并记档**：`bgmSwitching = true`
+原先只在 `setBgmTrack()` 置一次，第二段淡入没人推进 → 包络恒 0；已挪进 `switchRamp()`（两段式）。
+
+**6 · 挂账（需主控裁 / 处理）**
+- `plan/audio-baseline.py` 只自动校验**首曲**常量（它只读 `bgm-mingjing.mp3`、按名字抓
+  `BGM_TRIM` / `BGM_TRUE_DUR` 两标量）→ **次曲的 {trim, trueDur} 无自动漂移检查**，
+  现靠注释里的算式与人工复核。
+- `plan/pw/dist-baseline.txt`（sha256 清单）含**旧文件名**，且 pw 像素基线 `full.png` 需重录 ——
+  两项都按纪律留给主控。
+- `plan/70-REPO-BASELINE.md` / `91-UP5-audio.md` / `92-UP6-playwright.md` / `98*` 归档等
+  **历史文档里的旧文件名刻意未改**（它们记录的是当时的仓库状态）；若主控要求全库一致再统一处理。
+
+**7 · UI 形态裁决（雨桐 2026-09-25，三次迭代的终点）**
+① 「一排胶囊按钮」→ 被否（要字、要下拉）；② 原生 `<select>` 去壳（含 Chrome 135+ 的
+`appearance:base-select` 定制面板）→ 也被否（弹层是独立绘制层，吃不到 `backdrop-filter`
+与父元素透明底，"和 chip 一样的透明"做不到）；③ **终点 = 「BGM：」标签 + 并排 chip**，
+与 `#snd` 同一套 token。回滚时把 select 相关常量（`padX/padY/arrowW/radius/rowPad*/panelGap/durOpen/durClose`）
+与 CSS 段（`.sw-bgm-sel` 系列、`@supports (appearance:base-select)`、`::picker*`、`option` 规则）
+**全部删除**，并加了 `?bgm` 无关的**反向把关断言**：`#sw-bgm` 内出现 `select` 或
+`sw-bgm-sel` / `base-select` / `picker` / `option` 字样即判失败。

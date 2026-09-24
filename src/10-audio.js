@@ -1,5 +1,6 @@
-// src/10-audio.js —— 所有者：WP4
-// 签名逐字对齐 01-CONTRACT.md §2.1：{ ready, init, setEnabled, playHand, duck, suspend, resume, probe }
+// src/10-audio.js —— 所有者：WP4 → UP9（AM-010）→ UP11（AM-015，波次 7 起）
+// 签名逐字对齐 01-CONTRACT.md §2.1：{ ready, init, setEnabled, playHand, duck, sfxTick,
+//   bgmInfo, setBgmTrack, suspend, resume, probe }
 //
 // 三总线：bgm（音乐床，被 hand duck） / hand（划水 + 点击） / amb（水拍岸 + 风）
 //   source ──┬── bgm  (Gain) ─────────────────┐
@@ -7,6 +8,11 @@
 //            └── amb  (Gain) ─────────────────┘
 //   UP5 / AM-012：hand 总线新增 StereoPanner（声像跟手）+ limiter 输入端体检点 limAn
 //   （拍击 + 连续流水 + foley 全部经此进 limiter，故"拍击经过 limiter"可直读证明）。
+//   UP9 / AM-010：第四条总线 uiGain（刻度尺咔嗒），与 bgm/hand/amb 并列进 limiter。
+//   UP11 / AM-015：BGM 由单曲变**曲目列表** —— 进页面随机一首、运行期可切（`#sw-bgm`）。
+//     母带数值（trim / trueDur）按曲目存进 `BGM_TRACKS` 表（唯一真值源，见该表注释）。
+//     切歌复用同一个 <audio> 元素、只换 .src —— `createMediaElementSource` 是按元素建的，
+//     换元素等于重建 SourceNode，那正是"接两次图 → 峰值翻倍"的来源。
 //
 // 两条硬约束（踩了就静音或爆音）：
 //   ① file:// 下 fetch + decodeAudioData 被 CORS 挡死 → BGM 走 <audio> + createMediaElementSource
@@ -116,7 +122,7 @@
   // 明细与原始读数见 plan/91-UP5-audio.md §2。
   var IS_FILE = /^file:/i.test(window.location.href);   // 唯一的环境判定（slap 与 BGM 共用）
 
-  var BGM_LUFS_RAW = -15.06;          // bgm-stillwater.mp3 实测集成响度
+  var BGM_LUFS_RAW = -15.06;          // bgm-mingjing.mp3（曲名「明镜」）实测集成响度
   var BGM_LUFS_TARGET = -16.00;       // 母带目标
   var BGM_TRIM = 0.8974;              // 10^((TARGET-RAW)/20) = 10^(-0.94/20) → 命中 -16.00
   // 拍击 4 段：峰值**已经**统一（4 段都 0.62），但集成响度跨 2.49 LU
@@ -152,12 +158,73 @@
   //   ⚠ 不能靠 `buffered` 末端封顶：file:// 下 buffered 末端**也被报成估算值 147.164**（实测）。
   //     http 下 duration 就是真值（146.832），故这项封顶只对 file:// 生效。
   //   守卫：仅当元素时长与该常量相差 < 1.0s（= 仍是同一份资产）时才采信；
-  //     换资产（README 有 `cp bgm-cand1.mp3 …` 的说明）后自动退回估算式，不会静音、只是可能留尾静音。
+  //     换资产（`npm run audio:baseline` 复核后按上面 ③ 的流程入表）后自动退回估算式，不会静音、只是可能留尾静音。
   var BGM_TRUE_DUR = 146.832;
   var BGM_TRUE_GUARD = 1.0;
   // foley 分层（AM-012 §3.2 第 8 条）：采样自带 impact（瞬态）+ body（低频），
   //   **缺的是随力度变亮的水花** → 只补 spray 这一层，避免叠加糊掉采样本体
   var FOLEY_SPRAY = 0.10;
+
+  // ===================== UP11 / AM-015：BGM 曲目表（唯一真值源）=====================
+  // ① 为什么必须「每首一组 {trim, trueDur}」而不是两个全局常量：
+  //    BGM_TRIM 与 BGM_TRUE_DUR 都是**按当前那首实测**出来的，换曲后**两个一起失效** ——
+  //      · trim 错     → 响度不再命中 -16.00 LUFS，把 UP5 刚做好的母带对齐破坏掉
+  //      · trueDur 错  → `loopOut()` 的出点落在错误位置 → 每圈接缝塌出 ~0.3 s 尾静音
+  //                      （或被截断）。这是全包最隐蔽的回归（96 §3 ①），
+  //                      所以两者**绑死在同一个对象里**，物理上无法只换一个。
+  // ② 本表是唯一真值源：`P.bgmFiles` 只给文件名，母带数值一律回这里查。
+  //    `BGM_TRIM` / `BGM_TRUE_DUR` 两个标量**保留不动**，第一项直接引用它们 ——
+  //    `plan/audio-baseline.py` 的漂移检测正是按这两个名字抓的（自洽 + 与资产一致），
+  //    这样改完那份体检仍然全绿，且全程零重复字面量。
+  // ③ 新曲入库流程：`npm run audio:baseline` → 读该曲那一行的「时长 / 响度」两列
+  //    → trim = 10^((BGM_LUFS_TARGET − 响度)/20) → 在这里加一项（算式写进注释）。
+  // ④ `label` 纯粹是选曲控件里的显示名（`80-ui.js` 的 `#sw-bgm`），随便改。
+  //    两首的取名由雨桐定（2026-09-25）：**明镜** = 原曲 · **微风** = 另一首候选。
+  // ⑤ 文件名同样由雨桐定（2026-09-25 改名）：`bgm-stillwater.mp3` → **bgm-mingjing.mp3**、
+  //    `bgm-cand1.mp3` → **bgm-weifeng.mp3** —— 拼音与曲名一一对应，**文件名不再描述来源**
+  //    （"stillwater / cand1" 是生成期的临时名，留在库里会让人以为还有候选没接进来）。
+  //    🔴 改名会连带动 4 处：本表 `file` · `SW.P.bgmFiles`（00-config.js）·
+  //       `plan/audio-baseline.py` 的输入与 expected 集合 · `plan/pw/dist-baseline.txt`
+  //       的 sha256 清单（那是 **pw 基线**，由主控重录，本包只报读数）。
+  var BGM_TRACKS = [
+    {
+      file: 'assets/audio/bgm-mingjing.mp3',
+      label: '明镜',
+      lufsRaw: BGM_LUFS_RAW,          // -15.06（Chrome 内实测；audio-baseline.py 读 -15.10，差 0.04 LU）
+      trim: BGM_TRIM,                 // 0.8974 = 10^(-0.94/20)
+      trueDur: BGM_TRUE_DUR           // 146.832 s（decodeAudioData 实测的内容时长）
+    },
+    {
+      file: 'assets/audio/bgm-weifeng.mp3',
+      label: '微风',
+      // 实测（`npm run audio:baseline` · plan/audio-baseline.py，libsndfile 解码）：
+      //   172.813 s · 采样峰值 -1.16 dBFS · 真峰值 -1.15 dBTP · 集成响度 -15.40 LUFS
+      //   trim = 10^((TARGET-RAW)/20) = 10^((-16.00 - (-15.40))/20) = 10^(-0.03) = 0.9333
+      //   母带后真峰值（元素路 = 最坏情形）= 10^(-1.15/20) × 0.9333 = 0.8177 = -1.75 dBTP
+      //     → ✅ 仍在 EBU R128 的「交付端 ≤ -1 dBTP」以内（原曲那条是 -1.37 dBTP）
+      lufsRaw: -15.40,
+      trim: 0.9333,
+      trueDur: 172.813
+    }
+  ];
+
+  // ?bgm=<n>（下标从 0 起）—— **钉死首播曲目**，验收/断言专用。
+  //   为什么需要它：需求本身就是「每次进页面随机一首」= 故意不可复现；
+  //   而验收又要能稳定复现"放的是哪一首"（例如单独验 cand1 的 trim / trueDur 路径）
+  //   → 给一条钉死的路。非法/越界值 → -1（回到随机）。
+  //   与 `?debug=1` 同款解析方式，但**不进 SW.P**：它不是运行期参数，是启动开关。
+  var BGM_PIN = (function () {
+    var m = /[?&]bgm=(\d+)(?:&|$)/.exec(window.location.search);
+    if (!m) { return -1; }
+    var n = parseInt(m[1], 10);
+    return (isFinite(n) && n >= 0) ? n : -1;
+  })();
+
+  // 切歌淡变时长（AM-015）。切歌必须「淡出 → 停 → 换 src → 淡入」，
+  //   否则 src 切换那一瞬间元素从旧内容跳到新内容 = 爆音（96 §3 ②）。
+  //   淡出比淡入快：切歌的反馈要即时；淡入慢一点，让新曲"浮"进来。
+  var SWITCH_OUT = 0.22;              // s
+  var SWITCH_IN = 0.34;               // s
 
   // A 大调四和弦循环 —— 慢、暖、无张力。频率是十二平均律 A4=440。
   var CHORDS = [
@@ -215,10 +282,74 @@
   var bgmInGraph = false;              // BGM 元素是否已接进 Web Audio 图（http 才可能）
   var loopWraps = 0, loopWatch = 0;    // 回卷次数 / 看门狗句柄
   var lastFoley = { hz: 0, level: 0 }; // 最近一次 foley spray 的读数
+  // ---- UP11 / AM-015 状态 ----
+  var bgmTrack = null;                 // **选中**的曲目（BGM_TRACKS 里的那一项）；null = 还没定
+  var bgmTrackIdx = -1;                // 选中下标；-1 = 音频还没启动 / 还没抽签
+  var bgmTrimCur = BGM_TRIM;           // **正在响**的那一首的母带 trim。切歌时只在静音窗口里换
+                                       //   （bgmTrack 立刻改 → UI/probe 即时一致；trim 晚 0.22s 跟，
+                                       //    避免淡出过程中插进一个 0.34 dB 的电平台阶）
+  var bgmPrePicked = false;            // 音频启动**之前**用户就点了选曲 → startBgm 尊重该选择、不再随机
+  var bgmSwitching = false;            // 切歌进行中（loopTick 让位，只推切歌包络）
+  var bgmSwitchFade = 1;               // 切歌包络：元素路（file://）的乘子，见 elVolApply()
+  var bgmSwitchFrom = 1, bgmSwitchTo = 1, bgmSwitchDur = 0, bgmSwitchT0 = 0;
+  var bgmSwitchDone = null;            // 本段淡变结束时回调
+  var switchSeq = 0;                   // 切歌序号：迟到的回调（旧次）靠它作废
 
   function now() { return ctx ? ctx.currentTime : 0; }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
   function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // 墙钟（ms）。⚠ 切歌包络**不能**用 ctx.currentTime 做时基：无头 Chrome（SwiftShader）下
+  //   音频渲染线程会被主线程饿住 —— `ctx.state === 'running'` 但 currentTime 在起播后 ~1.1s 内
+  //   仍是 0（AM-012 ⑩ 的实测）→ 用它计时，包络会永远停在起点、切歌卡在半途。
+  function wall() {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  }
+
+  // ---------------------------------------------- UP11 / AM-015：曲目解析
+  // 按文件名回 BGM_TRACKS 查母带数值；表里没有 → 「未知资产」降级（见 BGM_TRACKS 注释 ②）：
+  //   trim 退回 BGM_TRIM、trueDur = 0（= 不做真实时长封顶，退回元素估算式 —— 语义与
+  //   AM-012 注释里「换资产后自动退回估算式，不会静音、只是可能留尾静音」完全一致）。
+  function trackOf(file) {
+    for (var i = 0; i < BGM_TRACKS.length; i++) {
+      if (BGM_TRACKS[i].file === file) { return BGM_TRACKS[i]; }
+    }
+    if (!file) { return null; }
+    return {
+      file: file,
+      label: String(file).split('/').pop().replace(/\.[a-z0-9]+$/i, ''),
+      lufsRaw: 0, trim: BGM_TRIM, trueDur: 0
+    };
+  }
+
+  // 生效曲目表 = `P.bgmFiles` 的顺序与集合 + `BGM_TRACKS` 的数值。
+  // 兜底到第一首：「没歌放」是比「放错歌」更差的失败模式，config 被清空也要能开机。
+  function trackList() {
+    var out = [], f = P.bgmFiles;
+    if (f && f.length) {
+      for (var i = 0; i < f.length; i++) {
+        var t = trackOf(f[i]);
+        if (t) { out.push(t); }
+      }
+    }
+    return out.length ? out : [BGM_TRACKS[0]];
+  }
+
+  // 母带 trim —— 口径是「**正在响**的那一首」，所以切歌时它在静音窗口里才换（见 bgmTrimCur）。
+  function bgmActiveTrim() { return bgmTrimCur; }
+  function applyTrackTrim() {
+    bgmTrimCur = bgmTrack ? bgmTrack.trim : BGM_TRIM;
+    if (bgmSrc) { bgmSrc.gain.value = bgmTrimCur; }
+  }
+
+  // 「**选中**曲目」的表值 —— 与上面「**正在响**曲目」的口径成对。
+  //   UP11：`bgmTrackIdx`（选中下标）在 `setBgmTrack()` 里**立刻**改，而 `bgmTrack`（含 trim /
+  //   trueDur / label）要等 0.22s 的静音窗口才换 —— 所以这两个数在切歌途中**必然不等**，
+  //   差着就是"切歌正在路上"。probe 把两个都暴露出来，验收可以直接读这条等式。
+  function selectedTrim() {
+    var l = trackList();
+    return (bgmTrackIdx >= 0 && bgmTrackIdx < l.length) ? +l[bgmTrackIdx].trim : 0;
+  }
 
   // --------------------------------------------------- 缓冲：白噪声 / 粉噪声
   function makeNoise(seconds, pink) {
@@ -338,6 +469,10 @@
     // UP5 / AM-012 ③：BGM 母带 trim 落在这条**总线求和点**上 ——
     //   它同时覆盖文件 BGM（fileGain 进这里）与合成兜底（pad→bgmSrc、湿声→bgmSrc），
     //   语义是"母带增益"，与用户音量 bgmGain(P.bgmVolume) 正交，故不改 bgmGain（契约 §5 读数不变）。
+    //   UP11 / AM-015：这里的初值仍是 BGM_TRIM（= 曲目表第 1 首的 trim）；抽签定下曲目后
+    //     `startBgm()` 会调 `applyTrackTrim()` 把它改成**生效曲目**的 trim，切歌时再改一次。
+    //     副作用（刻意接受）：合成兜底路径（pad → bgmSrc）也被同一个 trim 缩放 —— 改前亦然。
+    //     两首的 trim 只差 0.34 dB（0.8974 vs 0.9333），且合成兜底只在文件资产彻底不可用时才响。
     bgmSrc = ctx.createGain(); bgmSrc.gain.value = BGM_TRIM;
     bgmSrc.connect(anBgm); anBgm.connect(bgmGain);
 
@@ -705,8 +840,11 @@
   function loopOut(dur) {
     var est = dur - LOOP_TAIL;
     // ① 真实内容时长封顶（**up5 的关键修复**）：file:// 下元素 duration 偏长 → 尾部会塌静音。
-    if (Math.abs(dur - BGM_TRUE_DUR) < BGM_TRUE_GUARD) {
-      est = Math.min(est, BGM_TRUE_DUR - LOOP_TAIL);
+    //    UP11 / AM-015：封顶值改为**生效曲目的** trueDur —— 守卫语义不变（"仍是同一份资产"）：
+    //    元素时长与表里那个值相差 < BGM_TRUE_GUARD(1.0s) 才采信；换曲/换资产后自动退回估算式。
+    var td = bgmTrack ? bgmTrack.trueDur : 0;
+    if (td > 0 && Math.abs(dur - td) < BGM_TRUE_GUARD) {
+      est = Math.min(est, td - LOOP_TAIL);
       bgmTrue = 1;
     } else { bgmTrue = 0; }
     // ② 已缓冲末端封顶（http 下 Range 流式播放时有用；file:// 下 buffered 报的是估算值，等价于 ① 已覆盖的情形）
@@ -721,7 +859,56 @@
     return est;
   }
 
+  // ------------------------------------------------ UP11 / AM-015：切歌
+  // 复用**同一个** `<audio>` 元素、只换它的 `.src`。为什么不新建元素：
+  //   `createMediaElementSource` 是**按元素**建的 —— 换了元素就得重建 SourceNode，
+  //   而"重建"必然带来一次"要不要重新接图"的判定，那正是「别接两次」这个坑的来源
+  //   （接两次 → 同一路信号被加两遍 → 峰值翻倍）。同一个元素改 src 后 SourceNode 依然有效，
+  //   `bgmInGraph` 于是**不需要重新评估**。
+  // 两路分化（与 loopTick 的循环淡入淡出同款）：
+  //   http 图路     → fileGain 的 AudioParam linearRamp（采样级精确）
+  //   file:// 元素路 → 靠 loopWatch(5ms) 逐级写 el.volume（元素不进图，只有这一条路）
+  // 两路都由 wall() 计时决定"这一段淡变结束"，所以时序一致、回调时机一致。
+  function switchRamp(to, dur, done) {
+    bgmSwitching = true;              // ⚠ 必须在这里置位：切歌是**两段**（淡出→淡入），
+                                      //   第二段由第一段的回调发起；若只在 setBgmTrack 里置一次，
+                                      //   第一段收尾时 switchTick 会把它清掉 → 第二段没人推进
+                                      //   → bgmSwitching 卡在 false、但包络停在 0（切歌后音量恒 0）。
+    bgmSwitchFrom = bgmSwitchFade;
+    bgmSwitchTo = to;
+    bgmSwitchDur = dur > 0 ? dur : 0.001;
+    bgmSwitchT0 = wall();
+    bgmSwitchDone = done || null;
+    if (bgmInGraph && fileGain) {
+      // 图路：电平交给 AudioParam。bgmSwitchFade 只是**元素路**的乘子，这里同步成终值无副作用
+      //  （elVolApply 在 graph 下直接写 volume = 1，根本不读它）。
+      bgmSwitchFade = to;
+      var tt = now();
+      fileGain.gain.cancelScheduledValues(tt);
+      fileGain.gain.setValueAtTime(fileGain.gain.value, tt);
+      fileGain.gain.linearRampToValueAtTime(to, tt + bgmSwitchDur);
+    }
+  }
+
+  // 由 loopWatch 驱动（切歌期间 loopTick 让位给它）。每 5ms 一档 → 0.34s 的淡变有 ~68 档，
+  //   相邻 Δgain ≤ 0.02（对比循环那 40ms/8 级的 0.125）→ 元素路也听不出台阶。
+  function switchTick() {
+    var t = (wall() - bgmSwitchT0) / 1000 / bgmSwitchDur;
+    if (t >= 1) { t = 1; }
+    bgmSwitchFade = bgmSwitchFrom + (bgmSwitchTo - bgmSwitchFrom) * t;
+    if (!bgmInGraph) { elVolApply(); }
+    if (t < 1) { return; }
+    bgmSwitchFade = bgmSwitchTo;
+    var done = bgmSwitchDone;
+    bgmSwitchDone = null;
+    bgmSwitching = false;
+    if (done) { done(); }
+  }
+
   function loopTick() {
+    // AM-015：切歌优先，且**与 bgmMode 无关** —— 首次校验（check()）还没落地时
+    //   也可能发生切歌，那时 bgmMode 仍是 'none'，若先判它就会让包络永远推不完。
+    if (bgmSwitching) { switchTick(); return; }
     if (!bgmEl || bgmMode !== 'file' || !enabled || bgmEl.paused) { return; }
     var dur = bgmEl.duration;
     if (!isFinite(dur) || dur <= LOOP_IN + LOOP_TAIL + 1) { return; }
@@ -747,13 +934,13 @@
     }
   }
 
-  // BGM 元素路径的电平：**只有一个出口** —— 母带 trim × duck 系数 × 循环淡入淡出
-  function bgmBase() { return clamp(P.bgmVolume * BGM_TRIM, 0, 1); }
+  // BGM 元素路径的电平：**只有一个出口** —— 生效曲目的母带 trim × duck 系数 × 循环淡入淡出 × 切歌包络
+  function bgmBase() { return clamp(P.bgmVolume * bgmActiveTrim(), 0, 1); }
   function elVolApply() {
     if (!bgmEl) { return; }
     // graph 路电平全由 Web Audio 负责（bgmSrc/fileGain），元素 volume 必须固定 1 → 防双重衰减
     if (bgmInGraph) { bgmEl.volume = 1; return; }
-    bgmEl.volume = clamp(bgmBase() * bgmElDuck * bgmFade, 0, 1);
+    bgmEl.volume = clamp(bgmBase() * bgmElDuck * bgmFade * bgmSwitchFade, 0, 1);
   }
 
   // 拖尾音色：高频水花先收、低频涌动留下并下扫 → 听感是「水波回落」而不是「沙沙的风」
@@ -920,7 +1107,9 @@
   //    代价：file:// 的 BGM 不过 limiter（BGM 本身平稳、不需要限幅，可接受）。
   //    http(s) 下无此限制 → 仍走 createMediaElementSource，可过 limiter 并接 analyser 体检。
   function tryFileBgm() {
-    var url = P.bgmFile;
+    // UP11 / AM-015：曲目由 startBgm() 抽签/选定后写进 bgmTrack，这里只认它。
+    //   旧的 `P.bgmFile` 单值字段已被 `P.bgmFiles` 列表取代（契约 §6）。
+    var url = bgmTrack ? bgmTrack.file : null;
     if (!url) { return startSynthBgm(); }
     var el;
     try { el = new window.Audio(); } catch (e) { return startSynthBgm(); }
@@ -949,6 +1138,16 @@
         el.volume = 1;
       } catch (e) { an = null; bgmInGraph = false; }   // 建图失败就退回元素直放
     }
+    // UP11 / AM-015：把母带 trim 立刻落到元素上。
+    //   🔴 这里补 `elVolApply()` 修的是一个**沿用至今的既有缺陷**：`loopTick` 只在
+    //     `bgmMode === 'file'` 后才写 el.volume，而 bgmMode 要等 `check()`（起播后 ~0.9s）
+    //     才置位 —— 那时 currentTime 已越过 LOOP_FADE_IN，循环包络恒为 1、`f === bgmFade`
+    //     于是**每次都提前 return**，`elVolApply()` 一次都不会被执行 →
+    //     元素一直停在上面那行 `el.volume = P.bgmVolume`（0.60），**比母带目标响 0.94 dB**，
+    //     直到第一次 duck 或第一圈回卷才被纠正。
+    //     本包把它变成必现问题：不修的话"选曲后响度对齐"就只在第一次交互之后才成立。
+    //     （图路不受影响：那条路上电平由 bgmSrc 的 trim 负责，元素 volume 恒 1。）
+    elVolApply();
     // 起播就跳到入点（跳过曲首数字静音）；回卷由 loopTick 负责
     el.addEventListener('loadedmetadata', function () {
       try { if (el.currentTime < LOOP_IN) { el.currentTime = LOOP_IN; } } catch (e) { /* 忽略 */ }
@@ -1034,11 +1233,33 @@
     bellTimer = window.setTimeout(bell, 2500);
   }
 
+  // UP11 / AM-015：进页面**随机一首**。
+  //   随机源仍是本项目的 mulberry32（`SW.util.newRng`），但**另开一条独立流**、不复用 `rng`：
+  //     ① 需求就是「每次进页面换一首」，而 `rng` 的种子是固定值 `P.seed`（世界的随机性
+  //        必须逐位可复现）→ 用 `rng` 抽签会**永远抽到同一首**，需求直接落空。
+  //     ② 独立成流还白赚一个好处：抽签**不消耗** `rng` 的取值序列 → 水面 / 波纹 / 海鸟那一整套
+  //        既有随机数一个都不动（否则 20-determinism 的逐帧逐位复现会被这一抽打乱）。
+  //   种子里掺墙钟 → 每次加载不同；`?bgm=<n>`（BGM_PIN）可钉死下标，供验收 / 断言复现。
+  //   ⚠ 不是 Math.random（全项目禁用），仍是同一个 mulberry32。
   function startBgm() {
+    var list = trackList();
+    var idx;
+    if (bgmPrePicked && bgmTrackIdx >= 0 && bgmTrackIdx < list.length) {
+      idx = bgmTrackIdx;                      // 首次手势前用户就点过选曲 → 尊重他的选择，不抽签
+    } else if (BGM_PIN >= 0 && BGM_PIN < list.length) {
+      idx = BGM_PIN;                          // ?bgm=<n> 钉死
+    } else if (list.length > 1) {
+      var pickRng = U.newRng((P.seed ^ (Date.now() & 0x7fffffff)) >>> 0);
+      idx = Math.floor(pickRng() * list.length) % list.length;
+    } else {
+      idx = 0;
+    }
+    bgmTrackIdx = idx;
+    bgmTrack = list[idx];
+    applyTrackTrim();                         // 起播前定下母带 trim（此刻还没有声音 → 无台阶问题）
     var mode = P.audioMode;
     if (mode === 'synth') { startSynthBgm(); return; }
-    if (mode === 'file') { tryFileBgm(); return; }
-    tryFileBgm();   // 'auto'：文件能出声就用，否则 tryFileBgm 内部会退回合成
+    tryFileBgm();   // 'file' 与 'auto' 同路：auto 时 tryFileBgm 内部会退回合成
   }
 
   // --------------------------------------------------------------- 对外 API
@@ -1177,6 +1398,83 @@
       return true;
     },
 
+    // UP11 / AM-015：BGM 选曲（`80-ui.js` 的 `#sw-bgm` 消费）。
+    //   bgmInfo()       曲目表 + 当前下标 + 切歌能力。**音频未启动时也可调**（曲目表来自 SW.P，
+    //                   此时 idx = -1）—— UI 在 boot 期（还没第一次手势）就要把胶囊画出来。
+    //   setBgmTrack(i)  0 起下标；返回 boolean（true = 已切 / 已记下意图）。
+    //     音频启动**之前**调 → 只记下意图（bgmPrePicked），startBgm 会用它取代随机抽签；
+    //     合成兜底模式（文件资产已判死）→ 返回 false（没有文件元素可切，且**不抛错**）。
+    bgmInfo: function () {
+      var list = trackList(), arr = [];
+      for (var i = 0; i < list.length; i++) {
+        arr.push({ file: list[i].file, label: list[i].label });
+      }
+      return {
+        count: list.length,
+        idx: bgmTrackIdx,                     // -1 = 还没定（音频未启动）
+        label: bgmTrack ? bgmTrack.label : '',
+        file: bgmTrack ? bgmTrack.file : '',
+        tracks: arr,
+        mode: bgmMode,                        // 'file' 可切 | 'synth' 兜底切不动 | 'none' 未启动
+        switching: bgmSwitching,
+        pinned: BGM_PIN
+      };
+    },
+
+    setBgmTrack: function (i) {
+      var list = trackList();
+      i = (typeof i === 'number' && isFinite(i)) ? Math.floor(i) : -1;
+      if (i < 0 || i >= list.length) { return false; }
+      if (bgmSwitching) { return false; }          // 上一切歌还没落地，这次丢给调用方重试
+      if (!bgmEl) {                                // 音频还没启动 → 只记意图（见 startBgm）
+        bgmTrackIdx = i; bgmTrack = list[i]; bgmPrePicked = true;
+        return true;
+      }
+      if (bgmMode === 'synth') { return false; }   // 文件资产已判死、退回合成 → 没有可切的元素
+      if (bgmTrackIdx === i && bgmTrack && bgmTrack.file === list[i].file) { return true; }
+      var t = list[i];
+      bgmTrackIdx = i;                             // 选中态**立刻**生效 → UI/probe 即时一致
+      var seq = ++switchSeq;
+      // bgmSwitching 由 switchRamp() 置位（它是两段式，第二段也要靠它驱动 —— 见该函数注释）
+      // 循环包络先归 1：切歌期间 loopTick 让位、不会更新它；若留着切换前的中间值，
+      //   元素路的 el.volume 会多乘一个陈旧系数（新曲起播音量偏低）。切歌结束后 loopTick
+      //   会按新元素的 currentTime 重算（≈1）→ 不会产生跳变。
+      bgmFade = 1;
+      switchRamp(0, SWITCH_OUT, function () {
+        if (seq !== switchSeq) { return; }         // 迟到的旧次回调作废
+        bgmTrack = t;                              // 真正生效（trim 也随之，见下一行）
+        try { bgmEl.pause(); } catch (e) { /* 忽略 */ }
+        try { bgmEl.currentTime = 0; } catch (e) { /* 忽略 */ }
+        try { bgmEl.src = t.file; } catch (e) { /* 忽略 */ }
+        applyTrackTrim();                          // 在静音窗口里换母带增益 → 不产生电平台阶
+        try { bgmEl.load(); } catch (e) { /* 显式 load：确保 loadedmetadata 重发 */ }
+        // 元素上已有的 loadedmetadata 监听会把 currentTime 落到 LOOP_IN（跳过曲首数字静音）
+        if (!enabled) {                            // 静音中不抢播（setEnabled(false) 已把元素 pause 了）
+          switchRamp(1, 0.001, null);
+          return;
+        }
+        var played = false;
+        var onPlaying = function () {
+          bgmEl.removeEventListener('playing', onPlaying);
+          if (seq !== switchSeq) { return; }
+          played = true;
+          switchRamp(1, SWITCH_IN, null);          // 淡入挂在"真的开始出声"上，不挂在 play() 的返回上
+        };
+        bgmEl.addEventListener('playing', onPlaying);
+        var p = bgmEl.play();
+        if (p && p['catch']) { p['catch'](function () { }); }
+        // 兜底：个别浏览器在 readyState 已足够时不再重发 playing → 到点也把淡入放掉。
+        //   否则 bgmSwitching 会永远挂着、loopTick 一直让位（**循环看门狗静默失效**）。
+        //   宁可放弃这一次淡入，也不能让循环逻辑停摆。
+        window.setTimeout(function () {
+          if (seq !== switchSeq || played) { return; }
+          bgmEl.removeEventListener('playing', onPlaying);
+          switchRamp(1, SWITCH_IN, null);
+        }, 900);
+      });
+      return true;
+    },
+
     suspend: function () {
       if (!ctx) { return; }
       if (bgmEl) { try { bgmEl.pause(); } catch (e) { /* 忽略 */ } }
@@ -1228,14 +1526,29 @@
         handPan: handPan ? +handPan.pan.value.toFixed(4) : null,   // 实际声像（-1..1）
         handPanCmd: +curPan.toFixed(4),              // 最近下达的目标声像
         handPanCmdRaw: curPan,                       // 同上，**全精度**（验收 #4 用它做严格单调/误差断言）
-        bgmTrim: BGM_TRIM,              // 母带 trim（验收 #3：raw + 20log10(trim) 应命中 -16）
+        bgmTrim: +bgmActiveTrim().toFixed(4),   // **正在响**那一首的母带 trim（验收 #3：raw + 20log10(trim) 应命中 -16）
+                                                //   UP11 / AM-015：不再是常量 BGM_TRIM —— 随选中的曲目变
         bgmSrcGain: bgmSrc ? +bgmSrc.gain.value.toFixed(4) : 0,   // 总线上的实际 trim（应 === bgmTrim）
         bgmFade: +bgmFade.toFixed(4),   // 循环淡入淡出当前系数
-        bgmElDuck: +bgmElDuck.toFixed(4),   // duck 在**元素路径**上的系数（验收 #5：元素音量 = bgmVolume×trim×duck×fade）
+        bgmElDuck: +bgmElDuck.toFixed(4),   // duck 在**元素路径**上的系数（验收 #5：元素音量 = bgmVolume×trim×duck×fade×switchFade）
+        bgmSwitchFade: +bgmSwitchFade.toFixed(4),   // UP11：切歌包络（元素路的乘子；静止恒 1）
         loopIn: LOOP_IN, loopTail: LOOP_TAIL, loopFadeOut: LOOP_FADE_OUT, loopFadeIn: LOOP_FADE_IN,
         loopWraps: loopWraps,
         loopOut: +loopOutSec.toFixed(3),        // 运行期实际出点（回卷阈值）
-        bgmTrueDur: BGM_TRUE_DUR, bgmTrueCapped: bgmTrue,   // 真实时长封顶（1 = 生效；0 = 资产已换、退回估算式）
+        bgmTrueDur: bgmTrack ? bgmTrack.trueDur : 0, bgmTrueCapped: bgmTrue,
+        // 真实内容时长封顶（1 = 生效；0 = 资产已换 / 未知曲目、退回估算式）。
+        // UP11：封顶值改为**生效曲目的** trueDur；未知曲目为 0 → 与"换资产后自动降级"同一条路。
+        // ---- UP11 / AM-015 附加读数（供 96 §5 验收 #1/#2/#4）----
+        bgmTrackIdx: bgmTrackIdx,                    // 选中下标（-1 = 音频未启动）
+        bgmTrackLabel: bgmTrack ? bgmTrack.label : '',
+        bgmTrackSrc: bgmTrack ? bgmTrack.file.split('/').pop() : '',
+        bgmTrackCount: trackList().length,
+        bgmTrackTrim: selectedTrim(),                // **选中**曲目的表值（立刻变）。
+        //   ⚠ 与上面 `bgmTrim`（**正在响**的那一首）不是一回事：切歌途中两者不等，
+        //     相等了才说明静音窗口里的母带切换已经落地。UP11 前这个字段读的是 bgmTrack.trim，
+        //     与 bgmTrim 完全重合、证明不了任何事 —— AM-015 一并订正。
+        bgmSwitching: bgmSwitching,                  // 切歌进行中
+        bgmPin: BGM_PIN,                             // ?bgm=<n> 钉选（-1 = 走随机）
         durEst: bgmEl ? +bgmEl.duration.toFixed(3) : 0,   // 元素报的时长（估算值，file:// 下偏长）
         bufferedEnd: +bufferedEndSec.toFixed(3),          // 已缓冲末端（封顶用；也是真实数据末端的代理）
         limiterReduction: limiter ? limiter.reduction : 0,   // dB，<0 即限幅器真的在动作

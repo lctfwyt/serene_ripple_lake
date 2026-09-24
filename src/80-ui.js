@@ -1,7 +1,12 @@
-// src/80-ui.js —— 所有者：WP3
+// src/80-ui.js —— 所有者：WP3 → UP10（AM-011 / AM-014）→ UP11（AM-015，波次 7 起）
 // 签名逐字对齐 01-CONTRACT.md §2.8：{ init, update }
-// 要建的 DOM id：#snd（声音开关）、#hour（时段刻度尺）。#ui / #hint 由 WP1 提供。
+// 要建的 DOM id：#snd（声音开关）、#hour（时段刻度尺）、#sw-bgm（BGM 选曲）。
+//   `#ui` / `#hint` 由 WP1 提供。
 // **不改 index.html** —— 全部 JS 创建并 append 到 #ui（契约 §4，避免并行冲突）。
+//
+// ⚠ 创建顺序是**契约级**的：pw 的 `ui-panel.png` 快照取的是 `#ui > div` 的 `.first()`
+//   （`plan/pw/tests/30-pixel.spec.mjs:66`）—— 左上时段面板必须始终是 `#ui` 的第一个 div。
+//   任何新控件只能**追加在后面**。
 //
 // 设计基调（WP3 §4.6）：极简、低对比、半透明，不抢画面。字色 rgba(255,255,255,.72)。
 // AM-002 §5 的「四角 UI 布局」**未采纳**，本文件不实现它。
@@ -16,6 +21,30 @@
 //   · 不再用原生 range，改 `role="slider"` + `tabindex=0` 的 div：方向键 / PageUp / Home 都保留
 //   · 咔嗒声消费 `SW.audio.sfxTick(step)`（UP9 并行实现）——**判空降级，不许自造声音、
 //     不许用 Web Audio 现搓**（90-WAVE5.md §4 耦合 ②）
+//
+// ── AM-015（UP11 BGM 选曲，96-UP11-bgm-picker.md）──────────────────────────────
+// 右上角在 `#snd` 正下方加一行「**BGM：** + 并排 chip」`#sw-bgm`，选一首即切歌。
+//   · **不新建模块文件** —— 90-WAVE5 §1 的预告写「新建 src/15-audio-ui.js」，但那要同时改
+//     `index.html` 与 `app/main.js` 两处加载顺序（两者都不属本包，`index.html` 还是逐字节
+//     冻结的交付物）→ 按 `96 §1` 与 `00-INDEX §3` 的口径**并入本文件**（主控 2026-09-25 裁决）。
+//   · 形态 = 一行纯 `<button>`（「BGM：」标签 + 每首一枚 chip）。曲名「明镜 / 微风」由
+//     `10-audio.js` 的 `BGM_TRACKS[].label` 提供，本文件只负责画。
+//     ⚠ 曾经做成一枚原生下拉，**已按雨桐 2026-09-25 的裁决整体回滚**（连常量一起删干净）。
+//     回滚原因值得记着，别再犯：原生下拉的弹层是**另一个绘制层** —— 不吃 `backdrop-filter`、
+//     不吃父元素的透明底，能改的只有 `color-scheme` 和选项底色，所以「和 chip 一样的透明」
+//     在那条链路上根本做不到。chip 版每个选项都是普通元素，与 `#snd` 共用同一套
+//     面/描边/圆角/字距 token → 风格统一是"用同一套 token"得到的，不是对齐出来的。
+//     代价：一行里有多少首就占多少宽（当前 2 首）；曲目多了要改成横滚或第二行。
+//     🔴 chip 一律挂在 `#sw-bgm` 这一行**里面**（同一个 flex 行）——
+//        独立兄弟元素会结成覆盖式重叠对，撞 env-narrow 的「UI 不重叠」判据
+//        （UP10 在刻度尺突出层上撞过同一条）。
+//   · 曲目**数据**来自 `SW.P.bgmFiles`（经 `SW.audio.bgmInfo()` 读），控件**样式/排布**
+//     常量留在这里 —— 与刻度尺同一条纪律（本包不改 `00-config.js` 的样式类常量）。
+//   · 判空降级：`SW.audio.bgmInfo` 不存在 → 整个控件不出现，**不报错、不占位**
+//     （与 `sfxTick` 的判空降级同款）。
+//   · 定位与 CSS 刻意沿用 `#snd` 同一列、同一套语汇：雨桐对"突兀控件"的反感在时间滑杆上
+//     已经明确过一次，标准一致。
+//   · 🔴 与 `#snd` 的**垂直间隙**是判据级数字：env-narrow 的「UI 不重叠」会两两比 bbox。
 (function (SW, window, document) {
   'use strict';
 
@@ -81,6 +110,27 @@
     }
   };
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // BGM 选曲控件常量（UP11 / AM-015）
+  // 与刻度尺同一条纪律：**控件的样式/排布常量写在这里**，不进 `00-config.js`；
+  // 而**曲目数据**必须走 config（`SW.P.bgmFiles`，经 `SW.audio.bgmInfo()` 读）——
+  // 数据与样式不是一回事。
+  // ══════════════════════════════════════════════════════════════════════════
+  var B = {
+    right: 22,             // 与 #snd 同一列（#snd 是 right:22px / top:18px）
+    top: 56,               // #snd 的底边 ≈ 47px → 留 9px 竖直间隙。
+                           //   🔴 这个数是**判据级**的：env-narrow 的「UI 不重叠」会两两比 bbox，
+                           //      压到 ≤47 就与 #snd 交叠 → 375×812 直接红。
+    gap: 6,                // 「BGM：」标签与首个 chip 之间、以及 chip 与 chip 之间的间距
+    labelW: 34,            // 「BGM：」标签的最小宽度。**右对齐**（见 .sw-bgm-tag）——
+                           //   让冒号始终紧贴首个 chip，字体回退把字宽撑粗时也不跳。
+    durPress: 0.09,        // 按压回弹：够快才像"按到了"，慢了就成了动画
+    refresh: 0.25          // s：稀刷新间隔。`bgmInfo()` 每次调用都分配对象，逐帧问会给
+                           //   60fps 制造无谓的 GC 噪声；曲目状态只在起播 / 切歌时变。
+    // ⚠ chip 的 padding / 圆角 / 字距**不在这里**：它们必须与 `#snd` 逐字相同才叫同族，
+    //   写进 `.sw-bgm-btn` 的 CSS 里与 `#snd` 的建法并排放着，改一个能看见另一个。
+  };
+
   var el = {};
   var built = false;
   var sndOn = true;          // 本地开关意图（音频未就绪时先记着，就绪后补发）
@@ -95,6 +145,7 @@
   var lastPhaseKey = '';
   var lastTickIdx = -1;
   var dragId = null, dragX = 0, dragH = 0;
+  var bgmTickAcc = 0;        // BGM 选曲的稀刷新累加器（s）—— 见 B.refresh
 
   // ── 惯性 + 中线突出（AM-012）────────────────────────────────────────
   var vel = 0;                 // 平滑后的手速，h/s（含方向；+ 为时间前进）
@@ -162,7 +213,47 @@
       'transition:height .18s ease,width .18s ease,margin-left .18s ease,box-shadow .18s ease;}',
       '#hour.act #sw-ruler-head{height:' + R.hot.headPx + 'px;width:2px;margin-left:-1px;' +
       'box-shadow:0 0 9px rgba(255,255,255,.30);}',
-      '.sw-ruler-label{transition:color .18s ease,transform .18s ease;transform-origin:0 50%;}'
+      '.sw-ruler-label{transition:color .18s ease,transform .18s ease;transform-origin:0 50%;}',
+      // ── BGM 选曲（AM-015）──────────────────────────────────────────────
+      // 设计口径：与 `#snd` **同族**。面 / 描边 / 圆角 / 字距 / 字号五样 token 与它逐字同源
+      // （`#snd` 建法见下面 `el.snd = mk('button', ...)`），只在两处刻意偏离：
+      //   ① 常态面比 chip 透一档（.26 → .20）—— 它是第二顺位的控件，雨桐 2026-09-25
+      //      两次要求"更透明"；
+      //   ② 多一个 `.on` 选中态 —— `#snd` 是开关，本控件是三选一，必须有"哪个在响"的落点。
+      // 「BGM：」标签：纯文本、不吃指针（点它不该做任何事），右对齐到首个 chip 左侧。
+      '.sw-bgm-tag{font-size:11px;letter-spacing:.08em;line-height:1;' +
+      'min-width:' + B.labelW + 'px;text-align:right;align-self:center;' +
+      'color:rgba(255,255,255,.62);pointer-events:none;user-select:none;}',
+      // 触发面 —— 逐字对齐 `#snd`：padding 6/13、radius 14、描边 .22、字号 11、字距 .08em、
+      // 模糊 6px。`appearance:none` + `outline:none` 去掉按钮的原生壳（否则会顶出一圈框）。
+      '.sw-bgm-btn{font-family:inherit;font-size:11px;letter-spacing:.08em;line-height:1;' +
+      'padding:6px 13px;border-radius:14px;cursor:pointer;' +
+      'border:1px solid rgba(255,255,255,.22);background-color:rgba(10,18,22,.20);' +
+      'color:rgba(255,255,255,.72);' +
+      '-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);' +
+      'appearance:none;-webkit-appearance:none;-moz-appearance:none;outline:none;' +
+      'transition:background-color .22s ease,border-color .22s ease,color .22s ease,' +
+      'transform ' + B.durPress + 's ease;}',
+      // 悬停：只动描边与字色（这一档描边 = 与 `#snd` 同一档），面不动 —— 面留给"按住"
+      '.sw-bgm-btn:hover{border-color:rgba(255,255,255,.36);color:rgba(255,255,255,.94);}',
+      // 🔴 不要外围框（雨桐 2026-09-25 两次确认）—— `outline` 与原生焦点环一律去掉。
+      //    键盘可达性靠**描边提亮**保留（不是把提示删掉，是换一种不占地方的说法）。
+      '.sw-bgm-btn:focus-visible{outline:none;border-color:rgba(255,255,255,.42);}',
+      // 选中：面比常态深一档、字提亮到 .96 —— 一行里只允许一个"亮"的。
+      // ⚠ 必须排在 `:active` **之前**：两者特异性相同（0,2,0），后写的胜；
+      //   若 `.on` 在后，按住已选中那枚就只剩缩放、面不加深 → 按下反馈被吃掉一半。
+      '.sw-bgm-btn.on{background-color:rgba(10,18,22,.38);border-color:rgba(255,255,255,.34);' +
+      'color:rgba(255,255,255,.96);}',
+      '.sw-bgm-btn.on:hover{border-color:rgba(255,255,255,.48);}',
+      // 「点上去」的反馈：面加深两档（.20 → .42）+ 3% 的按下缩放。
+      //   缩放只做在 chip 上、幅度 <5%：够"按下去"，又不至于让整列 UI 跟着跳。
+      '.sw-bgm-btn:active{background-color:rgba(10,18,22,.42);transform:scale(.97);}',
+      // 文件资产被判死、退回合成兜底时：没有文件元素可切 → 压暗、光标也不给手型
+      '#sw-bgm.off{opacity:.42;}',
+      '#sw-bgm.off .sw-bgm-btn{cursor:default;}',
+      // 动效可关：prefers-reduced-motion 下过渡归零（本项目对该偏好的口径见 85-fallback.js §3.1；
+      //   这里纯 CSS，不经过 SW.fallback）
+      '@media (prefers-reduced-motion:reduce){.sw-bgm-btn{transition:none;}}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -295,6 +386,92 @@
     try { A.sfxTick(base * gain); return true; } catch (e) { return false; }
   }
 
+  // ── BGM 选曲（UP11 / AM-015）────────────────────────────────────────────
+  // 数据全从 `SW.audio.bgmInfo()` 来；**判空降级**：没有这个方法（或抛错）→ 整个控件不出现，
+  // 不报错、不占位（与上面 sfxTick 的判空降级同一条纪律）。
+  function bgmInfo() {
+    var A = SW.audio;
+    if (!A || typeof A.bgmInfo !== 'function') { return null; }
+    try { return A.bgmInfo(); } catch (e) { return null; }
+  }
+
+  // 曲目指纹：文件名列表。曲表没变就不重建 chip ——
+  // 重建会丢 DOM、丢焦点（也会让正在按下的那枚失效），所以只由指纹决定，
+  // `paintBgm()` 不接受"强制重建"这个参数。
+  function bgmKey(info) {
+    var s = '';
+    for (var i = 0; i < info.tracks.length; i++) { s += info.tracks[i].file + '|'; }
+    return s;
+  }
+
+  // 建控件：一行 = 「BGM：」标签 + N 个并排 chip（N = 曲目数）。
+  // DOM 顺序 = label → chip…，而容器是 `right:B.right` 右锚 + flex 行 →
+  // **最后一枚 chip 的右缘自动落在 B.right 上**，与 `#snd` 同列；标签在最左。
+  // 全是 `#sw-bgm` 的子元素 → 内部任何两枚都是兄弟，但不与容器外的东西构对，
+  // env-narrow 的「UI 不重叠」只查 `#ui` 下可见元素两两 bbox（同级兄弟会被查，
+  // 而这里 chip 之间靠 `gap` 天然分开、既不重叠也不相切）。
+  function buildBgmBtns(info) {
+    // 重建前焦点落在第几枚 chip 上 → 复位到同一枚（键盘用户不该被踢到 <body>）
+    var hadFocus = -1;
+    for (var k = 0; k < el.bgmBtns.length; k++) {
+      if (document.activeElement === el.bgmBtns[k]) { hadFocus = k; }
+    }
+    while (el.bgm.firstChild) { el.bgm.removeChild(el.bgm.firstChild); }
+
+    el.bgmTag = mk('div', '', el.bgm);
+    el.bgmTag.className = 'sw-bgm-tag';
+    el.bgmTag.textContent = 'BGM：';
+
+    el.bgmBtns = [];
+    for (var i = 0; i < info.tracks.length; i++) {
+      // 闭包里钉住下标（`var` 循环变量在闭包里共享，不钉就会全部指向最后一首）
+      (function (idx, label) {
+        var b = mk('button', '', el.bgm);
+        b.className = 'sw-bgm-btn';
+        b.type = 'button';
+        b.textContent = label;
+        // ⚠ 刻意**不写 `b.title`** —— 雨桐 2026-09-25：不要 hover tooltip。
+        //   曲名本身就是全部信息，再挂一层系统提示框只会挡视线。
+        //   （`aria-label` / `aria-pressed` 仍留着：那是给读屏用的，不产生视觉提示。）
+        b.setAttribute('aria-label', '背景音乐：' + label);
+        b.setAttribute('aria-pressed', 'false');
+        b.addEventListener('click', function () {
+          var A = SW.audio;
+          if (A && typeof A.setBgmTrack === 'function') {
+            // 切歌失败（上一首还没落地 / 已退回合成兜底）**不抛错也不回弹** ——
+            // 下面的 paintBgm() 会按真实下标把选中态纠回来
+            try { A.setBgmTrack(idx); } catch (e) { /* 静默：切歌失败不该打断交互 */ }
+          }
+          paintBgm();            // 立刻回读一次（下标是"选中态"，不等 0.25s 的稀刷新）
+        });
+        el.bgmBtns.push(b);
+      })(i, info.tracks[i].label);
+    }
+    if (hadFocus >= 0 && el.bgmBtns[hadFocus]) {
+      try { el.bgmBtns[hadFocus].focus(); } catch (e) { /* 老浏览器忽略 */ }
+    }
+  }
+
+  function paintBgm() {
+    if (!el.bgm) { return; }
+    var info = bgmInfo();
+    if (!info || !info.tracks.length) { return; }   // 音频模块缺失 / 曲表为空 → 什么都不做
+    var key = bgmKey(info);
+    if (!el.bgmBtns || !el.bgmBtns.length || key !== el.bgmKey) { buildBgmBtns(info); el.bgmKey = key; }
+    for (var i = 0; i < el.bgmBtns.length; i++) {
+      var b = el.bgmBtns[i];
+      // idx = -1 = 音频还没抽签（boot 期）→ 全部落回常态，不冒充选中
+      var on = (i === info.idx);
+      var cls = on ? 'sw-bgm-btn on' : 'sw-bgm-btn';
+      if (b.className !== cls) { b.className = cls; }
+      var ap = on ? 'true' : 'false';
+      if (b.getAttribute('aria-pressed') !== ap) { b.setAttribute('aria-pressed', ap); }
+    }
+    // 文件资产被判死、退回合成兜底 → 没有文件元素可切（setBgmTrack 会返回 false）
+    var off = (info.mode === 'synth') ? 'off' : '';
+    if (el.bgm.className !== off) { el.bgm.className = off; }
+  }
+
   function curHour() { return (SW.time && SW.time.getHour) ? SW.time.getHour() : 0; }
 
   // 唯一的写入口：先钉时间（setHour 会隐含切成 fixed），再判有没有跨过一根刻度
@@ -398,6 +575,17 @@
 
     measure();
     styleTrack();
+
+    // ── 右上：BGM 选曲（UP11 / AM-015）──────────────────────────────────
+    // 🔴 创建位置在**时段面板之后** —— DOM 顺序 = 创建顺序，而 `#ui > div` 的 `.first()`
+    //   是 pw 像素快照的取样对象（见文件头）。新控件一律追加在后面。
+    // 标签 + 并排 chip 由 paintBgm() 按曲目表生成（条数随 SW.P.bgmFiles 变），这里只建容器。
+    el.bgm = mk('div', CSS_BASE + 'right:' + B.right + 'px;top:' + B.top + 'px;' +
+      'display:flex;gap:' + B.gap + 'px;letter-spacing:normal;', ui);
+    el.bgm.id = 'sw-bgm';
+    el.bgmTag = null; el.bgmBtns = [];
+    el.bgmKey = '';
+    paintBgm();
 
     el.ruler.addEventListener('pointerdown', function (e) {
       if (dragId !== null) { return; }
@@ -541,6 +729,10 @@
       if (!built) { return; }
       stepFling(dt);          // 惯性滑行先推进，同一帧的画面就跟着走
       paint(false);
+      // BGM 选曲栏（AM-015）：**稀刷新** —— 曲目状态只在起播 / 切歌时变，
+      //   而 bgmInfo() 每次都要现做对象，逐帧问等于给 60fps 加 GC 噪声。
+      bgmTickAcc += (typeof dt === 'number' && isFinite(dt)) ? dt : 0;
+      if (bgmTickAcc >= B.refresh) { bgmTickAcc = 0; paintBgm(); }
     }
   };
 })(window.SW = window.SW || {}, window, document);

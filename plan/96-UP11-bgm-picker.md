@@ -112,4 +112,91 @@
 
 ## §7 完工记录（过程流水）
 
-_（开工后逐条追加）_
+**状态：✅ 完工（2026-09-25 04:5x）· AM-015 关单**。以下逐条追加。
+
+### 7.1 落地清单
+
+| 文件 | 改动 |
+|---|---|
+| `src/10-audio.js` | `BGM_TRACKS` 曲目表（唯一真值源）· `bgmInfo()` / `setBgmTrack(i)` · 切歌序列（淡出 .22 → 静音窗换源/换 trim → 淡入 .34）· `startBgm()` 随机抽签（独立 mulberry32 流）· `?bgm=<n>` 钉选 · `bgmTrimCur` 与选中态分离 · 修 `tryFileBgm()` 元素音量初值缺陷 |
+| `src/00-config.js` | 音频段：`bgmFile` → `bgmFiles`（含曲名/命名说明） |
+| `src/80-ui.js` | 右上 `#sw-bgm`：「**BGM：** + 每曲一枚 chip」，追加在时段面板**之后**；常量 `B` + `.sw-bgm-tag` / `.sw-bgm-btn` CSS |
+| `assets/audio/` | `bgm-stillwater.mp3` → **`bgm-mingjing.mp3`**（明镜）、`bgm-cand1.mp3` → **`bgm-weifeng.mp3`**（微风）；`git mv`，字节数/sha256 未动 |
+| `plan/audio-baseline.py` | 输入文件名 + `expected` 集合同步（口径与产物格式未动） |
+| `README.md` · `vite.config.mjs` 注释 | 删「`cp` 换曲」旧说明 → 改为选曲功能说明 + 「加新曲三步」 |
+| `plan/01-CONTRACT.md` | §2.1 签名 · §2.8 / §4 新增 `#sw-bgm` · §6 `bgmFiles` + 曲名 · §7 四方所有者 · §10 记 AM-015 一行 |
+| `plan/02-AMENDMENTS.md` | 总表登记 AM-015 + §6 全文 |
+
+**未碰**：`index.html` · `app/**` · `vite.config.mjs` 的**代码**（只改一行注释）· 冻结件
+`wp5-assert.js` / `wp5-env.js` · 任何断言阈值 · `plan/pw/**`。
+
+### 7.2 三条硬约束的落实
+
+1. **`file://` 一律 `<audio>` 元素池**：一元素一曲（`createMediaElementSource` 按元素建，
+   换元素 = 接两次图 → 峰值翻倍）。file:// 元素路靠 `elVolApply()` 逐级写 `el.volume`
+   （`loopWatch` 5 ms 驱动 → 0.34 s 淡变 ~68 档，Δgain ≤ 0.02，听不出台阶）；
+   http 图路走 `fileGain.gain` 线性 ramp。
+2. **随机只用 `rng`**：`U.newRng((P.seed ^ (Date.now() & 0x7fffffff)) >>> 0)` —— 独立成流，
+   **不消耗**渲染 `rng` 序列（否则 20-determinism 的逐帧复现被打乱）。全库 grep `Math.random`
+   仍只命中注释。
+3. **`BGM_TRIM` / `BGM_TRUE_DUR` 一起换**：每首一组 `{trim, trueDur}`；首项直接**引用**两标量
+   （零重复字面量 → `audio-baseline.py` 漂移检测仍全绿），次项写实测值 + 算式。
+   守卫 `BGM_TRUE_GUARD = 1.0` 对两首都够宽（实测元素时长与真值差：明镜 0.000 s、微风 0.011 s）。
+
+### 7.3 UI 形态：三轮迭代的终点（雨桐 2026-09-25 三次裁决）
+
+1. 一排胶囊按钮 + 曲名「原曲 / 备选」→ **被否**（要「BGM：」字样、要下拉框、曲名改「明镜 / 微风」）。
+2. 原生 `<select>` 去壳（`appearance:none` + 自绘三角；并做了 Chrome 135+ `appearance:base-select`
+   的 `::picker(select)` 定制面板 + 展开动效）→ **也被否**（弹层是**独立绘制层**：不吃
+   `backdrop-filter`、不吃父元素透明底，能改的只有 `color-scheme` 与选项底色 →
+   「和 chip 一样的透明」在那条链路上根本做不到；且「点选不要外围框」与「要有加深反馈」在原生
+   弹层上只能半实现）。
+3. **终点 = 「BGM：」标签 + 并排 chip**，与 `#snd` 共用同一套 token（padding 6/13、radius 14、
+   描边 .22、字号 11、字距 .08em、blur 6px），只在面透明度上更透一档（.26 → .20），另加 `.on` 选中态。
+
+**回滚的干净度**：select 相关常量（`padX/padY/arrowW/radius/rowPadY/rowPadX/rowRadius/panelGap/durOpen/durClose`）
+与 CSS 段（`.sw-bgm-sel` 系列、`@supports (appearance:base-select)`、`::picker*`、`option*`）
+**全部删除**；验收脚本加了**反向把关**：DOM 里出现 `select`、或 CSSOM 里出现
+`sw-bgm-sel` / `base-select` / `picker` / `option` 字样 → 直接判失败（防止以后死灰复燃）。
+CSS 级联也钉了一条：`.sw-bgm-btn.on` 必须排在 `:active` **之前**（同特异性 0,2,0，后写的胜 ——
+顺序反了会导致「按住已选中那枚」只剩缩放、面不加深）。
+
+### 7.4 过程里自己踩的坑（留档，别再犯）
+
+1. **`bgmSwitching` 只置一次** → 第二段淡入没人推进，切歌后包络恒 0（音量归零）。
+   修法：挪进 `switchRamp()`（两段式，第二段由第一段回调发起）+ `switchSeq` 序号作废旧回调。
+2. **静音模式下按切歌有 1 帧尖峰**：`switchRamp(1, 0.001, null)` 会从当前包络滑到 1 → 改 `switchRamp(0, …)`。
+3. **临时验收脚本的两层转义**：注入串是**模板字符串**，① 注释里写「反斜杠 + n」会被折成真换行、
+   把注入的 JS 撕成两行；② 正则只写两个反斜杠会让页面拿到非法转义 → 退化成 `new RegExp('s+')`，
+   把 CSS 里所有字母 `s` 删光（`.sw-bgm-btn` 变 `.w-bgm-btn`）→ **所有 CSSOM 检查静默失配**。
+   另外注释里不能出现反引号（会把模板串提前闭合）。这两条已在脚本里写成注释警示。
+4. **needle 必须按 CSSOM 序列化后的形态写**：浏览器把 `.20` 补成 `0.2`，照抄源码字面量永远匹配不上。
+
+### 7.5 验收读数
+
+| 项 | 读数 |
+|---|---|
+| 免构建 + dist 双入口（临时脚本 118 项） | ✅ 118/118 · console/页面错误 **0** |
+| `npm run assert` / `npm run assert:dist` | ✅ 15/15 · 15/15 |
+| `npm run audio:baseline` | ✅ 全部一致（`BGM_TRIM` 差 3e-5 · `BGM_TRUE_DUR` 差 11 ms · 守卫 1.0 > 0.332） |
+| `env-narrow`（375×812 UI 不重叠） | ✅ 零违规 · `sw-bgm@197,56 156×25`（右缘 353 = 375−22，与 `#snd` 同列；与 `#snd` 底 47 间隙 9 px） |
+| `dist/index.html` 体积 | **771.89 kB**（gzip 207.68 kB）；`assets/` → `dist/assets/` 8,248,776 B / 15 文件，14 个资产全部 `=` |
+| pw 像素基线 | ⚠ **`full.png` 变红待主控重录** —— 差异 2866 px **全部**落在 `#sw-bgm` bbox `x[1100,1257] y[56,80]` 内（零外溢），最大通道差 71；`ui-panel.png` / `bed-clip.png` **未受影响**。⚠ `full.png` 对近水色底的差异不敏感（旧基线里 1932 个非零差异像素曾**全部**落在 threshold 0.2 内 → 该断言不是有效门禁） |
+| 旧文件名残留 | ✅ `src/**` · `vite.config.mjs` · `plan/audio-baseline.py` · `README.md` 零命中；`plan/01-CONTRACT.md` §6 已换新名 |
+
+### 7.6 挂账（需主控处理）
+
+1. **`plan/audio-baseline.py` 只自动校验首曲常量**：它只读 `bgm-mingjing.mp3`、按名字抓
+   `BGM_TRIM` / `BGM_TRUE_DUR` 两标量 → **次曲（微风）的 `{trim, trueDur}` 无自动漂移检查**，
+   现靠 `BGM_TRACKS` 注释里的算式与人工复核。
+2. **pw 基线重录**：`full.png`（真变更，已量化）与 `plan/pw/dist-baseline.txt`（sha256 清单含旧文件名）。
+3. **历史文档刻意未改**：`plan/70-REPO-BASELINE.md`、`91-UP5-audio.md`、`92-UP6-playwright.md`、
+   `98-STATUS-ARCHIVE-v1.md`、`98b-AMENDMENTS-ARCHIVE-v1.md` 里的旧文件名是**当时的仓库状态记录**，
+   改了等于篡改历史；若主控要求全库一致，另开一条统一处理。
+4. **`plan/01-CONTRACT.md §9` 未动**：BGM 母带常量一直不在共享常量表里（它只被 `10-audio.js`
+   一个模块消费），本包维持现状。
+
+### 7.7 临时件
+
+验收脚本 `plan/_up11-verify.mjs` + 诊断件（`_dbg-cv.mjs` / `_up11-diff.mjs` / `_up11-shot.mjs` /
+`_probe-select.mjs` / `_up11-*.png`）**用完即删**，不进交付物。

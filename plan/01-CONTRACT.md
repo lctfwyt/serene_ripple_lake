@@ -52,15 +52,28 @@ SW.audio = {
   sfxTick(step),          // UP9/AM-010：刻度尺咔嗒。step ∈ [0,1]，返回 boolean（真出声才 true）
                           //   自带 ≤25 ms 节流、受 #snd 管辖、未就绪/静音一律 false 且不抛错
                           //   签名由 90-WAVE5 §5 冻结 —— 改签名要先改契约
+  bgmInfo(),              // UP11/AM-015：→ { count, idx, label, file, tracks:[{file,label}],
+                          //   mode, switching, pinned }。**音频未启动时也可调**（曲目表来自 SW.P，
+                          //   此时 idx = -1）—— `#sw-bgm` 在 boot 期（首次手势前）就要把胶囊画出来
+  setBgmTrack(i),         // UP11/AM-015：0 起下标，切歌。返回 boolean。
+                          //   音频启动**之前**调 = 只记下意图（startBgm 用它取代随机首播）；
+                          //   合成兜底模式（文件资产已判死）= false，不抛错
   suspend(),
   resume(),
-  probe()                 // → { state, bgmGain, handGain, ambGain, lastHandPeak }
+  probe()                 // → { state, bgmGain, handGain, ambGain, lastHandPeak }（另有诸多附加读数）
 };
 ```
 
 **AM-010（2026-09-25，UP9）**：新增 `sfxTick(step)`（`80-ui.js` 的时间刻度尺消费）与海鸟环境层。
 海鸟走 `<audio>` 元素池（同 slapPool），建池**错峰**在 slap 之后（tick 5.2 s / bird 6.5 s）——
 `SLAP_DELAY` 的存在就是在证明「启动瞬间多元素并发会把 BGM 挤死」。`P.birds` 总开关。
+
+**AM-015（2026-09-25，UP11）**：BGM 由**单曲**变**曲目列表** —— `P.bgmFile` → `P.bgmFiles`，
+进页面随机一首（`80-ui.js` 的 `#sw-bgm` 可选）。每首的母带 `trim` 与真实内容时长 `trueDur`
+按资产实测、存在 `10-audio.js` 的 `BGM_TRACKS` 表（**唯一真值源**）—— 换曲必须两个一起换，
+否则循环接缝会塌尾静音。切歌复用**同一个** `<audio>` 元素、只换 `.src`
+（`createMediaElementSource` 按元素建，换元素 = 重建 SourceNode = "接两次图"）。
+`?bgm=<n>` 可钉死首播曲目（验收/断言用；随机首播本身故意不可复现）。
 
 ### 2.2 `20-time.js` → `SW.time`（所有者：WP3）
 
@@ -179,6 +192,13 @@ SW.ui = { init(), update(dt) };   // 内部自建 DOM，不改 index.html
 （90-WAVE5 §4 耦合 ①：**不进 `00-config.js`**）；咔嗒声经 `SW.audio.sfxTick(step)`（§2.1，判空降级）。
 **`#ui` 的第一个子节点保持为左上时段面板** —— pw 的 `ui-panel` 快照盯的就是它。
 
+**AM-015（2026-09-25，UP11）**：新增选曲控件 `#sw-bgm`（右上、`#snd` 正下方，一行「**BGM：** + 每曲一枚
+并排 chip」，曲名由 `10-audio.js` 的 `BGM_TRACKS[].label` 提供）。形态**刻意是纯 `<button>`**：
+曾实现为原生 `<select>`，2026-09-25 由雨桐裁决**整体回滚**（原因：原生弹层是另一个绘制层，不吃
+`backdrop-filter`、不吃父元素透明底，「和 chip 一样的透明」在那条链路上做不到）。
+`sw-` 前缀的辅助 id 与 `#sw-ruler-track` / `#sw-ruler-head` 同级，**不进 §4 冻结表**。
+`SW.ui` 签名与 `#hour` 行为均未动；`#ui` 的第一个 div **仍是时段面板**（新控件只追加在后面）。
+
 ### 2.9 `90-debug.js` → `SW.debug`（所有者：WP1）
 
 ```js
@@ -245,6 +265,7 @@ SW.bus = { on(key, fn), off(key, fn), emit(key, payload) };
 | `#hint` | 首次手势提示 | WP1 |
 | `#snd` | 声音开关 | WP3 |
 | `#hour` | 时段刻度尺（AM-011 起为 `div[role=slider]`，不再是 `input[type=range]`；DOM id 未变） | WP3 → UP10 |
+| `#sw-bgm` | BGM 选曲行（「BGM：」标签 + 每曲一枚 chip，AM-015 新增） | WP3 → UP10 → UP11 |
 | `#dbg` | debug 面板 | WP1（仅 `?debug=1`） |
 
 **所有 UI 用 JS 创建并 append 到 `#ui`**，不改 `index.html` 结构 → 避免并行冲突。
@@ -339,7 +360,13 @@ var P = {
   audioMode: 'auto', bgmVolume: 0.60, handVolume: 0.80, ambVolume: 0.50,
   duckAmount: 0.45, duckDown: 0.05, duckUp: 0.70,
   handBand: [400, 1400, 0.8], handDecay: 0.62,
-  bgmFile: 'assets/audio/bgm-stillwater.mp3',
+  bgmFiles: ['assets/audio/bgm-mingjing.mp3', 'assets/audio/bgm-weifeng.mp3'],
+  // AM-015（UP11）：BGM 单曲 → 曲目列表（进页面随机一首、前端可选）。
+  //   曲名：**明镜**（bgm-mingjing.mp3）· **微风**（bgm-weifeng.mp3）—— 文件名与曲名同源
+  //   （2026-09-25 由 `bgm-stillwater.mp3` / `bgm-cand1.mp3` 改名，那两名是生成期临时名）。
+  //   ⚠ 这里**只有文件名**；每首的母带 `trim` 与真实内容时长 `trueDur` 在
+  //     `src/10-audio.js` 的 `BGM_TRACKS` 表里（按资产实测，`npm run audio:baseline` 复核）。
+  //     换曲必须两个一起换，否则循环出点会落到错误位置 → 每圈接缝塌尾静音。
   // AM-010（UP9）：海鸟层总开关 + 鸣叫间隔区间（查验时可临时调短）+ UI 音效总线音量（第四条总线）
   birds: true, birdGapMin: 25, birdGapMax: 70, uiVolume: 0.30,
 
@@ -361,7 +388,7 @@ var P = {
 |---|---|---|
 | `index.html` | **WP1** | 只读 |
 | `vendor/three.min.js` | **WP1** | 只读 |
-| `src/00-config.js` | **WP1** | 只读 |
+| `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`） |
 | `src/30-scene.js` | **WP1** | 只读（`applyTimeState` 已在 WP1 内实现，WP3 只提供 `TimeState`） |
 | `src/40-lakebed.js` | **WP1** | 只读 |
 | `src/90-debug.js` | **WP1** | 只读（读数已按 §5 暴露，WP2/3/4 只需保证自己的 probe 返回对应字段） |
@@ -370,9 +397,9 @@ var P = {
 | `src/60-water.js` | **WP2** | 只读 |
 | `src/70-input.js` | **WP2** | 只读 |
 | `src/20-time.js` | **WP3** | 只读 |
-| `src/80-ui.js` | **WP3 → UP10**（AM-011） | 只读 |
-| `src/10-audio.js` | **WP4** | 只读 |
-| `assets/audio/*` | **WP4** | 只读 |
+| `src/80-ui.js` | **WP3 → UP10**（AM-011）**→ UP11**（AM-015） | 只读 |
+| `src/10-audio.js` | **WP4 → UP9**（AM-010）**→ UP11**（AM-015） | 只读 |
+| `assets/audio/*` | **WP4**（UP11 改名两首 BGM：`bgm-stillwater.mp3` → `bgm-mingjing.mp3`、`bgm-cand1.mp3` → `bgm-weifeng.mp3`） | 只读 |
 | `src/85-fallback.js` | **WP5** | 只读 |
 | `README.md` | **WP5** | 只读 |
 | `plan/*.md` | 记录用 | 只在 `_STATUS.md` 追加 |
@@ -530,3 +557,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 2026-09-25 | **AM-011（UP10 时间刻度尺）**：§2.8 加注 —— `#hour` 由 `input[type=range]` 改 `div[role=slider][tabindex=0]`（24h 环形刻度尺，DOM id 与 `SW.ui` 签名均未变）；§7 `src/80-ui.js` 所有者 WP3 → UP10。代码面只在 `80-ui.js`（零越界）；断言阈值零改动；pw 像素基线 `full.png` 待主控重录（真变更，带外区域实测逐字节相同） | **UP10** · 契约 §2.8/§7 · WP5（基线重录） |
 | 2026-09-25 | **AM-014（UP10 刻度尺手感）**：§2.8 签名/DOM id 不变 —— `#hour` 命中区加透明 padding（bbox 544×50，视觉带位置未动）、拖动加惯性（速度采样+指数衰减，常量 `R.inertia`）、拖动/滑行时中线突出层（`#sw-ruler-track::before`，静止 opacity 0 不动像素）；env-narrow「UI 不重叠」口径未改，伪元素方案天然豁免。代码面只在 `80-ui.js`（零越界）；断言阈值零改动；dist 基线重落 766,289 B | **UP10** · 契约 §10 · 主控（基线重录） |
 | 2026-09-25 | **AM-010（UP9 海鸟环境音 + 咔嗒 API）**：§2.1 `SW.audio` 追加 `sfxTick(step)`（签名由 `90-WAVE5 §5` 冻结，`step ∈ [0,1]`、返回 boolean、自带 ≤25 ms 节流、受 `#snd` 管辖）；§6 音频参数段追加 `birds` / `birdGapMin` / `birdGapMax` / `uiVolume`（第四条总线 `uiGain` 与 bgm/hand/amb 并列进 limiter）。**海鸟与咔嗒一律走 `<audio>` 元素池**（`file://` 无 `decodeAudioData`），建池错峰 tick 5.2 s / bird 6.5 s（排在 `SLAP_DELAY=4000` 之后）。新增资产 `assets/audio/bird1~6.wav`（SoundDino，免费商用免署名）+ `tick1~2.wav`（Mixkit Free License）；随机全走 `rng`（独立种子，不消耗渲染随机序列）。代码面只在 `10-audio.js` 与 `00-config.js` 音频段（零越界）；断言阈值零改动 | **UP9** · 契约 §2.1/§6 · UP10（消费 `sfxTick`） |
+| 2026-09-25 | **AM-015（UP11 BGM 选曲器，已完工）**：① §2.1 `SW.audio` 追加 `bgmInfo()` / `setBgmTrack(i)`；§2.8 + §4 新增选曲控件 `#sw-bgm`（右上 `#snd` 正下方，「**BGM：** + 每曲一枚 chip」，纯 `<button>`，**不做原生 `<select>`** —— 曾实现过、按雨桐裁决整体回滚）；§6 `bgmFile` → `bgmFiles`（**单曲 → 曲目列表**，进页面随机一首）；§7 所有者 `80-ui.js` / `10-audio.js` / `00-config.js` / `assets/audio/*` 四方更新。② 资产改名：`bgm-stillwater.mp3` → **`bgm-mingjing.mp3`**（曲名「明镜」）、`bgm-cand1.mp3` → **`bgm-weifeng.mp3`**（曲名「微风」），文件名与曲名同源。③ **每首一组 {trim, trueDur}**（`BGM_TRACKS` 是唯一真值源；`BGM_TRIM`/`BGM_TRUE_DUR` 两标量保留、首项直接引用 → `audio-baseline.py` 漂移检测仍全绿、零重复字面量）；元素切歌 = 淡出 0.22 s → 静音窗内换 src/trim → 淡入 0.34 s，避免"接两次图"导致峰值翻倍。④ 随机只用 `rng`（独立流 `seed ^ Date.now()`，不消耗渲染序列）；修掉一处**既有缺陷**：`tryFileBgm()` 建图后未刷新 `el.volume`，元素音量停在 `P.bgmVolume`（比母带目标响 0.94 dB）直到首次 duck/回卷。⑤ **断言阈值零改动**；免构建 + dist 两入口 118/118、`npm run assert` 与 `assert:dist` 各 **15/15**、`audio:baseline` 全绿、`env-narrow` 不重叠零违规。**pw 像素基线 `full.png` 待主控重录**（差异 2866 px 全部落在 `#sw-bgm` 的 bbox `x[1100,1257] y[56,80]` 内、零外溢）；`ui-panel.png` / `bed-clip.png` 未受影响。两条**挂账**：`audio-baseline.py` 只验首曲常量（次曲无自动漂移检查）、dist 与 pw 基线由主控重录 | **UP11** · 契约 §2.1/§2.8/§4/§6/§7 · 主控（基线重录） |

@@ -5,8 +5,9 @@ Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无�
 ## 操作
 - **点击**水面 → 拍击声（4 段真实采样轮询 + 随机变调）+ 一圈涟漪
 - **拖动**水面 → 连续流水声，**流量跟随拖动速度**；停手后约 **1.1s 拖尾淡出**（先落水花、低频水体垫后）
-- 首次交互后音频启动（浏览器自动播放策略）· 右上角可开关声音
-- `[` / `]` 切时段（±0.5h）· 拖底部滑块锁定时段 · 双击画面空白回到真实时间
+- 首次交互后音频启动（浏览器自动播放策略）· 右上角可开关声音 · **进页面随机放一首 BGM**，
+  右上角「**BGM：**」那一行的 chip 可随时切听（明镜 / 微风）
+- `[` / `]` 切时段（±0.5h）· 拖底部 24h 刻度尺锁定时段（可甩动、有咔嗒声）· 双击画面空白回到真实时间
 - `?hour=18.5` 直达指定时段 　`?debug=1` 只读调试面板（含 fps / 预算 / 读数）＋ **参数滑杆 8 个**（bloom 强度/阈值/半径 · vignette · grain · glit 细节/粗糙/抖动，拖动实时生效、刷新即还原默认；默认形态不创建任何 DOM）
 
 ## 一天光影
@@ -47,7 +48,7 @@ npm run build   # 产出 dist/ —— 单文件 HTML + 随行音频
 | `app/` → `dist/` | 单文件 HTML（JS/CSS 已内联）**+ 必须随行 `dist/assets/audio/`** | 开发；以及需要 `three/examples/jsm` 时 |
 
 - 两条入口**渲染同一套画面**：`plan/wp5-assert.js` 各跑一遍都是 **15/15**（同一条判据、同一画布口径 1280×720）。
-- 🔴 **构建版不能只拷那个 HTML**：`P.bgmFile` / `SLAP_FILES` 是**运行时字符串**，打包器不管它们 →
+- 🔴 **构建版不能只拷那个 HTML**：`P.bgmFiles` / `SLAP_FILES` 是**运行时字符串**，打包器不管它们 →
   必须连 `dist/assets/audio/`（7.3 MB）一起拷，否则没声音。分发时整个 `dist/` 目录一起走。
 - ⚠ **改样式 / DOM 要改两处**：`index.html` 与 `app/index.html` 是**刻意分开的两份** ——
   前者是"逐字节冻结"的交付物，构建入口不许碰它，只能另抄一份。改的时候别只改一边。
@@ -84,7 +85,7 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
 | `src/50-ripple.js` | 波纹：波动方程 FBO ping-pong（512² Float） |
 | `src/60-water.js` | 水面：屏幕空间折射 + Beer-Lambert 吸收 + GGX 反光路径 |
 | `src/70-input.js` | 指针交互 → 波纹 + 声音 |
-| `src/80-ui.js` | 时段标签 / 滑块 / 声音开关 |
+| `src/80-ui.js` | 时段标签 / 24h 刻度尺 / 声音开关 / **BGM 选曲（`#sw-bgm`）** |
 | `src/85-fallback.js` | 三层降级：reduced-motion · WebGL 兜底 · 移动端 |
 | `src/90-debug.js` | `?debug=1` 面板 + `window.__probe/__seek/__clock/__hold` |
 | `assets/audio/` | BGM + 拍击采样 |
@@ -95,12 +96,15 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
 
 ## 资产与授权
 - **three.js r160** —— MIT
-- **BGM `bgm-stillwater.mp3`** —— 海绵音乐生成（146.8s / 128kbps）
+- **BGM `bgm-mingjing.mp3`（曲名「明镜」）** —— 海绵音乐生成（146.8s / 128kbps）
   ⚠️ **授权范围需自行确认** —— 用于公司 / 商用项目前先核对生成平台条款
-- **备用 BGM `bgm-cand1.mp3`** —— 同批生成的另一首候选（3.8 MB，**不在运行路径**）。想换：
-  `cp assets/audio/bgm-cand1.mp3 assets/audio/bgm-stillwater.mp3` 后刷新
-  🔴 **换完必须重算常量**：`src/10-audio.js` 里的 `BGM_LUFS_RAW` / `BGM_TRIM` / `BGM_TRUE_DUR` /
-  `SLAP_LUFS_TRIM` 都是**针对当前资产实测**的，换了资产就不对（不会静音，但母带目标与循环出点会失准）。
+- **BGM `bgm-weifeng.mp3`（曲名「微风」）** —— 同批生成的另一首（172.8s / 3.8 MB）。
+  **两首都在运行路径上**：进页面随机放一首，右上角「BGM：」那一行的 chip 可随时切听。
+  换曲**不必再 `cp` 覆盖文件** —— 那是 UP11 之前的老办法；现在加了新曲只要
+  ① 按上表命名放 `assets/audio/`；② 在 `src/00-config.js` 的 `bgmFiles` 加一行；
+  ③ 在 `src/10-audio.js` 的 `BGM_TRACKS` 补一项（`label` + `trim` + `trueDur`）。
+  🔴 **新曲必须算常量**：`BGM_TRACKS` 里每首的 `trim`（响度配平）与 `trueDur`（真实内容时长）
+  都是**针对该曲实测**的，不填对不会静音，但母带目标与循环出点会失准。
   跑 `python plan/audio-baseline.py --emit-js`，它会列出每项差多少、并给出可直接粘贴的新值。
 - **拍击采样 `slap1~4.wav`** —— sounds-mp3（免费商用、免署名）
   ⚠️ **待裁（UP9 取证时发现，未改动原结论）**：sounds-mp3 站方 About 页自述

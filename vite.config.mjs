@@ -21,7 +21,7 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 // ============================================================================
 // 插件 1：音频随行（§2.3）
 //
-// 🔴 为什么打包器管不了音频：`P.bgmFile = 'assets/audio/bgm-stillwater.mp3'` 与
+// 🔴 为什么打包器管不了音频：`P.bgmFiles = ['assets/audio/bgm-mingjing.mp3', …]` 与
 //    10-audio.js 的 SLAP_FILES 都是**运行时字符串**，不是 `import` —— 打包器眼里它们
 //    只是普通字符串，不会进 bundle、不会被改写、更不会被复制。
 //    而 10-audio.js 用相对路径 `assets/audio/...` 找它们 → dist/index.html 旁边

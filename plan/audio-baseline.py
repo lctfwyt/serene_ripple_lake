@@ -11,8 +11,8 @@ src/10-audio.js 里有 4 组**手工实测**的常量，它们决定了两件用
     SLAP_LUFS_TRIM = [...]   →  4 段拍击响度是否配平（峰值统一 ≠ 响度统一）
 
 它们的推导路径原来是**一次性的临时无头 Chrome 脚本**（按项目纪律 `_*.js` 已删）。
-于是留下一个洞：**README 明确教用户换曲**（`cp assets/audio/bgm-cand1.mp3
-assets/audio/bgm-stillwater.mp3`，见 README §音频资产），换完这 4 组常量就全错，
+于是留下一个洞：换曲（UP11/AM-015 之后由前端 `#sw-bgm` 控件切歌；在那之前是
+`README` 教的 `cp bgm-weifeng.mp3 bgm-mingjing.mp3`）之后，这 4 组常量就全错，
 而没有任何一条命令能把它们重算出来。
 
 本脚本把「手工快照」变成「可复跑推导」：一条命令算全部常量，并**检测源码里的常量
@@ -361,10 +361,10 @@ def main():
     OUTDIR.mkdir(exist_ok=True)
     js = read_js_constants(SRC_JS.read_text(encoding="utf-8"))
 
-    bgm = analyze(ASSETS / "bgm-stillwater.mp3", args.os)
+    bgm = analyze(ASSETS / "bgm-mingjing.mp3", args.os)
     slaps = [analyze(ASSETS / ("slap%d.wav" % i), args.os) for i in (1, 2, 3, 4)]
     others = [analyze(p, args.os) for p in sorted(ASSETS.glob("*")) if p.name not in
-              {"bgm-stillwater.mp3", "slap1.wav", "slap2.wav", "slap3.wav", "slap4.wav"}]
+              {"bgm-mingjing.mp3", "slap1.wav", "slap2.wav", "slap3.wav", "slap4.wav"}]
 
     got = derive_constants(bgm, slaps)
 
@@ -378,7 +378,7 @@ def main():
         print("%-22s %9.3f %9.2f %9.2f %9.2f" % (a["file"], a["dur"],
                                                  a["sample_peak_dbfs"], a["true_peak_dbtp"], a["lufs"]))
     print()
-    print("曲首/曲尾静音(-80dBFS 门)：bgm stillwater  首 %s ms · 尾 %s ms" % (
+    print("曲首/曲尾静音(-80dBFS 门)：bgm mingjing  首 %s ms · 尾 %s ms" % (
         "%.1f" % bgm["head_silence_ms"] if bgm["head_silence_ms"] is not None else "-",
         "%.1f" % bgm["tail_silence_ms"] if bgm["tail_silence_ms"] is not None else "-"))
 
