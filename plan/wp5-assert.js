@@ -308,10 +308,24 @@ function check(id, name, ok, detail) {
     console.log('');
 
     // ---------------------------------------------------------- #1 / #2
+    // ⚠ AM-009 后期链落地后，renderer.info 在 composer.render() 之后只反映**末位 pass**
+    //   （1 call / 1 tri 的全屏四边形）→ 直读 __probe() 的 calls/tris 已失真。
+    //   重标（主控 2026-09-24）：#2 改**直渲口径** —— 临时关后期、直渲一帧读真实场景
+    //   预算、再恢复后期。语义与 WP5 原判据（场景 draw-call 纪律）完全一致。
     await ev('window.__seek(12.5)'); await sleep(1500);
     let p = await ev('window.__probe()');
     check(1, '无 NaN', p.anyNaN === false, `anyNaN=${p.anyNaN}`);
-    check(2, '渲染预算', p.calls <= 8 && p.tris <= 60000, `calls=${p.calls} (≤8)  tris=${p.tris} (≤60000)`);
+    const budget = await ev(`(function(){
+      var post = SW.post, was = post.active;
+      if (was) { post.setEnabled(false); }
+      SW.scene.renderer.render(SW.scene.scene, SW.scene.camera);
+      var i = SW.scene.renderer.info.render;
+      var out = { calls: i.calls, tris: i.triangles };
+      if (was) { post.setEnabled(true); }
+      return out;
+    })()`);
+    check(2, '渲染预算(直渲口径)', budget.calls <= 8 && budget.tris <= 60000,
+      `calls=${budget.calls} (≤8)  tris=${budget.tris} (≤60000)  · 后期链末pass直读已失真,此为临时直渲实测`);
 
     // ---------------------------------------------------------- #3 折射差分（先注入涟漪）
     const emits = await ev(`(function(){
@@ -384,9 +398,13 @@ function check(id, name, ok, detail) {
         return `h${h}:${off.toFixed(2)}°`;
       }).join(' '));
 
-    // ---------------------------------------------------------- 7 反光柱 probe 口径
-    check(7, '反光柱:夜强于午(probe)', states[22.5].glitterSpec > 0.5 && states[12.5].glitterSpec < 0.2,
-      `gSpec(22.5)=${states[22.5].glitterSpec.toFixed(3)} (>0.5)  gSpec(12.5)=${states[12.5].glitterSpec.toFixed(4)} (<0.2)`);
+    // ---------------------------------------------------------- 7 镜面增益日调制（probe 口径）
+    // ⚠ 主控裁决（2026-09-24，挂账清账）：UP8 删 `glitterSpec()` 后本字段直读 `uGlitterGain`
+    //   （60-water.js 头注），不再度量 GLSL 镜面项 —— **像素级反光柱判据已由 #13 承担**。
+    //   本条保留的价值 = 校验 glitter 增益的**日调制曲线**（夜强午弱是 AM-002 设计行为），
+    //   故改名注明语义，不再自称「反光柱」。判据阈值不动。
+    check(7, 'glitter增益日调制:夜>午(probe直读uGlitterGain)', states[22.5].glitterSpec > 0.5 && states[12.5].glitterSpec < 0.2,
+      `gGain(22.5)=${states[22.5].glitterSpec.toFixed(3)} (>0.5)  gGain(12.5)=${states[12.5].glitterSpec.toFixed(4)} (<0.2)  · 像素口径归 #13`);
 
     // ---------------------------------------------------------- #13 像素列剖面（夜间）
     // ⚠ AM-008 §3 口径修正：位置子判据由 argmax 改为**亮带质心**，强度子判据改为**多相位中位**。
@@ -394,8 +412,8 @@ function check(id, name, ok, detail) {
     const cpNight = await ev('window.__wp5.colProfileStable(0.30, 0.70, 24)');
     const cpSingle = await ev('window.__wp5.colProfile(0.30, 0.70)');
     const cenOk = cpNight.centroidMed > 0 && Math.abs(cpNight.centroidMed - cpNight.w / 2) <= 0.06 * cpNight.w;
-    check(13, '反光柱可读(像素)', cpNight.ratioMed >= 1.8 && cenOk,
-      `peak/median(24相位中位)=${cpNight.ratioMed} (≥1.8, 范围 ${cpNight.ratioLo}~${cpNight.ratioHi})` +
+    check(13, '反光柱可读(像素)', cpNight.ratioMed >= 1.9 && cenOk,
+      `peak/median(24相位中位)=${cpNight.ratioMed} (≥1.9, 范围 ${cpNight.ratioLo}~${cpNight.ratioHi})` +
       `  亮带质心=${cpNight.centroidMed}/${cpNight.w} (${cpNight.centroidPct}%, 中心±6%=${(cpNight.w/2).toFixed(0)}±${(0.06*cpNight.w).toFixed(0)})` +
       `  · 单帧 argmax=${cpSingle.peakCol}/${cpSingle.w}(仅诊断)`);
     const cpNoon = await (async () => { await ev('window.__seek(12.5)'); await sleep(1500); return ev('window.__wp5.colProfile(0.30, 0.70)'); })();

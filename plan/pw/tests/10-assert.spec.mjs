@@ -60,11 +60,23 @@ test('UP6 · 15 条断言（Playwright 版）', async ({ page }) => {
   console.log(`mobile 降级触发: ${env.fallback.mobile}  (${env.fallback.mobileWhy || '-'})  ·  applied: ${env.fallback.applied.join(' | ')}`);
 
   // ================================================================ #1 / #2
+  // ⚠ AM-009 后期链落地后 renderer.info 直读失真（只计 composer 末 pass 1/1）——
+  //   与 wp5-assert.js 同步重标（主控 2026-09-24）：#2 改直渲口径，读真实场景预算。
   await ev('window.__seek(12.5)');
   await page.waitForTimeout(1500);
   const p = await ev('window.__probe()');
   check(1, '无 NaN', p.anyNaN === false, `anyNaN=${p.anyNaN}`);
-  check(2, '渲染预算', p.calls <= 8 && p.tris <= 60000, `calls=${p.calls} (≤8)  tris=${p.tris} (≤60000)`);
+  const budget = await ev(`(function(){
+    var post = SW.post, was = post.active;
+    if (was) { post.setEnabled(false); }
+    SW.scene.renderer.render(SW.scene.scene, SW.scene.camera);
+    var i = SW.scene.renderer.info.render;
+    var out = { calls: i.calls, tris: i.triangles };
+    if (was) { post.setEnabled(true); }
+    return out;
+  })()`);
+  check(2, '渲染预算(直渲口径)', budget.calls <= 8 && budget.tris <= 60000,
+    `calls=${budget.calls} (≤8)  tris=${budget.tris} (≤60000)  · 后期链末pass直读已失真,此为临时直渲实测`);
 
   // ================================================================ #3 折射差分（先注入涟漪）
   const emits = await ev(`(function(){
@@ -137,9 +149,11 @@ test('UP6 · 15 条断言（Playwright 版）', async ({ page }) => {
       return `h${h}:${off.toFixed(2)}°`;
     }).join(' '));
 
-  // ================================================================ 7 反光柱 probe 口径
-  check(7, '反光柱:夜强于午(probe)', states[22.5].glitterSpec > 0.5 && states[12.5].glitterSpec < 0.2,
-    `gSpec(22.5)=${states[22.5].glitterSpec.toFixed(3)} (>0.5)  gSpec(12.5)=${states[12.5].glitterSpec.toFixed(4)} (<0.2)`);
+  // ================================================================ 7 镜面增益日调制（probe 口径）
+  // 主控裁决（2026-09-24 挂账清账）：UP8 后本字段直读 uGlitterGain，像素口径归 #13，
+  //   本条校验的是 glitter 增益日调制曲线（夜强午弱，AM-002 设计行为）。与 wp5-assert.js 同步改名。
+  check(7, 'glitter增益日调制:夜>午(probe直读uGlitterGain)', states[22.5].glitterSpec > 0.5 && states[12.5].glitterSpec < 0.2,
+    `gGain(22.5)=${states[22.5].glitterSpec.toFixed(3)} (>0.5)  gGain(12.5)=${states[12.5].glitterSpec.toFixed(4)} (<0.2)  · 像素口径归 #13`);
 
   // ================================================================ #13 像素列剖面（夜间）
   await ev('window.__seek(22.5)');
@@ -147,8 +161,8 @@ test('UP6 · 15 条断言（Playwright 版）', async ({ page }) => {
   const cpNight = await ev('window.__pw.colProfileStable(0.30, 0.70, 24)');
   const cpSingle = await ev('window.__pw.colProfile(0.30, 0.70)');
   const cenOk = cpNight.centroidMed > 0 && Math.abs(cpNight.centroidMed - cpNight.w / 2) <= 0.06 * cpNight.w;
-  check(13, '反光柱可读(像素)', cpNight.ratioMed >= 1.8 && cenOk,
-    `peak/median(24相位中位)=${cpNight.ratioMed} (≥1.8, 范围 ${cpNight.ratioLo}~${cpNight.ratioHi})` +
+  check(13, '反光柱可读(像素)', cpNight.ratioMed >= 1.9 && cenOk,
+    `peak/median(24相位中位)=${cpNight.ratioMed} (≥1.9, 范围 ${cpNight.ratioLo}~${cpNight.ratioHi})` +
     `  亮带质心=${cpNight.centroidMed}/${cpNight.w} (${cpNight.centroidPct}%, 中心±6%=${(cpNight.w / 2).toFixed(0)}±${(0.06 * cpNight.w).toFixed(0)})` +
     `  · 单帧 argmax=${cpSingle.peakCol}/${cpSingle.w}(仅诊断)`);
   await ev('window.__seek(12.5)');
@@ -216,7 +230,7 @@ test('UP6 · 15 条断言（Playwright 版）', async ({ page }) => {
     entry: ENTRY,
     oldReadings: READINGS_OLD,
     env, results, states, lod, cpNight, cpNoon, rf, cs, jsErrors, netErrors,
-    budget: { calls: p.calls, tris: p.tris },
+    budget: { calls: budget.calls, tris: budget.tris },
   }, null, 1));
 
   const failed = results.filter((r) => !r.ok);

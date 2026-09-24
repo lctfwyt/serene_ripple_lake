@@ -1,9 +1,9 @@
 {
-  "_note": "UP6 开工前一刻的冻结件哈希（90-WAVE4 §1：plan/wp5-assert.js 与 plan/wp5-env.js 本波次禁改）。由 node plan/pw/verify-frozen.mjs 核对。",
-  "_recordedAt": "2026-09-24T19:21:00+08:00",
-  "_source": "sha256sum plan/wp5-assert.js plan/wp5-env.js（UP8 954e8a0 / UP5 5574ca9 + 040e952 之后、UP6 动手之前）",
+  "_note": "主控冻结基线（第 2 版）。重录于 2026-09-24 22:44：AM-009 收口重标 —— #2 改直渲口径 / #7 改名「glitter增益日调制」/ #13 阈值 1.8→1.9 / grain 默认归零 —— 由主控改完后重新锁定（预约动作，见 90-WAVE4 §5-③ 与 93-UP2-bloom.md §6 遗留 1/2）。第 1 版为 UP6 开工前一刻所录（波次 4 冻结态，assert=8ac52579…），历史见 git。由 node plan/pw/verify-frozen.mjs 核对。",
+  "_recordedAt": "2026-09-24T22:44:00+08:00",
+  "_source": "主控收口提交（AM-009 收口 + grain 终裁）之后的 sha256",
   "files": {
-    "plan/wp5-assert.js": "8ac52579f41a342a16056810385fb677b17c95f574a9d9aabe93291591345904",
+    "plan/wp5-assert.js": "a7575b48c3551e2837bd8d970736b172f93f044b4293493bebfeb5c3b5c75b25",
     "plan/wp5-env.js": "bd9dd0e8fc115cce0a3ffe243a9f58ac9ec6218a6d31445c2d519ce61869ad2a"
   }
 }

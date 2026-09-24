@@ -1,5 +1,5 @@
 # dist/ 内容基线 —— UP6 验收 #5「Playwright 不进交付物」的比对基准。
-# 记录环境：node v22.22.2 · vite 8.3.0 · three 0.160.0 · 2026-09-24T14:32:13.720Z
+# 记录环境：node v22.22.2 · vite 8.3.0 · three 0.160.0 · 2026-09-24T14:40:38.265Z
 # 复核：npm run build && npm run pw:dist      （不一致 = dist ≡ f(src) 被破坏，或有 dev-only 引用泄漏）
 153a206a076724b526acec7738997e3ee2a1ede5a0b59fa6e78a1158bce3ca5a  ./assets/audio/bgm-cand1.mp3
 6f977ada98e61c08286d0531cdda508cacec8e7212365f3dadb3b284e742d4d7  ./assets/audio/bgm-stillwater.mp3
@@ -7,4 +7,4 @@
 772866158a862cd7b1adc2b1738bfe7324372b2f4ce89f9dd9e21ee668a8b7b1  ./assets/audio/slap2.wav
 0f1e2d4457fe70a2f854ef6913e6caa44539b960499e2e2da5354afb9b94b0be  ./assets/audio/slap3.wav
 578bee67bb7e6885cb5ced569678c86dc2b0b76115672c29b12d9a1131aaf589  ./assets/audio/slap4.wav
-5ec9cfa08c6f8b514ab1036abb171e41e675c1812579643348a5ac83045f1ba4  ./index.html
+b2b36445b8d9d4f34346b35d297cbd5b7240633e438cc302576c6169b9b93ab8  ./index.html

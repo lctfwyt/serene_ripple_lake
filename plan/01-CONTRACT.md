@@ -313,9 +313,11 @@ var P = {
   toneMapped: 'ACES', exposure: 1.0,
 
   // 后期处理 —— AM-009 新增（UP2 落地）；?nopost=1 运行时整链关闭（同 debug 处理，字面量不变）
-  //   grainAmp 0.05→0.02：主控复核指示（返工轮，grain 换定种噪点纹理 + 振幅降档，93-UP2-bloom.md §6a）
+  //   grain 轨迹：0.05 → 0.02（返工轮，93 §6a）→ **0（主控终裁 2026-09-24 22:40）**——
+  //   逐帧平移噪点在深色治愈系画面上呈「电视机雪花」观感（真机时间维度噪声，截图验证不出），
+  //   与治愈目标相悖。管线保留，想要胶片感自行设 0.005~0.02。
   bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85,
-  vignetteAmp: 0.16, grainAmp: 0.02,
+  vignetteAmp: 0.16, grainAmp: 0,
 
   // 交互
   splash: true, cameraSway: false, swayAmp: 0.002,
@@ -509,3 +511,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 2026-09-24 | **AM-007 A 修订（主控直裁 + 实测）**：§6 `pebbleScaleNear` `[0.14,0.42] → [0.20,0.58]`（**两层必须同区间**，§6.1 动作清单原漏写 near 那条）；§9 追加 `PEBBLE_COVERAGE_MIN` / `PEBBLE_LOD_SEAM_RATIO_MAX` / `PEBBLE_SCALE_COMMON`；§9 鹅卵石自检追加**覆盖率**与**接缝屏幕比**两个算式，并加「判据是分布口径、单颗不可比」的注 | **WP1e（补一行）** · **WP5**（断言 +2 → 15 条） |
 | 2026-09-24 | **AM-007 §5.2c（主控直裁 + 实测）**：① 断言 #5 由「原始色相步长 < 60°」改为**色度加权** `‖ΔH‖ × min(C_a,C_b) < 2.5`；§9 追加 `MAX_CHROMA_STEP` + 「**色相路径自检**」算式块。**理由**：`fog` 补暖后原始色相步长 38° → **159°**，但色度压到近灰（偏移 ±4/255）→ 无「过渡发灰」。阈值经**全表 13 key × 6 字段**重新标定（最大 2.11 = `sun` 斜阳→黄昏），**不是下游建议的 1.5**（1.5 会打挂 `sun`/`gli`/`wat`/`sky`）。② §9 `HALF_H_FOV` / 反光柱自检 / 验证窗口自检的 `hHalf` 由笔误 **28.03° → 28.53°**（正确值；28.03° 是 1254×720 的值）；③ §9 验证窗口自检追加「**像素类判据一律固定 1306,876 → 1280×720**」的口径约束 | **WP5**（#5 换口径 + 画布口径固化）· WP3（作者侧的自检规则） |
 | 2026-09-24 | **AM-009（UP2 后期处理管线，已关单）**：§1 加载顺序插入 `vendor/three-post.min.js`（THREEPOST 全局，主控构建，仅免构建入口）与 `src/65-post.js`；§2 新增 **§2.6b `SW.post`**；§6 追加 post 参数段（`bloom/bloomStrength/bloomRadius/bloomThreshold/vignetteAmp/grainAmp`，`?nopost=1` 运行时关闭）。**断言阈值一律未动**——#2 语义变为 composer 末位 pass 计数（1/1）、#13/#6 读数微移，重标由主控做。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md` §AM-009，过程见 `plan/93-UP2-bloom.md` | **UP2** · 契约 §1/§2/§6 · WP5（断言重标待做） |
+| 2026-09-24 | **AM-009 收口（主控）**：① §6 `grainAmp` `0.02 → **0**`（终裁：逐帧平移噪点在深色治愈画面呈「电视机雪花」，与治愈目标相悖；管线保留可自行开启）② 断言重标三件：**#2 改直渲口径**（临时关后期直渲一帧读真实场景预算，修复 composer 末 pass 1/1 失真；实测 6/53088 恢复 WP5 语义）、**#7 改名**「glitter增益日调制:夜>午(probe直读uGlitterGain)」（UP8 后像素口径归 #13，本条校验日调制曲线）、**#13 阈值 `1.8 → 1.9`**（bloom 时代实测带 2.12~2.15，抬 6% 地板增强回归灵敏度）。镜像 `plan/pw/tests/10-assert.spec.mjs` 同步；冻结基线 `frozen-hashes.json` 第 2 版重录；Playwright 像素基线 `pw:update` 重录后 **14 passed**；新旧读数比对 **87/87 无超差** | **主控** · 断言脚本（预约动作）· 契约 §6 |

@@ -46,9 +46,12 @@
 
     // 后期处理 —— AM-009 新增（UP2 落地；WP1 无活跃窗口，主控已预批参数组）
     // bloom 阈值 0.85 抬高到线性 HDR 高光域 → 只吃反光柱/镜面高光，中低亮度不受影响；
-    // vignette/grain 都很轻（grain 在线性光域、随亮度缩放；?nopost=1 可运行时整链关闭）。
+    // vignette 很轻（?nopost=1 可运行时整链关闭）。
+    // grain 默认 0（主控复核裁决 2026-09-24）：逐帧平移的噪点纹理在深色治愈系画面上
+    //   呈「电视机雪花」观感（截图验证不出，真机时间维度噪声），与治愈目标相悖；
+    //   管线保留，想要胶片感自行设 0.005~0.02。
     bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85,
-    vignetteAmp: 0.16, grainAmp: 0.02,
+    vignetteAmp: 0.16, grainAmp: 0,
 
     // 交互
     splash: true, cameraSway: false, swayAmp: 0.002,
