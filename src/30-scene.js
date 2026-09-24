@@ -259,8 +259,14 @@
         r.setRenderTarget(null);
         if (wm) { wm.visible = vis; }
       }
-      // ② 主画面
-      r.render(this.scene, this.camera);
+      // ② 主画面。AM-009：后期链激活时走 SW.post.render()（composer：bloom + vignette/grain +
+      //    OutputPass 收尾 ACES+sRGB）；否则按 v1 直渲。两条分支共享步骤① 的 sceneRT ——
+      //    composer 的缓冲区由 EffectComposer 自建，与折射源 RT 互不触碰（90-WAVE4 §5-①）。
+      if (SW.post && SW.post.active) {
+        SW.post.render(dt);
+      } else {
+        r.render(this.scene, this.camera);
+      }
     }
   };
 

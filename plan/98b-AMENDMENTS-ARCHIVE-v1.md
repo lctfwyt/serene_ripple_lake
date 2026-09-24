@@ -1704,3 +1704,68 @@ WP5 有意未按 §3.3 表格关掉移动端 `splash`。**主控核实：属实�
 |---|---|---|---|---|---|
 | AM-012 | **UP5** | 2026-09-24 18:52 | **仅** `src/10-audio.js`（`70-input.js` **未改**，见 §1）+ 本文件 + `plan/91-UP5-audio.md`（新）+ `plan/_STATUS.md`（追加） | **① 15/15 回归全过**（`node plan/wp5-assert.js`，#13 24相位中位 **2.149** / 亮带质心 **637/1280 = 49.8%**，#8 `audioCtx=running bgmGain=0.6`，console 0 报错）<br>**② ✅** graph 4/4 进图 · slapAn 峰值 0.4594（图内）· **limAn 峰值 0.2579（limiter 输入端）** · 27 ms 达 0.10 · 过载 4 拍 `reduction −0.202 dB`<br>**③ ✅** `raw −15.06` + `trim 0.8974`（−0.94 dB）= **−16.00 LUFS** · `bgmSrcGain 0.8974` · `bgmGain 0.6`（= `P.bgmVolume`，契约 §5 不变）<br>**④ ✅** 两侧环境**均严格单调**（x=−5→5 静置 320 ms 读实际值）· 命令值误差 **0** · 钳位 x=∓9 → ∓0.849 · 真实鼠标 200/640/1080 → **−0.4833 / 0 / 0.4833**<br>**⑤ ✅** file:// 仍 `slapMode=element`（`slapRouted=0`，与改前一致）· 拍击元素 2/4 在播 · 元素音量逐片段命中 `handVolume×SLAP_TRIM×RATIO[i]×(0.85~1.0)` 带 · `bgmEl.volume 0.2961 = 0.6×0.8974×0.55×1` 精确 · `el.loop=false`<br>**⑥ ✅** 出点 **147.134 → 146.802 s**（落进真实音频内）· ‖Δ50ms‖ **20.81 → 3.28 dB** · 包络两端 gain=0 · 淡出 6~9 级台阶 · 手动回卷 **0→1** 实测发生 · 稳健性（出点再提前 100 ms）仍通过 | ① **⑥ BGM stems 不做** —— 曲目无分轨源料（§3.3）；② `BGM_TRUE_DUR = 146.832` 是**实测常量**，换 BGM 需重测（**守卫**：差值 ≥1.0 s 自动退回估算式，不会静音）；③ `#13` 单帧 argmax 是相位噪声，降级为诊断读数（归 AM-008 裁决） |
 
+
+
+---
+
+# AM-009 · UP2 后期处理管线（bloom + vignette/grain）
+
+> 归档自 `02-AMENDMENTS.md` §1（UP2 · 2026-09-24 22:05 关单）。编号占用：`90-WAVE4.md §7` 预批。
+# AM-009 · UP2 后期处理管线（bloom + vignette/grain）
+
+> 开包口径：`90-WAVE4.md §5`（`60-UPGRADE-ROADMAP §UP2` 只作背景）。
+> 状态：✅ 已关闭（UP2 · 2026-09-24 22:05 · 两入口全部应用并验证）。
+
+**1 · 背景/实测依据**
+
+- UP8 已完工（`60-water.js` 收敛为 506 行、诊断分支 `#ifdef` 化），波次 5 解锁 UP2（`90-WAVE4 §0` 耦合 ② 已随 UP8 提交解除）。
+- **主控裁决（2026-09-24 21:40）**：`vendor/three-post.min.js` 由**主控**构建入库（源 = three@0.160.0 `examples/jsm` 后处理链），暴露 `window.THREEPOST = { EffectComposer, RenderPass, ShaderPass, UnrealBloomPass, OutputPass, CopyShader, LuminosityHighPassShader }`。**UP2 只消费不构建；vendor/ 本波次所有者 = 主控。**
+- 为什么需要这个 bundle：免构建入口的 `vendor/three.min.js`（r160 UMD）**不含** `examples/js` 后处理类（r148 起 three 移除 UMD 版 addons），而 `file://` 下 ESM import 被 CORS 挡死（契约 §1 定死不用 module）→ 只能经 `window.THREEPOST` 全局供给。
+- 色调映射迁移：现在画面靠 `renderer.outputColorSpace + ACESFilmicToneMapping`（渲染到画布时生效）；走 composer 后中间帧渲进 RT（r160 对 RT **不做** tonemap/色彩空间转换），这两项在最终帧失效 → 必须用 **OutputPass**（读 renderer 同款 ACES + SRGB）收尾。**两入口 ACES 行为必须逐位一致**（同版本 r160 源），列入验收 B。
+
+**2 · 变更内容**
+
+契约面（关单时同步进 `01-CONTRACT.md`）：
+
+| 处 | 变更 |
+|---|---|
+| §1 加载顺序 | 免构建入口在 `vendor/three.min.js` 之后、`src/00-config.js` 之前插入 `<script src="vendor/three-post.min.js"></script>`（**dist 入口不用它**，走 `three/addons` 原生 import） |
+| §2 命名空间 | 新增 `SW.post`（所有者 UP2）：`{ init(), render(dt), active, probe() → { post, bloom, strength, threshold, radius, grain, vignette } }`。`render(dt)` 由 `30-scene.render()` 步骤②调用（有后期链时替代直渲） |
+| §6 参数表 | 追加 post 段：`bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85, vignetteAmp: 0.16, grainAmp: 0.05`（`?nopost=1` 运行时关闭后期链，参数字面量不动 —— 同 `debug` 的处理方式） |
+| §3 事件 | **无新增**；`resize` 复用既有事件做 `composer.setSize` |
+| 断言阈值 | **一律不动**。#2/#6/#8/#13 读数变化只报不改，重标由主控收尾统一做（90-WAVE4 §5-③） |
+
+代码面（UP2 动作）：
+
+1. **新建 `src/65-post.js`**（UP2 所有）：能力检测 `window.THREEPOST` —— 缺失则 `console.warn` 一条并跳过后期（不黑屏，与 85-fallback 同精神）；`?nopost=1` 同样跳过。
+2. **新建 `app/post-global.js`**（UP2 所有）：`three/addons` 五类原生 import → 挂 `window.THREEPOST`（构建入口的供给件）。
+3. **`src/30-scene.js`**：`render()` 步骤② 改为「`SW.post.composer` 存在 → `SW.post.render(dt)`；否则直渲」。既有步骤①（sceneRT 离屏）**不动**——折射读水面渲染前的 sceneRT、bloom 读水面渲染后的合成帧，**两套 RT 独立**（90-WAVE4 §5-①）。
+4. **`src/00-config.js`**：追加 §6 post 段（WP1 无活跃窗口，UP2 按 `90-WAVE4 §7` 预批的 AM-009 参数组代为落地；`SW.P0` 快照自动包含 → 重置按钮无需改 `80-ui.js`）。
+5. **`index.html`**：加 `vendor/three-post.min.js` 一行。
+6. **`app/main.js`**：加 `import './post-global.js';`（位于 `../src/65-post.js` 之前）。
+7. **`01-CONTRACT.md`**：§1 / §2 / §6 / §10 随关单同步。
+
+**3 · 影响面**
+
+- **文件**：`vendor/three-post.min.js`（只消费，主控所有）· `index.html` · `app/post-global.js`（新）· `app/main.js` · `src/65-post.js`（新）· `src/30-scene.js` · `src/00-config.js` · `plan/93-UP2-bloom.md`（新）· `plan/_STATUS.md`（追加）· `01-CONTRACT.md`（关单时）。
+- **不碰**：`plan/wp5-assert.js` / `plan/wp5-env.js`（冻结）· `plan/pw/**`（含 Playwright 像素基线 —— bloom 改变像素后预期变红，待主控 `pw:update` 重录）· `src/` 其余模块 · `assets/**`。
+- **读数影响预测**：#2 calls/tris（composer 末 pass 的 info 语义，实测为准）· #6 湖底 std（bloom 微弱增亮）· #13 反光柱（bloom 只增强柱，ratio 预期上升）· #8 音频不受影响；probe 的 topRowL/fogL 走直渲旁路不受 composer 影响。
+
+**4 · 逐包动作清单 + 验收判据**
+
+UP2（全部动作）：
+
+| # | 判据 |
+|---|---|
+| A | **2×2 读数矩阵**：{免构建, dist} × {`?nopost=1`, 默认} 各跑一遍 `wp5-assert.js`，#2/#6/#8/#13（+其余 11 条）读数全部记录；**不判死、不改阈值**。「bloom 前」基线 = 改动前跑的 `npm run assert`（留档包文档） |
+| B | **ACES 逐位一致**：`?nopost=1` 下两入口读数一致；post 开启下两入口读数一致（像素类差异 ≤ 0.02） |
+| C | **RT 独立**：bloom 后 #3 折射差分仍过（`hitFrac>0.10 && maxDiff>30 && flagOff=false && flagOn=true`）—— 折射没被 composer 污染 |
+| D | console 0 报错 · `anyNaN=false` · `file://` 双击可开（免构建与 dist 双验） |
+| E | `npm run build` + `npm run pw:dist:snapshot` 重落 dist 基线（哈希变化**是预期**）→ `pw:dist check` 过；`pw:frozen` 过（冻结文件未动） |
+| F | **降级**：THREEPOST 缺失（临时改名 vendor 文件）→ 免构建入口仍正常直渲、console 恰好一条 warn |
+
+**5 · 应用记录**
+
+| 时间 | 应用方 | 验证结果 |
+|---|---|---|
+| 2026-09-24 21:40~22:05 | **UP2** | 验收 A~F 全过（详见 `plan/93-UP2-bloom.md` §5）：A 2×2 矩阵 4×(15/15)、阈值零改动；B 两入口同配置读数差 ≤ 抖动带（#13 Δ0.015/0.023，#6 Δ0.00/0.03）；C #3 折射差分 post 后 max 74~91（>30）→ RT 独立成立；D 四格 console 0 报错 · anyNaN=false；E `pw:dist` ✅（基线重落 753359 B）· `pw:frozen` ✅；F THREEPOST 缺失 → warn 一条 + 直渲。像素差分：post vs nopost mean 13.9/255 = 抖动地板 5.1× |

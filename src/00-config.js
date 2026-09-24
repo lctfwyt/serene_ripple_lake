@@ -44,6 +44,12 @@
     // 光照 / 后期
     toneMapped: 'ACES', exposure: 1.0,
 
+    // 后期处理 —— AM-009 新增（UP2 落地；WP1 无活跃窗口，主控已预批参数组）
+    // bloom 阈值 0.85 抬高到线性 HDR 高光域 → 只吃反光柱/镜面高光，中低亮度不受影响；
+    // vignette/grain 都很轻（grain 在线性光域、随亮度缩放；?nopost=1 可运行时整链关闭）。
+    bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85,
+    vignetteAmp: 0.16, grainAmp: 0.05,
+
     // 交互
     splash: true, cameraSway: false, swayAmp: 0.002,
 

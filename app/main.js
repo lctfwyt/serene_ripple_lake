@@ -11,18 +11,20 @@
 //    它们要**同时**被两条入口加载。ESM 化会打断 `window.SW` 这个模块间契约（契约 §1），
 //    也会让免构建入口（纯经典 <script>）直接失效。详见 80-UP1-build-chain.md §2。
 import './three-global.js';        // ← index.html:29  vendor/three.min.js（改为 ESM 挂全局）
-import '../src/00-config.js';      // ← index.html:30
-import '../src/10-audio.js';       // ← index.html:31
-import '../src/20-time.js';        // ← index.html:32
-import '../src/30-scene.js';       // ← index.html:33
-import '../src/40-lakebed.js';     // ← index.html:34
-import '../src/50-ripple.js';      // ← index.html:35
-import '../src/60-water.js';       // ← index.html:36
-import '../src/70-input.js';       // ← index.html:37
-import '../src/80-ui.js';          // ← index.html:38
-import '../src/85-fallback.js';    // ← index.html:39
-import '../src/90-debug.js';       // ← index.html:40
-import '../src/99-main.js';        // ← index.html:41
+import './post-global.js';         // ← index.html:30  vendor/three-post.min.js（AM-009：three/addons 原生 import 挂 THREEPOST）
+import '../src/00-config.js';      // ← index.html:31
+import '../src/10-audio.js';       // ← index.html:32
+import '../src/20-time.js';        // ← index.html:33
+import '../src/30-scene.js';       // ← index.html:34
+import '../src/40-lakebed.js';     // ← index.html:35
+import '../src/50-ripple.js';      // ← index.html:36
+import '../src/60-water.js';       // ← index.html:37
+import '../src/65-post.js';        // ← index.html:38  （AM-009 新增）
+import '../src/70-input.js';       // ← index.html:39
+import '../src/80-ui.js';          // ← index.html:40
+import '../src/85-fallback.js';    // ← index.html:41
+import '../src/90-debug.js';       // ← index.html:42
+import '../src/99-main.js';        // ← index.html:43
 
 // 启动：try/catch 兜底，失败就显示 #fallback，不要白屏
 // （与 index.html:42-50 的内联 boot 逐字同义）

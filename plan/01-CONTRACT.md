@@ -13,6 +13,7 @@
 
 ```html
 <script src="vendor/three.min.js"></script>  <!-- 全局 THREE -->
+<script src="vendor/three-post.min.js"></script>  <!-- AM-009：后处理类全局 THREEPOST（主控构建；dist 入口不用它） -->
 <script src="src/00-config.js"></script>     <!-- SW.P -->
 <script src="src/10-audio.js"></script>      <!-- SW.audio   -->
 <script src="src/20-time.js"></script>       <!-- SW.time    -->
@@ -20,6 +21,7 @@
 <script src="src/40-lakebed.js"></script>    <!-- SW.lakebed -->
 <script src="src/50-ripple.js"></script>     <!-- SW.ripple  -->
 <script src="src/60-water.js"></script>      <!-- SW.water   -->
+<script src="src/65-post.js"></script>       <!-- SW.post（AM-009） -->
 <script src="src/70-input.js"></script>      <!-- SW.input   -->
 <script src="src/80-ui.js"></script>         <!-- SW.ui      -->
 <script src="src/85-fallback.js"></script>   <!-- 降级兜底    -->
@@ -136,6 +138,21 @@ SW.water = {
   probe()                 // → { refract, normalGain, tris }
 };
 ```
+
+### 2.6b `65-post.js` → `SW.post`（所有者：UP2 · **AM-009 新增**）
+
+```js
+SW.post = {
+  init(),                 // bus 'ready' 后自调（THREEPOST 检测 + composer 构建）；?nopost=1 / 缺类 → 跳过直渲
+  render(dt),             // 由 SW.scene.render() 步骤②调用（active 时替代直渲）；OutputPass 末位施加 ACES+sRGB
+  active,                 // 后期链是否在跑（false → 30-scene 直渲）
+  composer, bloomPass, gradePass,
+  setEnabled(bool),       // 运行时开关
+  probe()                 // → { post, bloom, strength, threshold, radius, grain, vignette }
+};
+```
+
+**约束**：后处理类供给 = `window.THREEPOST`（免构建：vendor/three-post.min.js，主控所有；构建：app/post-global.js 原生 import 挂同名全局）。折射源 `sceneRT` 与 composer 缓冲**必须独立**；OutputPass 必须是末位 pass（r160 对 RT 不做 tonemap）。
 
 ### 2.7 `70-input.js` → `SW.input`（所有者：WP2）
 
@@ -294,6 +311,10 @@ var P = {
 
   // 光照 / 后期
   toneMapped: 'ACES', exposure: 1.0,
+
+  // 后期处理 —— AM-009 新增（UP2 落地）；?nopost=1 运行时整链关闭（同 debug 处理，字面量不变）
+  bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85,
+  vignetteAmp: 0.16, grainAmp: 0.05,
 
   // 交互
   splash: true, cameraSway: false, swayAmp: 0.002,
@@ -486,3 +507,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 2026-09-24 | **AM-007**：① §6 `pebbleScaleFar` `[0.35,0.80]→[0.20,0.58]`（LOD 尺度统一）② §9 新增「**验证窗口自检**」算式块（`viewport = (W−26, H−156)`，`1306,876 → 1280×720`）③ §9 鹅卵石自检追加 `LOD 尺度比 = 1.00 ± 0.05` ④ 晨雾暖调（仅 keyframe 值，不入契约）；WP5 断言 +1（#13 反光柱像素口径） | **WP1e** · **WP3b** · **WP5** |
 | 2026-09-24 | **AM-007 A 修订（主控直裁 + 实测）**：§6 `pebbleScaleNear` `[0.14,0.42] → [0.20,0.58]`（**两层必须同区间**，§6.1 动作清单原漏写 near 那条）；§9 追加 `PEBBLE_COVERAGE_MIN` / `PEBBLE_LOD_SEAM_RATIO_MAX` / `PEBBLE_SCALE_COMMON`；§9 鹅卵石自检追加**覆盖率**与**接缝屏幕比**两个算式，并加「判据是分布口径、单颗不可比」的注 | **WP1e（补一行）** · **WP5**（断言 +2 → 15 条） |
 | 2026-09-24 | **AM-007 §5.2c（主控直裁 + 实测）**：① 断言 #5 由「原始色相步长 < 60°」改为**色度加权** `‖ΔH‖ × min(C_a,C_b) < 2.5`；§9 追加 `MAX_CHROMA_STEP` + 「**色相路径自检**」算式块。**理由**：`fog` 补暖后原始色相步长 38° → **159°**，但色度压到近灰（偏移 ±4/255）→ 无「过渡发灰」。阈值经**全表 13 key × 6 字段**重新标定（最大 2.11 = `sun` 斜阳→黄昏），**不是下游建议的 1.5**（1.5 会打挂 `sun`/`gli`/`wat`/`sky`）。② §9 `HALF_H_FOV` / 反光柱自检 / 验证窗口自检的 `hHalf` 由笔误 **28.03° → 28.53°**（正确值；28.03° 是 1254×720 的值）；③ §9 验证窗口自检追加「**像素类判据一律固定 1306,876 → 1280×720**」的口径约束 | **WP5**（#5 换口径 + 画布口径固化）· WP3（作者侧的自检规则） |
+| 2026-09-24 | **AM-009（UP2 后期处理管线，已关单）**：§1 加载顺序插入 `vendor/three-post.min.js`（THREEPOST 全局，主控构建，仅免构建入口）与 `src/65-post.js`；§2 新增 **§2.6b `SW.post`**；§6 追加 post 参数段（`bloom/bloomStrength/bloomRadius/bloomThreshold/vignetteAmp/grainAmp`，`?nopost=1` 运行时关闭）。**断言阈值一律未动**——#2 语义变为 composer 末位 pass 计数（1/1）、#13/#6 读数微移，重标由主控做。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md` §AM-009，过程见 `plan/93-UP2-bloom.md` | **UP2** · 契约 §1/§2/§6 · WP5（断言重标待做） |
