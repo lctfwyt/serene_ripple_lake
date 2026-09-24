@@ -2,9 +2,11 @@
 // 签名逐字对齐 01-CONTRACT.md §2.1：{ ready, init, setEnabled, playHand, duck, suspend, resume, probe }
 //
 // 三总线：bgm（音乐床，被 hand duck） / hand（划水 + 点击） / amb（水拍岸 + 风）
-//   source ──┬── bgm  (Gain) ──┐
-//            ├── hand (Gain) ──┼──→ limiter ──→ master ──→ destination
-//            └── amb  (Gain) ──┘
+//   source ──┬── bgm  (Gain) ─────────────────┐
+//            ├── hand (Gain) → Pan → limAn ───┼──→ limiter ──→ master ──→ destination
+//            └── amb  (Gain) ─────────────────┘
+//   UP5 / AM-012：hand 总线新增 StereoPanner（声像跟手）+ limiter 输入端体检点 limAn
+//   （拍击 + 连续流水 + foley 全部经此进 limiter，故"拍击经过 limiter"可直读证明）。
 //
 // 两条硬约束（踩了就静音或爆音）：
 //   ① file:// 下 fetch + decodeAudioData 被 CORS 挡死 → BGM 走 <audio> + createMediaElementSource
@@ -68,6 +70,51 @@
   var PAD_ATTACK = 4.0;
   var PAD_RELEASE = 5.0;
 
+  // ===================== UP5 / AM-012：母带 trim + 声像 + 循环 =====================
+  // 全部数字来自**实测**（无头 Chrome 内 decodeAudioData + ITU-R BS.1770-4 集成响度），
+  // 本机无 ffmpeg / Python 音频库，故不重编码资产，一律走**运行期增益**（语义等价、可一行回退）。
+  // 明细与原始读数见 plan/91-UP5-audio.md §2。
+  var IS_FILE = /^file:/i.test(window.location.href);   // 唯一的环境判定（slap 与 BGM 共用）
+
+  var BGM_LUFS_RAW = -15.06;          // bgm-stillwater.mp3 实测集成响度
+  var BGM_LUFS_TARGET = -16.00;       // 母带目标
+  var BGM_TRIM = 0.8974;              // 10^((TARGET-RAW)/20) = 10^(-0.94/20) → 命中 -16.00
+  // 拍击 4 段：峰值**已经**统一（4 段都 0.62），但集成响度跨 2.49 LU
+  //   （-20.27 / -21.12 / -18.63 / -20.18）→ "峰值统一 ≠ 响度统一"，会被听成忽大忽小。
+  //   归一到四段均值 -20.05；平均增益 1.0053（≈0 dB，平均电平不变）；最大有效峰值 0.62×1.1312 = 0.701 ≪ 1.0
+  var SLAP_LUFS_TRIM = [1.0256, 1.1312, 0.8491, 1.0151];
+  // 声像：世界 x → pan。PAN_WORLD_REF 取 z≈-6 处的**可见半宽**（≈6.0 世界单位）——
+  //   即"点到画面左右边缘附近 ≈ 满偏"，且对 x 严格单调（验收 #4 就钉这个）
+  var PAN_WORLD_REF = 6.0;
+  var PAN_MAX = 0.85;                 // 不做满偏，留一点居中感
+  var PAN_TAU = 0.05;                 // 平滑时间常数（避免抖动手时声像抽动）
+  // 循环：实测曲首 0~0.10s 是**数字静音**、0.108s 才有首个有效样本；曲尾一直有声。
+  //   el.loop=true 会每 146.8s 塌一次 ~100ms 静音（不是爆音，是"呼吸"）。
+  //   修法 = 手动区间。取 0.20s 的依据：曲首 [0.20,0.25]s 电平 ≈-29.8dB，
+  //   曲尾 50ms = -29.87dB → **首尾天然对齐**，接缝电平几乎无跳变。
+  //   两侧淡入淡出取**等长**（对称包络）→ 接缝前后 50ms 能量天然相等。
+  var LOOP_IN = 0.20;                 // s，起播/回卷点（跳过静音与起手瞬态）
+  var LOOP_TAIL = 0.03;               // s，提前这么多回卷（避开元素自然结束）
+  var LOOP_FADE_OUT = 0.04, LOOP_FADE_IN = 0.04;
+  // ⚠ 步长取 **5ms** 而不是 20ms：file:// 下 BGM 元素**不进图**，淡入淡出只能靠 el.volume 台阶实现。
+  //   20ms 步长在 40ms 淡变里只有 2 级台阶 → 每级 Δgain=0.5，接缝处会产生 ~-36dBFS 的阶跃
+  //   （相对信号本身只低几 dB，是听得见的"咔"）。5ms → 8 级（Δgain=0.125），阶跃降到 ~-48dBFS。
+  //   图路径（http）本来就用 AudioParam linearRamp 精确插值，不受此步长影响。
+  var LOOP_TICK = 5;                  // ms，看门狗步长（seek 判断 + 增益包络台阶粒度）
+  // 🔴 资产的**真实内容时长**（秒）—— 由 decodeAudioData 实测（本资产 146.832s）。
+  //   为什么必须有这个常量：元素的 `duration` 是浏览器**按码率估算**的，本资产在 file:// 下报
+  //   **147.164s**（多 0.332s），而音频数据只到 146.832s。用 `duration − LOOP_TAIL` 当出点，
+  //   每圈尾部就会塌出 ~0.3s 数字静音 —— 与曲首那 100ms 是同一类缺陷（更隐蔽）。
+  //   ⚠ 不能靠 `buffered` 末端封顶：file:// 下 buffered 末端**也被报成估算值 147.164**（实测）。
+  //     http 下 duration 就是真值（146.832），故这项封顶只对 file:// 生效。
+  //   守卫：仅当元素时长与该常量相差 < 1.0s（= 仍是同一份资产）时才采信；
+  //     换资产（README 有 `cp bgm-cand1.mp3 …` 的说明）后自动退回估算式，不会静音、只是可能留尾静音。
+  var BGM_TRUE_DUR = 146.832;
+  var BGM_TRUE_GUARD = 1.0;
+  // foley 分层（AM-012 §3.2 第 8 条）：采样自带 impact（瞬态）+ body（低频），
+  //   **缺的是随力度变亮的水花** → 只补 spray 这一层，避免叠加糊掉采样本体
+  var FOLEY_SPRAY = 0.10;
+
   // A 大调四和弦循环 —— 慢、暖、无张力。频率是十二平均律 A4=440。
   var CHORDS = [
     [110.00, 164.81, 277.18, 415.30, 493.88],  // Amaj9
@@ -103,6 +150,18 @@
   var bgmEl = null, bgmMode = 'none';  // 'file' | 'synth' | 'none'
   var bgmReason = '';                  // 回退原因（诊断：file:// 下区分污染 / 加载失败 / 自动播放被拒）
   var duckUntil = 0;
+  // ---- UP5 / AM-012 状态 ----
+  var handPan = null;                  // 手总线声像（handGain → handPan → limAn → limiter）
+  var limAn = null;                    // limiter 输入端体检点（验收 #2：拍击真的进了 limiter）
+  var slapGains = [];                  // 每片段的 gain 节点；null = 该片段走元素直放
+  var slapSum = null, slapAn = null;   // 拍击求和点 + 体检点（只在非 file:// 建）
+  var slapMode = 'none';               // 'graph'（过 limiter）| 'element'（file:// 直放）
+  var curPan = 0;                      // 最近一次下达的声像值（probe 用）
+  var lastSplashX = 0;
+  var bgmFade = 1, bgmElDuck = 1;      // 循环淡入淡出系数 / duck 在元素路径上的系数
+  var bgmInGraph = false;              // BGM 元素是否已接进 Web Audio 图（http 才可能）
+  var loopWraps = 0, loopWatch = 0;    // 回卷次数 / 看门狗句柄
+  var lastFoley = { hz: 0, level: 0 }; // 最近一次 foley spray 的读数
 
   function now() { return ctx ? ctx.currentTime : 0; }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
@@ -204,11 +263,22 @@
     bgmGain = ctx.createGain(); bgmGain.gain.value = P.bgmVolume;
     handGain = ctx.createGain(); handGain.gain.value = P.handVolume;
     ambGain = ctx.createGain(); ambGain.gain.value = P.ambVolume;
-    bgmGain.connect(limiter); handGain.connect(limiter); ambGain.connect(limiter);
+    // UP5 / AM-012 ①：手总线加声像节点 —— 拍击与连续流水的左右位置都跟手（x）走。
+    //   handPan 缺失（老 Safari 无 createStereoPanner）时 chain() 自动退回 handGain → limiter。
+    handPan = panner(0); curPan = 0;
+    // UP5 / AM-012 ⑨：limiter **输入端**体检点。手总线的全部声音（采样拍击 + 合成兜底 + 连续
+    //   流水 + foley spray）都从这里进 limiter，所以「拍击经过 limiter」不需要靠拓扑推断，
+    //   可以直接读这条链路上的实测峰值来证明（验收 #2）。analyser 是直通节点，不影响信号。
+    limAn = ctx.createAnalyser(); limAn.fftSize = 1024;
+    chain(handGain, handPan, limAn, limiter);
+    bgmGain.connect(limiter); ambGain.connect(limiter);
 
     // ⚠ 体检点：analyser 串在链路里（不是旁挂 —— 不接到 destination 的节点不会被处理）
     anBgm = ctx.createAnalyser(); anBgm.fftSize = 1024;
-    bgmSrc = ctx.createGain(); bgmSrc.gain.value = 1;
+    // UP5 / AM-012 ③：BGM 母带 trim 落在这条**总线求和点**上 ——
+    //   它同时覆盖文件 BGM（fileGain 进这里）与合成兜底（pad→bgmSrc、湿声→bgmSrc），
+    //   语义是"母带增益"，与用户音量 bgmGain(P.bgmVolume) 正交，故不改 bgmGain（契约 §5 读数不变）。
+    bgmSrc = ctx.createGain(); bgmSrc.gain.value = BGM_TRIM;
     bgmSrc.connect(anBgm); anBgm.connect(bgmGain);
 
     // 混响（只有 pad 与铃音走湿声，划水保持干声 → 听觉上和音乐分离）
@@ -221,30 +291,88 @@
     buildAmb();
     // 划水拖尾的收尾定时器：鼠标停下后不会再有事件，只能靠它把电平淡到 0
     if (!flowTimer) { flowTimer = window.setInterval(flowTick, FLOW_TICK); }
+    // UP5 / AM-012 ④：循环接缝看门狗（曲面首的数字静音）。只做 seek + 20ms 级增益包络。
+    if (!loopWatch) { loopWatch = window.setInterval(loopTick, LOOP_TICK); }
     // ⚠ 采样池延迟建：实测启动瞬间同时存在 5 个媒体元素（1 BGM + 4 采样）时，
     //   BGM 会卡在「paused=false 但 currentTime 不推进」——播不动。错峰 2s 就好了。
     window.setTimeout(buildSlap, SLAP_DELAY);
   }
 
   // 拍击采样池：每个片段一个元素，轮流用。任一元素 canplay 即置 slapReady。
+  //
+  // 🔴 UP5 / AM-012 ②：本文件**唯一**按协议分流的地方 —— 这是原来那处"真欠账"：
+  //   · http(s)：接进 Web Audio 图 → source → slapGain[i] → slapSum → slapAn → handGain
+  //     ⇒ **过 limiter**（handGain → handPan → limiter）、**有声像**。电平全交给 Web Audio，
+  //       元素自身 volume 固定 1（否则可能与 slapGain 双重衰减）。
+  //   · file://：**原样保留元素直放**。file:// 下 createMediaElementSource 会被判跨源污染、
+  //       输出恒静音（WP4 实测过）→ 接图 = 把免构建入口弄哑。电平仍走 el.volume。
   function buildSlap() {
     if (slapPool.length) { return; }
     var files = P.slapFiles || SLAP_FILES;
+    if (!IS_FILE && ctx) {
+      slapSum = ctx.createGain(); slapSum.gain.value = 1;
+      slapAn = ctx.createAnalyser(); slapAn.fftSize = 1024;
+      slapSum.connect(slapAn); slapAn.connect(handGain);
+    }
     for (var i = 0; i < files.length; i++) {
       var el;
       try { el = new window.Audio(); } catch (e) { return; }
       el.src = files[i];
       el.preload = 'auto';
-      el.volume = 0;
+      el.volume = slapSum ? 1 : 0;      // graph 路电平交给 Web Audio；元素路起手静音（与改前一致）
       el.addEventListener('canplay', function () { slapReady = true; });
       slapPool.push(el);
+      var g = null;
+      if (slapSum) {
+        try {
+          var node = ctx.createMediaElementSource(el);
+          g = ctx.createGain(); g.gain.value = 0;
+          node.connect(g); g.connect(slapSum);
+        } catch (e2) { g = null; }       // 单个元素建图失败 → 它退回元素直放，其余不受影响
+      }
+      slapGains.push(g);
     }
+    slapMode = slapSum ? 'graph' : 'element';
+  }
+
+  // UP5 / AM-012 ⑤：foley 分层补片。采样自带 impact（瞬态）与 body（低频厚重），
+  //   缺的是**随力度变亮的细碎水花**；只补 spray 这一层，避免叠加把本体糊掉。
+  //   带通中心频率随力度上移（1800 → 4200 Hz）→ 划得越猛越"碎"，这是采样路原来没有的速度耦合。
+  function foleySpray(lv, idx) {
+    if (!ctx || !enabled || !handGain) { return; }
+    var t = now() + 0.004;
+    var hard = clamp(lv / 1.5, 0, 1);
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1800 + 2400 * hard;
+    bp.Q.value = 0.7;
+    var g = ctx.createGain();
+    var amp = clamp(lv * FOLEY_SPRAY, 0, 0.25);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(amp, 0.0002), t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    var s = src(noiseBuf);
+    s.connect(bp); bp.connect(g); g.connect(handGain);
+    s.start(t, rng() * 1.5, 0.12);
+    s.stop(t + 0.12);
+    lastFoley = { hz: Math.round(bp.frequency.value), level: +amp.toFixed(4) };
+  }
+
+  // UP5 / AM-012 ②：声像跟手。世界 x → pan。非有限值回中（不把 NaN 灌进 AudioParam）。
+  function panTo(x) {
+    if (!handPan) { return; }
+    if (typeof x !== 'number' || !isFinite(x)) { x = 0; }
+    lastSplashX = x;
+    var v = clamp(x / PAN_WORLD_REF, -1, 1) * PAN_MAX;
+    curPan = v;
+    handPan.pan.setTargetAtTime(v, now(), PAN_TAU);
   }
 
   // 播一次采样。返回 false 表示没播成（调用方要退回气泡模型 —— 保证点击永远有声）
-  function playSlap(lv) {
+  function playSlap(lv, x) {
     buildSlap();                       // 还没到延迟时间就被点了 → 立即建
     if (!slapPool.length) { return false; }
+    panTo(x);
     // 从上次位置往后找：① 优先「空闲」元素 —— 采样现在带 0.6s 混响尾，
     //   重用正在播的元素会把尾巴硬切掉（正是「结束太突兀」的来源）；② 退而求其次挑已加载的
     var pick = -1, pickIdle = -1;
@@ -262,12 +390,23 @@
       el.pause();
       el.currentTime = 0;
       el.playbackRate = 1 - SLAP_RATE / 2 + rng() * SLAP_RATE;   // 0.88~1.12 变调
-      // 音量：片段已统一峰值，这里只留很窄的力度响应（0.85~1.0），避免"忽大忽小"
+      // 音量：片段已统一峰值，这里只留很窄的力度响应（0.85~1.0），避免"忽大忽小"。
+      // UP5 / AM-012 ③：再乘本片段自己的响度配平（4 段峰值同为 0.62 但集成响度跨 2.49 LU）。
       var hard = clamp((lv - 0.55) / 0.35, 0, 1);
-      el.volume = clamp(P.handVolume * SLAP_TRIM * (0.85 + 0.15 * hard), 0, 1);
+      var trim = SLAP_TRIM * SLAP_LUFS_TRIM[use % SLAP_LUFS_TRIM.length];
+      var amp = trim * (0.85 + 0.15 * hard);
+      var g = slapGains[use];
+      if (g) {
+        el.volume = 1;                 // 电平全交给 Web Audio（避免与 slapGain 双重衰减）
+        g.gain.cancelScheduledValues(now());
+        g.gain.setValueAtTime(amp, now());
+      } else {
+        el.volume = clamp(P.handVolume * amp, 0, 1);   // file://：元素直放，自己乘手总线音量
+      }
       var p = el.play();
       if (p && p['catch']) { p['catch'](function () { }); }
       slapCount++;
+      foleySpray(lv, use);
       return true;
     } catch (e) { return false; }
   }
@@ -339,6 +478,75 @@
     if (lastMoveT < 0 || flowTarget === 0) { return; }
     var t = now();
     if (t - lastMoveT > FLOW_HOLD) { flowTarget = 0; tailShape(t); flowCmd(t); tailing = true; }
+  }
+
+  // UP5 / AM-012 ④：循环接缝看门狗。
+  //   实测（plan/_up5-measure2.js）：曲首 0~0.10s 是**数字静音**、0.108s 才有首个有效样本；
+  //   曲尾一直有声。所以 `el.loop = true` 会每 146.8s 塌一次 ~100ms 静音（不是爆音，是"呼吸"）。
+  //   修法：手动区间 [LOOP_IN, dur-LOOP_TAIL] + **等长**的淡出/淡入（对称包络 → 接缝两侧能量天然相等）。
+  // 出点 = min(元素 duration, 已缓冲末端) − LOOP_TAIL
+  //   ⚠ 元素的 `duration` 是**按码率估算**的，可能比真实音频长。实测本资产：
+  //     · http（带 Range）：duration = 146.832s = decodeAudioData 的真实长度 ✅
+  //     · file://（**交付形态**）：duration = **147.164s**（估多了 0.332s），而 buffered 末端 ≈ 146.80s
+  //   → 直接用 `duration − LOOP_TAIL` 会让出点落进末尾那段**没有数据的空区**，
+  //     每圈多出一次 ~0.3s 数字静音 —— 与曲首那 100ms 静音同类，只是更隐蔽。
+  //     故用 `buffered` 末端封顶。
+  //   ⚠ 守卫：只在已缓冲末端「贴住」duration（差值 < 1.5s）时才采信该上限。
+  //     否则（慢网、只缓冲到前 60s）会把出点提前到缓冲边界 → 每圈只剩前一段，绝对不能做。
+  //     这个上限在所有情形下都**不劣于**原式：缓冲已到尾部时两者取小，未到尾部时原样回退。
+  var loopOutSec = 0, bufferedEndSec = 0, bgmTrue = 0;   // bgmTrue：真实时长封顶是否生效（诊断用）
+  function loopOut(dur) {
+    var est = dur - LOOP_TAIL;
+    // ① 真实内容时长封顶（**up5 的关键修复**）：file:// 下元素 duration 偏长 → 尾部会塌静音。
+    if (Math.abs(dur - BGM_TRUE_DUR) < BGM_TRUE_GUARD) {
+      est = Math.min(est, BGM_TRUE_DUR - LOOP_TAIL);
+      bgmTrue = 1;
+    } else { bgmTrue = 0; }
+    // ② 已缓冲末端封顶（http 下 Range 流式播放时有用；file:// 下 buffered 报的是估算值，等价于 ① 已覆盖的情形）
+    try {
+      var b = bgmEl.buffered;
+      if (b && b.length) {
+        var be = b.end(b.length - 1);
+        bufferedEndSec = be;
+        if (be > LOOP_IN + 5 && (dur - be) < 1.5) { est = Math.min(est, be - LOOP_TAIL); }
+      }
+    } catch (e) { /* buffered 在某些状态会抛，忽略 */ }
+    return est;
+  }
+
+  function loopTick() {
+    if (!bgmEl || bgmMode !== 'file' || !enabled || bgmEl.paused) { return; }
+    var dur = bgmEl.duration;
+    if (!isFinite(dur) || dur <= LOOP_IN + LOOP_TAIL + 1) { return; }
+    var out = loopOut(dur); loopOutSec = out;
+    var t = bgmEl.currentTime;
+    if (t >= out) {                      // 到出点 → 回卷
+      try { bgmEl.currentTime = LOOP_IN; } catch (e) { return; }
+      loopWraps++;
+      t = LOOP_IN;
+    }
+    var rel = t - LOOP_IN;               // 入点后爬升
+    var f = rel < LOOP_FADE_IN ? Math.max(0, rel / LOOP_FADE_IN) : 1;
+    var left = out - t;                  // 出点前下落
+    if (left < LOOP_FADE_OUT) { f = Math.min(f, Math.max(0, left / LOOP_FADE_OUT)); }
+    if (f === bgmFade) { return; }
+    bgmFade = f;
+    elVolApply();
+    if (bgmInGraph && fileGain) {        // graph 路：用 AudioParam 精确插值，比 20ms 步进平滑
+      var tt = now();
+      fileGain.gain.cancelScheduledValues(tt);
+      fileGain.gain.setValueAtTime(fileGain.gain.value, tt);
+      fileGain.gain.linearRampToValueAtTime(f, tt + LOOP_TICK / 1000);
+    }
+  }
+
+  // BGM 元素路径的电平：**只有一个出口** —— 母带 trim × duck 系数 × 循环淡入淡出
+  function bgmBase() { return clamp(P.bgmVolume * BGM_TRIM, 0, 1); }
+  function elVolApply() {
+    if (!bgmEl) { return; }
+    // graph 路电平全由 Web Audio 负责（bgmSrc/fileGain），元素 volume 必须固定 1 → 防双重衰减
+    if (bgmInGraph) { bgmEl.volume = 1; return; }
+    bgmEl.volume = clamp(bgmBase() * bgmElDuck * bgmFade, 0, 1);
   }
 
   // 拖尾音色：高频水花先收、低频涌动留下并下扫 → 听感是「水波回落」而不是「沙沙的风」
@@ -511,13 +719,15 @@
     try { el = new window.Audio(); } catch (e) { return startSynthBgm(); }
     bgmEl = el;
     el.src = url;                       // ⚠ 别漏：不设 src 就没有 error 事件，兜底永远不触发
-    el.loop = true;
+    // UP5 / AM-012 ④：**不再**用 el.loop —— 实测曲首有 ~100ms 数字静音，硬件 loop 会每
+    //   146.8s 塌一次静音。改由 loopTick() 做手动区间 [LOOP_IN, dur-LOOP_TAIL]。
+    el.loop = false;
     el.preload = 'auto';
-    el.volume = clamp(P.bgmVolume, 0, 1);
+    el.volume = clamp(P.bgmVolume, 0, 1);   // loopTick/elVolApply 起来后会按 bgmBase() 覆盖
     // ⚠ 只在 http(s) 下加 crossOrigin：file:// 加它会直接导致加载失败
     if (/^https?:/i.test(url)) { el.crossOrigin = 'anonymous'; }
 
-    var isFile = /^file:/i.test(window.location.href);
+    var isFile = IS_FILE;
     var an = null;
     if (!isFile) {
       try {
@@ -525,10 +735,28 @@
         fileGain = ctx.createGain(); fileGain.gain.value = 1;
         an = ctx.createAnalyser(); an.fftSize = 1024;
         node.connect(an); an.connect(fileGain); fileGain.connect(bgmSrc);
-      } catch (e) { an = null; }        // 建图失败就退回元素直放
+        // UP5 / AM-012 ③：接图成功后**元素 volume 固定 1** —— 电平全交给 Web Audio
+        //   （bgmSrc 带母带 trim、bgmGain 带用户音量）。改前这里用的是 P.bgmVolume，
+        //   若浏览器把元素 volume 也应用在 MediaElementSource 上，就会出现**双重衰减**。
+        bgmInGraph = true;
+        el.volume = 1;
+      } catch (e) { an = null; bgmInGraph = false; }   // 建图失败就退回元素直放
     }
+    // 起播就跳到入点（跳过曲首数字静音）；回卷由 loopTick 负责
+    el.addEventListener('loadedmetadata', function () {
+      try { if (el.currentTime < LOOP_IN) { el.currentTime = LOOP_IN; } } catch (e) { /* 忽略 */ }
+    });
+    // UP5 / AM-012 ④兜底：万一元素先自然结束（资产被换、估算时长偏短、回卷被打断），
+    //   就手动回到入点续播 —— 避免「音乐永久停住」这种最差失败模式。
+    el.addEventListener('ended', function () {
+      if (bgmMode !== 'file' || !enabled) { return; }
+      try { el.currentTime = LOOP_IN; } catch (e) { return; }
+      loopWraps++;
+      try { var pr = el.play(); if (pr && pr['catch']) { pr['catch'](function () { }); } } catch (e) { /* 忽略 */ }
+    });
 
     var settled = false;
+    var taintTries = 0;                 // 「是否真出声」这条判据自己的耐心额度（见下）
     function fallback(reason) {
       if (settled) { return; }
       settled = true;
@@ -562,11 +790,26 @@
           return fallback('not playing (paused=' + el.paused + ', t=' + el.currentTime + ')');
         }
         if (an) {                        // http 下接了图 → 再验一次真的出声（防污染）
+          // 🔴 UP5 / AM-012 ⑩：**音频图没跑起来时，analyser 读数恒为 0，体检毫无意义**。
+          //   实测（无头 Chrome + SwiftShader 软件渲染）：`ctx.resume()` 已 resolve、
+          //   `ctx.state==='running'`，但音频渲染线程的量子定时器被主线程饿住，
+          //   `ctx.currentTime` 在起播后 ~1.1s 内仍是 **0**（probe 读数 ctxTime=0.0）→
+          //   analyser 全 0 → 被判成 `silent (tainted)` → **永久退回合成 pad**（真曲子丢失）。
+          //   真机 GPU 不忙时不一定触发，但这属于「误判一次就永久降级」的高代价分支，必须兜住：
+          //   图没起来就继续等，等不到才判负。等的时候不消耗 `tries` 的额度（那条管起播）。
+          if (!ctx || ctx.state !== 'running' || !(ctx.currentTime > 0)) {
+            if (++taintTries < 40) { window.setTimeout(check, 250); return; }
+            return fallback('ctx not running (state=' + (ctx ? ctx.state : '?') + ', t=' + (ctx ? ctx.currentTime : 0) + ')');
+          }
           var buf = new Float32Array(an.fftSize);
           an.getFloatTimeDomainData(buf);
           var peak = 0;
           for (var i = 0; i < buf.length; i++) { var a = Math.abs(buf[i]); if (a > peak) { peak = a; } }
-          if (peak < 1e-4) { return fallback('silent (tainted)'); }
+          if (peak < 1e-4) {
+            // 图在跑、元素在播、analyser 却全 0 → 才是真的跨源污染。多给一次机会再定论。
+            if (++taintTries < 3) { window.setTimeout(check, 400); return; }
+            return fallback('silent (tainted)');
+          }
         }
         bgmMode = 'file';               // ⚠ 只在这里置 'file'：不能写在事件外，会覆盖 fallback 的 'synth'
       } catch (e) { fallback('probe failed'); }
@@ -640,10 +883,12 @@
     },
 
     // 划水：连续「流水」。事件只更新目标电平 + 刷新活动时间，包络交给指数跟随（§4.2）
-    playHand: function (speed01) {
+    // UP5 / AM-012：新增可选第 2 参 x（世界坐标）→ 声像跟手。**旧调用方少传一个也照常工作**。
+    playHand: function (speed01, x) {
       if (!ctx || !enabled || !handEnv) { return; }
       var t = now();
       var s = clamp(speed01, 0, 1);
+      panTo(x);                        // 拖动与点击共用：手在画面左边 → 声音也偏左
 
       // 新的一轮拖动（距上次 >0.6s）→ 洗牌 LFO 与噪声纹理，避免每次听起来一模一样
       if (lastRoundT < 0 || t - lastRoundT > 0.6) { reshuffle(t); lastRoundT = t; }
@@ -664,7 +909,7 @@
       // 点击：间隔够大 **且** 速度够高才算点击（§4.1 音色分离）。
       // 只判间隔会把「慢拖」误判成一串点击 → 听起来像打架子鼓。
       if ((lastSplashT < 0 || t - lastSplashT > CLICK_GAP) && s >= CLICK_MIN_SPEED) {
-        click(t, 0.30 + 0.20 * s);
+        click(t, 0.30 + 0.20 * s, x);
       }
       lastSplashT = t;
       api.duck();
@@ -695,13 +940,17 @@
       g.linearRampToValueAtTime(base, up + P.duckUp);
       duckUntil = up + P.duckUp;
 
-      // file:// 下 BGM 是元素直放、不经过 bgmGain → 把同一条让位曲线手动写到 el.volume
-      if (bgmMode === 'file' && bgmEl) {
-        bgmEl.volume = clamp(low, 0, 1);
+      // file:// 下 BGM 是元素直放、不经过 bgmGain → 把同一条让位曲线手动写到 el.volume。
+      // UP5 / AM-012：这里只改「duck 系数」这一个乘子，最终电平仍由 elVolApply() 统一出口算，
+      //   避免与母带 trim / 循环淡入淡出打架（三处各写一次 el.volume 是上一版的老问题）。
+      if (bgmMode === 'file' && bgmEl && !bgmInGraph) {
+        bgmElDuck = clamp(1 - P.duckAmount, 0, 1);
+        elVolApply();
         if (duckTimer) { window.clearTimeout(duckTimer); }
         duckTimer = window.setTimeout(function () {
           duckTimer = 0;
-          if (bgmEl) { bgmEl.volume = clamp(P.bgmVolume, 0, 1); }
+          bgmElDuck = 1;
+          elVolApply();
         }, (P.duckDown + P.duckUp) * 1000);
       }
     },
@@ -749,6 +998,27 @@
         slapReady: slapReady,           // 拍击采样是否可用
         slaps: slapCount,               // 采样实际播放次数（断言用：点了就该涨）
         slapDur: slapPool.length ? slapPool[0].duration : 0,   // 采样时长（含烘进去的混响尾）
+        // ---- UP5 / AM-012 附加读数（供 §3 验收 #2/#3/#4/#6）----
+        slapMode: slapMode,             // 'graph'（过 limiter+声像）| 'element'（file:// 直放）
+        slapRouted: slapGains.length - slapGains.filter(function (v) { return !v; }).length,
+        slapAnPeak: slapAn ? peakOf(slapAn) : 0,     // 拍击**在 Web Audio 图内**的实测峰值
+        limInPeak: limAn ? peakOf(limAn) : 0,        // limiter **输入端**实测峰值（验收 #2 直读证明）
+        handPan: handPan ? +handPan.pan.value.toFixed(4) : null,   // 实际声像（-1..1）
+        handPanCmd: +curPan.toFixed(4),              // 最近下达的目标声像
+        handPanCmdRaw: curPan,                       // 同上，**全精度**（验收 #4 用它做严格单调/误差断言）
+        bgmTrim: BGM_TRIM,              // 母带 trim（验收 #3：raw + 20log10(trim) 应命中 -16）
+        bgmSrcGain: bgmSrc ? +bgmSrc.gain.value.toFixed(4) : 0,   // 总线上的实际 trim（应 === bgmTrim）
+        bgmFade: +bgmFade.toFixed(4),   // 循环淡入淡出当前系数
+        bgmElDuck: +bgmElDuck.toFixed(4),   // duck 在**元素路径**上的系数（验收 #5：元素音量 = bgmVolume×trim×duck×fade）
+        loopIn: LOOP_IN, loopTail: LOOP_TAIL, loopFadeOut: LOOP_FADE_OUT, loopFadeIn: LOOP_FADE_IN,
+        loopWraps: loopWraps,
+        loopOut: +loopOutSec.toFixed(3),        // 运行期实际出点（回卷阈值）
+        bgmTrueDur: BGM_TRUE_DUR, bgmTrueCapped: bgmTrue,   // 真实时长封顶（1 = 生效；0 = 资产已换、退回估算式）
+        durEst: bgmEl ? +bgmEl.duration.toFixed(3) : 0,   // 元素报的时长（估算值，file:// 下偏长）
+        bufferedEnd: +bufferedEndSec.toFixed(3),          // 已缓冲末端（封顶用；也是真实数据末端的代理）
+        limiterReduction: limiter ? limiter.reduction : 0,   // dB，<0 即限幅器真的在动作
+        foleySpray: lastFoley,          // 采样路补的水花层（⑤）
+        fileProto: IS_FILE, bgmInGraph: bgmInGraph,
         // BGM 文件诊断：区分「加载失败 / 自动播放被拒 / 跨源污染」三种回退原因
         bgmEl: bgmEl ? {
           readyState: bgmEl.readyState, currentTime: bgmEl.currentTime, volume: bgmEl.volume,
@@ -792,13 +1062,13 @@
   var BUBBLE_F_SOFT = 330;             // 小扰动 → 小气泡 → 高频
   var BUBBLE_F_HARD = 175;             // 大扰动 → 大气泡 → 低频
 
-  function click(t, level) {
+  function click(t, level, x) {
     clickCount++;
     var lv = clamp(level, 0, 1.5);
 
     // ① 采样优先：真实水声，一次性解决「像拍不锈钢」的问题（合成再怎么调都有音高感）。
     //    失败才往下走气泡合成 —— 那条路是兜底，不是默认。
-    if (slapReady && playSlap(lv)) { return; }
+    if (slapReady && playSlap(lv, x)) { return; }
 
     var hard = clamp(lv / 1.5, 0, 1);              // 0=轻拍 1=重拍
 
@@ -855,10 +1125,13 @@
 
   // ------------------------------------------------------ splash 订阅（§3）
   // 唯一的信息来源：SW.bus 的 splash 事件。不直接调 SW.input / SW.ripple。
+  // UP5 / AM-012：payload 里**本来就带 `x`**（`70-input.js:54` → {x, z, speed01}）——
+  //   所以声像不需要任何跨模块新增字段，`70-input.js` 一个字节都不用改。
   SW.bus.on('splash', function (p) {
     if (!api.ready) { return; }
     var s = (p && typeof p.speed01 === 'number') ? p.speed01 : 0;
-    api.playHand(s);
+    var x = (p && typeof p.x === 'number') ? p.x : 0;
+    api.playHand(s, x);
   });
 
   SW.audio = api;
