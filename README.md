@@ -103,6 +103,20 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
   `SLAP_LUFS_TRIM` 都是**针对当前资产实测**的，换了资产就不对（不会静音，但母带目标与循环出点会失准）。
   跑 `python plan/audio-baseline.py --emit-js`，它会列出每项差多少、并给出可直接粘贴的新值。
 - **拍击采样 `slap1~4.wav`** —— sounds-mp3（免费商用、免署名）
+  ⚠️ **待裁（UP9 取证时发现，未改动原结论）**：sounds-mp3 站方 About 页自述
+  「site is **not intended for commercial use**」且素材「collected from open sources」——
+  即站方不持有版权、给不出商用授权。该行标注是否站得住需要主控裁（见 AM-010 §5）。
+- **海鸟 `bird1~6.wav`** —— SoundDino「岸边可以听到海鸥的叫声」
+  （`such-a-cry-of-seagulls-can-be-heard-on-the-shore.mp3`，5.89s / 22050 Hz）
+  授权原文（sounddino.com 分类页 + 首页 FAQ，2026-09-25 取证）：
+  「Free to download for **personal and commercial work**, **no attribution**, no licence chase.」
+  「Do I need to credit Sounddino? **No** — attribution is not required.」
+  「Can I use Sounddino in commercial or paid client work? **Yes**.」
+  「Nothing on Sounddino is registered with **Content ID**.」
+  处理：只做**淡入淡出 + 拖尾 + 电平归一**（不滤波 / 不重采样 / 不加混响）。
+  切点落在两声之间的包络谷底，距下一声起振 ≥ 60 ms；段与段**允许重叠**（源只有 5.89 s）。
+- **咔嗒 `tick1.wav`（Mixkit #1125）/ `tick2.wav`（Mixkit #1120）** ——
+  Mixkit **Sound Effects Free License**：免费商用、免署名、允许修改
 - 其余**全部程序化生成**，零外部依赖
 
 ## 已知限制

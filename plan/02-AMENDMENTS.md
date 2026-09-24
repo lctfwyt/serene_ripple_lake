@@ -39,6 +39,9 @@ AM-009（UP2 后期处理管线）已应用并关闭（UP2 · 2026-09-24 22:05�
 | AM-012 | 09-24 | UP5 音频：拍击声像 + 母带 −16 LUFS + 接缝修复 | UP5/10-audio.js | ✅ 6/6；纠正 90-WAVE4 §3 笔误 |
 | AM-013 | 09-24 | 截帧改显式开关 `--shots` + 交付文件 `eol=lf` | UP1a 复核 | ✅ 13:16 |
 | **AM-009** | 09-24 | UP2 后期处理管线（bloom + vignette/grain + OutputPass 收尾）；复核返工 grain（主控 22:1x 裁：sin-hash → 定种噪点纹理 + amp 0.02） | UP2 / 契约§1§2§6 | ✅ 22:35（返工轮见 93 §6a）；全文移 98b 归档 |
+| AM-011 | 09-25 | 时间刻度尺：`#hour` 由 range 改 24h 环形刻度尺（UP10 · 波次 5） | UP10 / 契约§2.8§7 | ✅ 09-25 00:55；全文移 98b 归档 |
+| AM-014 | 09-25 | 刻度尺手感：松手惯性 + 拖动时中线突出层 + 命中区 padding（UP10 增量） | UP10 / `80-ui.js` | ✅ 09-25 01:2x；全文移 98b 归档（AM-012/13 编号冲突待裁，顺延 AM-014） |
+| **AM-010** | 09-25 | UP9 海鸟环境音 + 咔嗒音效 API：海鸟层（`bird1~6`）+ `SW.audio.sfxTick(step)`（UP10 刻度尺消费） | UP9 / `10-audio.js`·`00-config.js`·README | ✅ 09-25 01:5x；全文见 §5 |
 
 ---
 
@@ -69,3 +72,54 @@ AM-009（UP2 后期处理管线）已应用并关闭（UP2 · 2026-09-24 22:05�
 
 - 只影响**一个包**的内部修改 → 不开变更单，写进该包文档即可。
 - 状态符号：⬜ 未决 → 🔶 部分应用 → ✅ 全部应用并验证 → 归档（总表留一行）。
+
+---
+
+## 5. AM-010 · UP9 海鸟环境音 + 咔嗒音效 API（✅ 已应用）
+
+**1 · 背景 / 依据**
+- 需求原文：「背景远处浪声不错，加点偶尔的海鸟声」。包文档 `94-UP9-birds.md`，口径以 `90-WAVE5.md` 为准。
+- 硬约束（实测）：`file://` 下 `fetch` / `XHR` / `decodeAudioData` 全被拦 → 音效只能走
+  `<audio>` 元素池（同 `slapPool`）。`SLAP_DELAY=4000` 的存在证明「启动瞬间多元素并发会把 BGM 挤死」。
+
+**2 · 变更内容**
+- 契约面：`01-CONTRACT.md` §6 音频段新增 `birds` / `birdGapMin` / `birdGapMax` / `uiVolume`；
+  §5 新增第四条总线 `uiGain`（与 bgm/hand/amb 并列进 limiter）。
+- 代码面（`src/10-audio.js`，UP9 全权所有）：
+  - `buildPool()` 泛化 → `buildBirds()` / `buildTicks()` 共用；建池时机
+    **BGM(0) → slap(4.0 s) → tick(5.2 s) → bird(6.5 s)** 错峰。
+  - `birdCall()`：间隔走 `rng`（禁 `Math.random`），`P.birdGapMin/Max` 可覆盖（查验时调短）。
+  - `SW.audio.sfxTick(step)`：签名按 `90-WAVE5 §5` **冻结**实现（未改），
+    自带 ≤25 ms 节流、受 `#snd` 管辖、返回 boolean。
+- 资产面：`assets/audio/bird1~6.wav`（SoundDino）、`tick1~2.wav`（Mixkit #1125 / #1120）。
+
+**3 · 影响面（不与他人重叠）**
+| 文件 | 归属 |
+|---|---|
+| `src/10-audio.js` | UP9（所有者） |
+| `src/00-config.js` **仅音频段** | UP9 |
+| `assets/audio/bird*.wav` `tick*.wav` | UP9 新增 |
+| `README.md` 资产表 | 共享（已追加溯源，见 §5） |
+| `src/80-ui.js`（UP10 消费 `sfxTick`） | **未碰** |
+| 冻结件 `wp5-assert.js` / `wp5-env.js` / 阈值 | **未碰** |
+
+**4 · 验收判据 + 实测结果**
+| # | 判据 | 结果 |
+|---|---|---|
+| 1 | 海鸟会叫（间隔调 1~2 s 后） | ✅ http `birds=10` / file `birds=7`；`birdReady=true` |
+| 2 | `sfxTick` 节流生效 | ✅ 同 tick 连打 10 次 → 仅第 1 次 true；40 ms 后再调 → true；`ticks` +1 |
+| 3 | **BGM 未被新池挤死**（关键回归） | ✅ http `paused=false currentTime=14.01 s`；file `13.59 s`；`err=0` |
+| 4 | 8 个新资产均可加载 | ✅ bird1~6（1.05 / 0.90 / 0.90 / 1.00 / 1.15 / 1.04 s）+ tick1~2 |
+| 5 | 15 条断言不退化 | ✅ 15/15 |
+| 6 | 禁 `Math.random` | ✅ grep 命中仅出现在注释里 |
+
+**5 · 挂账：sounds-mp3 授权待裁**
+README 资产表原写 `slap1~4.wav` 来自 sounds-mp3「免费商用、免署名」。UP9 取证时发现站方
+About 页自述「site is **not intended for commercial use**」且素材「collected from open sources」
+→ 站方不持有版权，给不出商用授权。UP9 **未改动**该行结论，只在 README 加了「⚠️ 待裁」附注。
+可否继续用 `slap1~4` 由主控裁（不在 UP9 授权范围内改）。
+
+**6 · 素材处理原则（雨桐 2026-09-25 定，推翻我上一版做法）**
+- 上一版（16 kHz 重采样 + 合成混响 + 压高频）被否：「不好听」。
+- 终版：**只做淡入淡出 + 拖尾 + 电平归一**；「远处」靠**播放音量**（`BIRD_TRIM`）实现，
+  **不**烘进资产。切点不落在下一声刚起头处；段与段允许重叠。

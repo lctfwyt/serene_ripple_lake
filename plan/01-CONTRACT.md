@@ -49,11 +49,18 @@ SW.audio = {
   setEnabled(bool),
   playHand(speed01),      // speed01 ∈ [0,1]，控制划水/点击声强度
   duck(),                 // 压低 BGM（划水时调用）
+  sfxTick(step),          // UP9/AM-010：刻度尺咔嗒。step ∈ [0,1]，返回 boolean（真出声才 true）
+                          //   自带 ≤25 ms 节流、受 #snd 管辖、未就绪/静音一律 false 且不抛错
+                          //   签名由 90-WAVE5 §5 冻结 —— 改签名要先改契约
   suspend(),
   resume(),
   probe()                 // → { state, bgmGain, handGain, ambGain, lastHandPeak }
 };
 ```
+
+**AM-010（2026-09-25，UP9）**：新增 `sfxTick(step)`（`80-ui.js` 的时间刻度尺消费）与海鸟环境层。
+海鸟走 `<audio>` 元素池（同 slapPool），建池**错峰**在 slap 之后（tick 5.2 s / bird 6.5 s）——
+`SLAP_DELAY` 的存在就是在证明「启动瞬间多元素并发会把 BGM 挤死」。`P.birds` 总开关。
 
 ### 2.2 `20-time.js` → `SW.time`（所有者：WP3）
 
@@ -160,11 +167,17 @@ SW.post = {
 SW.input = { init(dom), probe() /* → { worldX, worldZ, speed01, dragging } */ };
 ```
 
-### 2.8 `80-ui.js` → `SW.ui`（所有者：WP3）
+### 2.8 `80-ui.js` → `SW.ui`（所有者：WP3 → **UP10**，AM-011）
 
 ```js
 SW.ui = { init(), update(dt) };   // 内部自建 DOM，不改 index.html
 ```
+
+**AM-011（2026-09-25，UP10）**：`#hour` 由 `input[type=range]` 改为 `div[role=slider][tabindex=0]`
+—— 24h 环上的滑动窗口刻度尺：hour 恒 `mod 24`、拖动走**位移增量**（无限拖动 / 首尾相接不需要端点特例）；
+键盘方向键 / PageUp/Down / Home 与双击回 auto 全保留。刻度尺常量在 `80-ui.js` 顶部模块区
+（90-WAVE5 §4 耦合 ①：**不进 `00-config.js`**）；咔嗒声经 `SW.audio.sfxTick(step)`（§2.1，判空降级）。
+**`#ui` 的第一个子节点保持为左上时段面板** —— pw 的 `ui-panel` 快照盯的就是它。
 
 ### 2.9 `90-debug.js` → `SW.debug`（所有者：WP1）
 
@@ -231,7 +244,7 @@ SW.bus = { on(key, fn), off(key, fn), emit(key, payload) };
 | `#ui` | UI 容器（默认空） | WP1 建容器，WP3 往里加 |
 | `#hint` | 首次手势提示 | WP1 |
 | `#snd` | 声音开关 | WP3 |
-| `#hour` | 时段滑块 | WP3 |
+| `#hour` | 时段刻度尺（AM-011 起为 `div[role=slider]`，不再是 `input[type=range]`；DOM id 未变） | WP3 → UP10 |
 | `#dbg` | debug 面板 | WP1（仅 `?debug=1`） |
 
 **所有 UI 用 JS 创建并 append 到 `#ui`**，不改 `index.html` 结构 → 避免并行冲突。
@@ -327,6 +340,8 @@ var P = {
   duckAmount: 0.45, duckDown: 0.05, duckUp: 0.70,
   handBand: [400, 1400, 0.8], handDecay: 0.62,
   bgmFile: 'assets/audio/bgm-stillwater.mp3',
+  // AM-010（UP9）：海鸟层总开关 + 鸣叫间隔区间（查验时可临时调短）+ UI 音效总线音量（第四条总线）
+  birds: true, birdGapMin: 25, birdGapMax: 70, uiVolume: 0.30,
 
   // 反光路径（glitter path）—— AM-002 新增；AM-006 收窄白光范围
   glitterDetail: 0.16, glitterRough: 0.065, glitterJitter: 0.15,
@@ -355,7 +370,7 @@ var P = {
 | `src/60-water.js` | **WP2** | 只读 |
 | `src/70-input.js` | **WP2** | 只读 |
 | `src/20-time.js` | **WP3** | 只读 |
-| `src/80-ui.js` | **WP3** | 只读 |
+| `src/80-ui.js` | **WP3 → UP10**（AM-011） | 只读 |
 | `src/10-audio.js` | **WP4** | 只读 |
 | `assets/audio/*` | **WP4** | 只读 |
 | `src/85-fallback.js` | **WP5** | 只读 |
@@ -512,3 +527,6 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 2026-09-24 | **AM-007 §5.2c（主控直裁 + 实测）**：① 断言 #5 由「原始色相步长 < 60°」改为**色度加权** `‖ΔH‖ × min(C_a,C_b) < 2.5`；§9 追加 `MAX_CHROMA_STEP` + 「**色相路径自检**」算式块。**理由**：`fog` 补暖后原始色相步长 38° → **159°**，但色度压到近灰（偏移 ±4/255）→ 无「过渡发灰」。阈值经**全表 13 key × 6 字段**重新标定（最大 2.11 = `sun` 斜阳→黄昏），**不是下游建议的 1.5**（1.5 会打挂 `sun`/`gli`/`wat`/`sky`）。② §9 `HALF_H_FOV` / 反光柱自检 / 验证窗口自检的 `hHalf` 由笔误 **28.03° → 28.53°**（正确值；28.03° 是 1254×720 的值）；③ §9 验证窗口自检追加「**像素类判据一律固定 1306,876 → 1280×720**」的口径约束 | **WP5**（#5 换口径 + 画布口径固化）· WP3（作者侧的自检规则） |
 | 2026-09-24 | **AM-009（UP2 后期处理管线，已关单）**：§1 加载顺序插入 `vendor/three-post.min.js`（THREEPOST 全局，主控构建，仅免构建入口）与 `src/65-post.js`；§2 新增 **§2.6b `SW.post`**；§6 追加 post 参数段（`bloom/bloomStrength/bloomRadius/bloomThreshold/vignetteAmp/grainAmp`，`?nopost=1` 运行时关闭）。**断言阈值一律未动**——#2 语义变为 composer 末位 pass 计数（1/1）、#13/#6 读数微移，重标由主控做。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md` §AM-009，过程见 `plan/93-UP2-bloom.md` | **UP2** · 契约 §1/§2/§6 · WP5（断言重标待做） |
 | 2026-09-24 | **AM-009 收口（主控）**：① §6 `grainAmp` `0.02 → **0**`（终裁：逐帧平移噪点在深色治愈画面呈「电视机雪花」，与治愈目标相悖；管线保留可自行开启）② 断言重标三件：**#2 改直渲口径**（临时关后期直渲一帧读真实场景预算，修复 composer 末 pass 1/1 失真；实测 6/53088 恢复 WP5 语义）、**#7 改名**「glitter增益日调制:夜>午(probe直读uGlitterGain)」（UP8 后像素口径归 #13，本条校验日调制曲线）、**#13 阈值 `1.8 → 1.9`**（bloom 时代实测带 2.12~2.15，抬 6% 地板增强回归灵敏度）。镜像 `plan/pw/tests/10-assert.spec.mjs` 同步；冻结基线 `frozen-hashes.json` 第 2 版重录；Playwright 像素基线 `pw:update` 重录后 **14 passed**；新旧读数比对 **87/87 无超差** | **主控** · 断言脚本（预约动作）· 契约 §6 |
+| 2026-09-25 | **AM-011（UP10 时间刻度尺）**：§2.8 加注 —— `#hour` 由 `input[type=range]` 改 `div[role=slider][tabindex=0]`（24h 环形刻度尺，DOM id 与 `SW.ui` 签名均未变）；§7 `src/80-ui.js` 所有者 WP3 → UP10。代码面只在 `80-ui.js`（零越界）；断言阈值零改动；pw 像素基线 `full.png` 待主控重录（真变更，带外区域实测逐字节相同） | **UP10** · 契约 §2.8/§7 · WP5（基线重录） |
+| 2026-09-25 | **AM-014（UP10 刻度尺手感）**：§2.8 签名/DOM id 不变 —— `#hour` 命中区加透明 padding（bbox 544×50，视觉带位置未动）、拖动加惯性（速度采样+指数衰减，常量 `R.inertia`）、拖动/滑行时中线突出层（`#sw-ruler-track::before`，静止 opacity 0 不动像素）；env-narrow「UI 不重叠」口径未改，伪元素方案天然豁免。代码面只在 `80-ui.js`（零越界）；断言阈值零改动；dist 基线重落 766,289 B | **UP10** · 契约 §10 · 主控（基线重录） |
+| 2026-09-25 | **AM-010（UP9 海鸟环境音 + 咔嗒 API）**：§2.1 `SW.audio` 追加 `sfxTick(step)`（签名由 `90-WAVE5 §5` 冻结，`step ∈ [0,1]`、返回 boolean、自带 ≤25 ms 节流、受 `#snd` 管辖）；§6 音频参数段追加 `birds` / `birdGapMin` / `birdGapMax` / `uiVolume`（第四条总线 `uiGain` 与 bgm/hand/amb 并列进 limiter）。**海鸟与咔嗒一律走 `<audio>` 元素池**（`file://` 无 `decodeAudioData`），建池错峰 tick 5.2 s / bird 6.5 s（排在 `SLAP_DELAY=4000` 之后）。新增资产 `assets/audio/bird1~6.wav`（SoundDino，免费商用免署名）+ `tick1~2.wav`（Mixkit Free License）；随机全走 `rng`（独立种子，不消耗渲染随机序列）。代码面只在 `10-audio.js` 与 `00-config.js` 音频段（零越界）；断言阈值零改动 | **UP9** · 契约 §2.1/§6 · UP10（消费 `sfxTick`） |

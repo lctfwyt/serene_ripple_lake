@@ -99,6 +99,12 @@ SW.audio.sfxTick(step);   // step: number 0~1，可选，默认 0.5；返回 boo
 birds: true, birdVolume: 0.5, birdGapMin: 25, birdGapMax: 70,
 ```
 
+> ⚠ **实现落点（UP9 完工后回填）**：最终进 `00-config.js` 音频段的是
+> `birds: true, birdGapMin: 25, birdGapMax: 70, uiVolume: 0.30`
+> —— `birdVolume` **未采用**（鸟的远近改由 `BIRD_TRIM` 这个母带常数控制，它刻意不放进 `P`，
+> 理由见 `10-audio.js` 注释：它是按当前资产实测的，换资产必须重算）；
+> 额外多了 `uiVolume`（第四条总线，管咔嗒）。**以上面这行为准，契约 §6 已同步。**
+
 ⚠ 这两个后缀 `Min/Max` 的间隔参数若你觉得用一个 `birdGap` + 抖动更简洁，可以改，但**契约要同步**。
 
 ---
@@ -136,4 +142,62 @@ birds: true, birdVolume: 0.5, birdGapMin: 25, birdGapMax: 70,
 
 ## §6 完工记录（过程流水）
 
-_（开工后逐条追加）_
+### 2026-09-25 01:5x · AM-010 完工（含一次返工）
+
+**返工教训（写在前头）**：我第一版把海鸟做了「16 kHz 重采样 + 合成混响 + 压高频」，雨桐判
+「不好听」。第二版做 A/B 试听页（`plan/_up9-audition/`）请他耳朵定，结论：
+> 「远处感反而没有原声好听，加淡入淡出让声音不要那么突兀就行，必要的时候加拖尾」
+> 「声音小才像远方的」
+→ **终版处理只保留：淡入淡出 + 拖尾 + 电平归一**。「远处」交给播放音量（`BIRD_TRIM`），
+**不烘进资产**。这是审美裁决，不是技术裁决 —— 以后换鸟声资产照此办理。
+
+**素材终裁**
+- 源：SoundDino「岸边可以听到海鸥的叫声」5.89 s / 22050 Hz / 单声道（雨桐指定）
+  —— 库里 8 声鸥叫，底噪 −24 dBFS（自带海浪空气感，不滤）
+- 切 6 段（**允许重叠**，源太短）：
+
+| 文件 | 区间 | 时长 | 内含 |
+|---|---|---|---|
+| `bird1.wav` | 0.10→1.15 | 1.05 s | 第 1 声 + 回声（最强 0 dB） |
+| `bird2.wav` | 1.05→1.95 | 0.90 s | 第 2 声（−0.7 dB） |
+| `bird3.wav` | 1.85→2.75 | 0.90 s | 第 3 声（−7.5 dB，中景） |
+| `bird4.wav` | 2.70→3.70 | 1.00 s | 第 4+5 声 |
+| `bird5.wav` | 3.65→4.80 | 1.15 s | 第 6+7 声 |
+| `bird6.wav` | 4.85→5.89 | 1.04 s | 第 8 声（−1.0 dB，末尾最强） |
+
+- 切点规则：起点落在前一声**衰减完**之后、终点落在后一声**起振前 ≥60 ms**
+  （10 ms 分辨率包络 + 谷底搜索，脚本 `/tmp/cut_seagull.py`）→ 不会切出「下一声刚开头就断」。
+- 淡入 25 ms / 淡出 200 ms（raised-cosine，即拖尾）；峰值归一 0.62；
+  组内**有声段 RMS 等响配平**（只衰减不提升）。
+- 咔嗒：`tick1.wav`（Mixkit #1125）/ `tick2.wav`（Mixkit #1120）。
+
+**实测（baseline 读数）**
+
+| 资产 | 峰值 | LUFS |
+|---|---|---|
+| bird1~6 | −4.15 ~ −7.34 dBFS | −12.9 ~ −14.8 |
+| tick1/2 | −4.15 / −12.52 dBFS | 短于积分块（0.4 s）→ nan |
+
+有效响度：鸟 −13.8 LUFS + 20log10(0.32) = **−23.7**；拍击 −20 LUFS + 20log10(0.85) = −21.4
+→ 鸟比拍击低 2.3 dB、有效峰值 0.198 vs 0.596。**`BIRD_TRIM` 就是「远近旋钮」**（改大 = 鸟近）。
+
+**验收（§4 十条）**
+
+| # | 结果 |
+|---|---|
+| 1 `file://` 能听见鸟 | ✅ `birds=7`（间隔临时调到 1~2 s）· `birdMode=element` |
+| 2 两入口一致 | ✅ http `birds=10` · dist `file://` `birds=5→10` |
+| 3 BGM 未回归 | ✅ http `currentTime=14.01 s` / dist `10.56 s`，`paused=false` `err=0` |
+| 4 15/15 + pw | ✅ `npm run assert` 15/15；`npm run pw` 见下 |
+| 5 console 0 报错 | ✅ 两入口 0（仅 favicon 404） |
+| 6 静音开关 | ✅ `setEnabled(false)` → `sfxTick=false`、`birds` 计数冻结、`bgmPaused=true`；恢复后 `sfxTick=true`、计数继续涨 |
+| 7 降级三档 | ✅ `env-narrow` / `env-reduced-motion` / `env-no-webgl` 三 spec 全过（3 passed） |
+| 8 响度实测 | ✅ `npm run audio:baseline` 全项 OK（顺手修了 tick 短于积分块导致脚本崩溃的 bug） |
+| 9 授权留档 | ✅ README 资产表补齐 SoundDino 原文 + Mixkit 授权 + **sounds-mp3 待裁**标记 |
+| 10 无 `Math.random` | ✅ grep 只剩注释里的字样 |
+
+**遗留**
+- `plan/_up9-audition/`（试听页 + 22 个候选，约 12 MB）**未删**，等主控裁：留作换素材时的比对库，
+  或确认无用后清掉。
+- `test-results/` 重命名为 `test-results.prev-20260925/`（136 MB，playwright 每次跑要清空它，
+  触发了环境批量删除守卫）—— **没删**，需要的话自行处理。

@@ -61,6 +61,16 @@
     duckAmount: 0.45, duckDown: 0.05, duckUp: 0.70,
     handBand: [400, 1400, 0.8], handDecay: 0.62,
     bgmFile: 'assets/audio/bgm-stillwater.mp3',
+    // UP9 / AM-010（海鸟 + 咔嗒）：
+    //   birds     海鸟环境层总开关（false = 一声不出，连排放定时器都空转）
+    //   uiVolume  UI 音效总线音量（时间刻度尺的咔嗒）；**第四条**总线，与 bgm/hand/amb 并列进 limiter
+    // ⚠ 「母带 / 配平」那一类常数（BGM_TRIM · SLAP_TRIM · BIRD_TRIM · TICK_TRIM）刻意**不放进 P**：
+    //   它们是针对**当前资产实测**出来的，换资产必须重算。留在 `10-audio.js` 里，
+    //   `npm run audio:baseline` 的漂移报警才能把它们一网打尽。
+    //   birdGapMin/Max  两次鸣叫的间隔区间（秒）。不是给日常调的旋钮，但**查验需要** ——
+    //                   验收 #1 要在合理时间内等到一声（默认 25~70s 太慢），改了之后
+    //                   下一次排期立即生效，这正是 §4 #1「临时把间隔调短」的落点。
+    birds: true, birdGapMin: 25, birdGapMax: 70, uiVolume: 0.30,
 
     // 反光路径（glitter path）—— AM-002 新增
     // AM-006（2026-09-24）：收窄夜间白光范围。

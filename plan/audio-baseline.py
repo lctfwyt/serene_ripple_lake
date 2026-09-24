@@ -83,7 +83,12 @@ def analyze(path, oversample=4):
     head, tail = silence_edges(data)
     sp = float(np.abs(data).max())
     tp = true_peak(data, oversample)
-    lufs = float(pyln.Meter(sr).integrated_loudness(data))
+    # pyloudnorm 的积分块固定 0.4 s：比它短的资产（咔嗒 ~0.12 s）量不出响度 → 记 nan，
+    #   不要让它把整份体检崩掉（UP9/AM-010：tick1/tick2 比块长还短）。
+    try:
+        lufs = float(pyln.Meter(sr).integrated_loudness(data)) if frames / sr > 0.45 else float("nan")
+    except Exception:
+        lufs = float("nan")
     return {
         "file": path.name,
         "dur": frames / sr,

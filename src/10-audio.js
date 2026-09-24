@@ -70,6 +70,46 @@
   var PAD_ATTACK = 4.0;
   var PAD_RELEASE = 5.0;
 
+  // ===================== UP9 / AM-010：海鸟环境音 + 咔嗒音效 =====================
+  // ---------------------------------------------------------------------------
+  // ① 建池时机必须**排在 slap 之后**。SLAP_DELAY 的存在本身就在证明一件事：
+  //    启动瞬间同时存在的媒体元素多了（1 BGM + 4 slap），BGM 会卡在「paused=false
+  //    但 currentTime 不推进」→ 播不动。所以新增两座池继续往后再错一格：
+  //      BGM(0s) → slap(4.0s) → tick(5.2s) → bird(6.5s)
+  //    新增 payload：tick 22 KB + bird 371 KB。鸟声这一段是三个**完整长句**（≈2s/段），
+  //    雨桐要「更长、更完整、带远处回声」，而这个回声只能**烘进资产**（见下 ②），
+  //    所以它就是会比 slap 之外的任何东西都大 —— 仍远小于 BGM 的 3.2 MB。
+  //    验收必须复验 **BGM 仍能正常起播**（这是最容易踩的回归，见 94 §4 #3）。
+  // ② file:// 下走**元素直放**，与 slap 同款协议分流：`createMediaElementSource` 会被判
+  //    跨源污染、输出恒静音（见 tryFileBgm 的实测注释）→ 只在 http(s) 下接 Web Audio 图。
+  //    file:// 的代价：元素直放没有 StereoPanner，海鸟的左右声像自动失效（§3.1 已知限制）。
+  // ③ 两座池各自链式建造，避免同一 tick 内同时 Decode：这也是 Delay 有 1.3s 落差的原因。
+  // ---------------------------------------------------------------------------
+  var BIRD_FILES = ['assets/audio/bird1.wav', 'assets/audio/bird2.wav',
+                    'assets/audio/bird3.wav', 'assets/audio/bird4.wav',
+                    'assets/audio/bird5.wav', 'assets/audio/bird6.wav'];
+  var TICK_FILES = ['assets/audio/tick1.wav', 'assets/audio/tick2.wav'];
+  var BIRD_DELAY = 6500;              // ms，错峰（在 slap 4000 之后）
+  var TICK_DELAY = 5200;              // ms，同上
+  // 片断已经按「有声段 RMS = -24.25 dBFS」做过**组内等响配平**（只衰减、不提升 ——
+  //   提升会把 crest 大的那片推过 0 dBFS），最大有效波峰统一留在 0.62。
+  //   所以运行期只需要一个全局 trim，不必再挂逐片断配平数组（对比 SLAP_LUFS_TRIM）。
+  //   BIRD_TRIM 0.32：入 amb 总线的有效波峰 = 0.62 × 0.32 = 0.198
+  //     ↳ 对比 lap() 的包络目标 0.30~0.45（同样处在 ambGain 之前）→ 鸟确实在浪之下。
+  var BIRD_TRIM = 0.32;
+  var TICK_TRIM = 0.70;               // ui 总线内有效波峰 = 0.62 × 0.70 = 0.434（再乘 uiVolume 0.30 → 0.130）
+  var BIRD_RATE = 0.16;               // playbackRate 抖动 ±8%（同 SLAP_RATE 的数量级）
+  var TICK_RATE = 0.10;               // ±5%
+  var TICK_STEP_PITCH = 0.06;         // step(0~1) 对音高的横跨（±3%）
+  var TICK_STEP_MIN = 0.45;           // step=0 时的音量下限（占 TICK_TRIM 的比例）
+  var BIRD_GAP_MIN = 25;              // s，两次鸣叫的最小间隔（听感上每分钟 1~2 次封顶）
+  var BIRD_GAP_MAX = 70;              // s，最大间隔（走 rng，禁 Math.random）
+  var BIRD_CALLS_MAX = 3;             // 一次最多叫几声
+  var BIRD_CALL_GAP = [0.30, 0.90];   // s，一次鸣叫里声与声之间的间隔
+  var BIRD_DIST_MIN = 0.55;           // 每声随机远近（音量系数 0.55~1.0）
+  var BIRD_PAN_MAX = 0.70;            // http 下的左右候选（file:// 元素直放无法声像，自动跳过）
+  var TICK_THROTTLE = 0.025;          // s，25ms 节流：拖动时会密集触发，防止糊成一片
+
   // ===================== UP5 / AM-012：母带 trim + 声像 + 循环 =====================
   // 全部数字来自**实测**（无头 Chrome 内 decodeAudioData + ITU-R BS.1770-4 集成响度），
   // 本机无 ffmpeg / Python 音频库，故不重编码资产，一律走**运行期增益**（语义等价、可一行回退）。
@@ -163,6 +203,15 @@
   var curPan = 0;                      // 最近一次下达的声像值（probe 用）
   var lastSplashX = 0;
   var bgmFade = 1, bgmElDuck = 1;      // 循环淡入淡出系数 / duck 在元素路径上的系数
+  // ---- UP9 / AM-010 状态 ----
+  // 两座新池的状态收到一个对象里（bird / tick 共用同一套构造函数），避免状态变量平铺扩张。
+  //   元素池的核心语义与 slapPool 完全一致：files[i] ↔ pool[i] 一对一，轮询使用，
+  //   优先挑空闲元素（理由见 playSlap 的注释：采样带尾巴，硬切会突兀）。
+  var birdPool = null;                 // → { el[], gains[], mode, sum, an, ready, idx, count }
+  var tickPool = null;
+  var birdPan = null;                  // http 下唯一的海鸟声像节点（file:// 下为 null）
+  var uiGain = null;                   // UI 音效总线（咔嗒）→ limiter；与 bgm/hand/amb 并列
+  var birdTimer = 0, lastTickT = -1;
   var bgmInGraph = false;              // BGM 元素是否已接进 Web Audio 图（http 才可能）
   var loopWraps = 0, loopWatch = 0;    // 回卷次数 / 看门狗句柄
   var lastFoley = { hz: 0, level: 0 }; // 最近一次 foley spray 的读数
@@ -275,6 +324,13 @@
     //   可以直接读这条链路上的实测峰值来证明（验收 #2）。analyser 是直通节点，不影响信号。
     limAn = ctx.createAnalyser(); limAn.fftSize = 1024;
     chain(handGain, handPan, limAn, limiter);
+    // UP9 / AM-010：UI 音效总线（咔嗒等界面反馈）—— 与 bgm / hand / amb **并列**进 limiter。
+    //   ⚠ 为什么不挂 hand 总线：hand 上有 `handPan`（声像跟手），而刻度尺在画面底部，
+    //     拖动刻度尺时并不会产生 splash → 声像会停留在上一次划水的位置（可能满偏），
+    //     一声清脆的咔嗒从左声道出来很怪。为什么不挂 amb：amb 是自然层，UI 反馈不属于它。
+    uiGain = ctx.createGain(); uiGain.gain.value = P.uiVolume;
+    uiGain.connect(limiter);
+
     bgmGain.connect(limiter); ambGain.connect(limiter);
 
     // ⚠ 体检点：analyser 串在链路里（不是旁挂 —— 不接到 destination 的节点不会被处理）
@@ -300,6 +356,153 @@
     // ⚠ 采样池延迟建：实测启动瞬间同时存在 5 个媒体元素（1 BGM + 4 采样）时，
     //   BGM 会卡在「paused=false 但 currentTime 不推进」——播不动。错峰 2s 就好了。
     window.setTimeout(buildSlap, SLAP_DELAY);
+    // UP9 / AM-010：两座新池继续往后错（理由见 BIRD_DELAY / TICK_DELAY 上的注释）。
+  //   ⚠ 顺序必须是 tick → bird：第一次拖刻度尺时若 tick 池还没到点，`sfxTick()` 会像
+  //     `playSlap()` 那样先手动建一遍 —— 那时 BGM 早已就位，竞争风险小得多。
+    window.setTimeout(buildTick, TICK_DELAY);
+    window.setTimeout(buildBirds, BIRD_DELAY);
+  }
+
+  // UP9 / AM-010：通用元素池建造（bird / tick 共用）。
+  //   与 buildSlap 同款协议分流：
+  //     http(s)  → 元素 → MediaElementSource → gain[i] → sum → (analyser) → out   （过图，可调电平/声像）
+  //     file://  → 元素直放，电平走 el.volume（file:// 下 createMediaElementSource 恒静音）
+  //   `out` 为 null（或 file://）时不接图，一律元素直放。
+  function buildPool(store, files, out, withAn) {
+    if (store && store.el && store.el.length) { return store; }   // 幂等
+    var S = { el: [], gains: [], mode: 'element', sum: null, an: null, ready: false, idx: 0, count: 0 };
+    if (!IS_FILE && ctx && out) {
+      S.sum = ctx.createGain(); S.sum.gain.value = 1;
+      if (withAn) { S.an = ctx.createAnalyser(); S.an.fftSize = 1024; S.sum.connect(S.an); }
+      (S.an || S.sum).connect(out);
+      S.mode = 'graph';
+    }
+    for (var i = 0; i < files.length; i++) {
+      var el;
+      try { el = new window.Audio(); } catch (e) { break; }
+      el.src = files[i];
+      el.preload = 'auto';
+      el.volume = S.sum ? 1 : 0;       // graph 路电平交给 Web Audio；元素路起手静音（同 buildSlap）
+      el.addEventListener('canplay', function () { S.ready = true; });
+      S.el.push(el);
+      var g = null;
+      if (S.sum) {
+        try {
+          var node = ctx.createMediaElementSource(el);
+          g = ctx.createGain(); g.gain.value = 0;
+          node.connect(g); g.connect(S.sum);
+        } catch (e2) { g = null; }     // 单个元素建图失败 → 它退回元素直放，其余不受影响
+      }
+      S.gains.push(g);
+    }
+    if (S.sum && !S.gains.some(function (v) { return !!v; })) {
+      S.mode = 'element';              // 全部接图失败 → 整体退回元素直放
+    }
+    return S;
+  }
+
+  // 从池里挑一个元素：优先「空闲」，退而求其次挑「已加载」。返回 -1 = 一个都还没加载好。
+  function pickIdle(S) {
+    var pool = S.el, n = pool.length, pick = -1, pickIdle = -1;
+    for (var k = 0; k < n; k++) {
+      var i = (S.idx + k) % n;
+      if (pool[i].readyState < 2) { continue; }
+      if (pick < 0) { pick = i; }
+      if (pool[i].paused || pool[i].ended) { pickIdle = i; break; }
+    }
+    var use = pickIdle >= 0 ? pickIdle : pick;
+    if (use < 0) { return -1; }
+    S.idx = use + 1;
+    return use;
+  }
+
+  // 统一播一次：返回 false = 没播成（调用方自行决定是否兜底 / 静默）
+  function poolPlay(S, rate, amp, busVol) {
+    var use = pickIdle(S);
+    if (use < 0) { return false; }
+    var el = S.el[use];
+    try {
+      el.pause();
+      el.currentTime = 0;
+      el.playbackRate = rate;
+      var g = S.gains[use];
+      if (g) {
+        el.volume = 1;                // graph 路：电平全交给 Web Audio，避免双重衰减
+        var t = now();
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(clamp(amp, 0, 1), t);
+      } else {
+        el.volume = clamp(busVol * amp, 0, 1);   // file://：元素直放，自己乘总线音量
+      }
+      var pr = el.play();
+      if (pr && pr['catch']) { pr['catch'](function () { }); }
+      S.count++;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // ---- 咔嗒：UP10 时间刻度尺消费的接口（签名由 90-WAVE5 §5 冻结）----
+  function buildTick() {
+    tickPool = buildPool(tickPool, P.tickFiles || TICK_FILES, uiGain, true);
+  }
+
+  // ---- 海鸟：amb 层的偶发点缀 ----
+  function buildBirds() {
+    if (birdPool && birdPool.el.length) { birdSchedule(); return; }   // 幂等
+    // 声像节点只在 graph 路才有意义（file:// 元素直放没有任何东西进图，panner 无源可处理）。
+    //   插在 sum(→an) 与 ambGain 之间：整群鸟共享一个 panner，每次鸣叫前随机改一次。
+    birdPan = (!IS_FILE && ctx) ? panner(0) : null;
+    if (birdPan) { birdPan.connect(ambGain); }
+    birdPool = buildPool(birdPool, P.birdFiles || BIRD_FILES, birdPan || ambGain, true);
+    birdSchedule();
+  }
+
+  // 排下一次鸣叫。间隔走 `rng` —— 与本项目其它随机需求共用**同一个**随机源（禁 Math.random）。
+  function birdSchedule() {
+    if (birdTimer) { window.clearTimeout(birdTimer); birdTimer = 0; }
+    if (!rng) { return; }
+    // 间隔的两个端点都取自 P（控制台改了之后**下一次排期**立即生效 —— 这是验收 #1
+    //   「临时把间隔调短」能操作的入口）。缺省值才回落到常量，防止 P 被清空后
+    //   setTimeout 收到 NaN 变成「每帧触发」，那会把环境音毁掉。
+    var gMin = typeof P.birdGapMin === 'number' ? P.birdGapMin : BIRD_GAP_MIN;
+    var gMax = typeof P.birdGapMax === 'number' ? P.birdGapMax : BIRD_GAP_MAX;
+    if (!(gMax > gMin)) { gMax = gMin; }
+    var wait = (gMin + rng() * (gMax - gMin)) * 1000;
+    birdTimer = window.setTimeout(birdBurst, wait);
+  }
+
+  function birdBurst() {
+    birdSchedule();                   // 先把下一次排上 —— 本轮里任何 return 都不会让排放断链
+    if (!ctx || !enabled || !P.birds || !rng) { return; }
+    if (ctx.state !== 'running' || !birdPool || !birdPool.el.length) { return; }
+    var n = 1 + Math.floor(rng() * BIRD_CALLS_MAX);
+    for (var i = 0; i < n; i++) {
+      var d = i ? (BIRD_CALL_GAP[0] + rng() * (BIRD_CALL_GAP[1] - BIRD_CALL_GAP[0])) : 0;
+      window.setTimeout(birdCall, d * 1000);
+    }
+  }
+
+  function birdCall() {
+    if (!ctx || !enabled || !P.birds || !rng || !birdPool) { return false; }
+    buildBirds();                     // 没到延迟时间就被触发 → 立即建（同 playSlap 的兜底）
+    if (!birdPool.el.length) { return false; }
+    var amp = BIRD_TRIM * (BIRD_DIST_MIN + rng() * (1 - BIRD_DIST_MIN));
+    if (birdPan) {
+      try { birdPan.pan.setTargetAtTime((rng() * 2 - 1) * BIRD_PAN_MAX, now(), 0.05); } catch (e) { }
+    }
+    return poolPlay(birdPool, 1 - BIRD_RATE / 2 + rng() * BIRD_RATE, amp, P.ambVolume);
+  }
+
+  // 咔嗒：拖时间刻度尺时密集触发，所以**必须**短、干、轻 + 自带节流（见 sfxTick）。
+  //   step ∈ [0,1]（默认 0.5）：越大 → 音高略高（±3%）、音量略大（0.45~1.0 倍 TICK_TRIM）。
+  function playTick(step) {
+    if (!ctx || !enabled || !rng) { return false; }
+    buildTick();                      // 还没到延迟时间就被拖了 → 立即建（同 playSlap 的兜底）
+    if (!tickPool || !tickPool.el.length) { return false; }
+    var s = clamp(step, 0, 1);
+    var rate = 1 - TICK_RATE / 2 + rng() * TICK_RATE + (s - 0.5) * TICK_STEP_PITCH;
+    var amp = TICK_TRIM * (TICK_STEP_MIN + (1 - TICK_STEP_MIN) * s);
+    return poolPlay(tickPool, rate, amp, P.uiVolume);
   }
 
   // 拍击采样池：每个片段一个元素，轮流用。任一元素 canplay 即置 slapReady。
@@ -959,6 +1162,21 @@
       }
     },
 
+    // UP9 / AM-010：时间刻度尺的咔嗒声（UP10 消费）。签名由 90-WAVE5.md §5 **冻结**，
+    //   不得单方面修改 —— UP10 已按这个签名写好了。
+    //   step  number  0~1 的力度/音高提示，可选，默认 0.5
+    //   返回  boolean 真的出声了才 true（未就绪 / 静音 / 被节流 → false，且**不抛错**）
+    sfxTick: function (step) {
+      if (!ctx || !enabled) { return false; }
+      var t = now();
+      // 节流：≤25ms 内的重复调用只出一声。拖动刻度尺时事件密度可达 ~30Hz，
+      //   不节流会让两声叠在一起 —— 又长又闷的尾音会叠成连续的"沙沙"，那就是反面效果。
+      if (lastTickT >= 0 && t - lastTickT < TICK_THROTTLE) { return false; }
+      if (!playTick(typeof step === 'number' && isFinite(step) ? step : 0.5)) { return false; }
+      lastTickT = t;
+      return true;
+    },
+
     suspend: function () {
       if (!ctx) { return; }
       if (bgmEl) { try { bgmEl.pause(); } catch (e) { /* 忽略 */ } }
@@ -1022,6 +1240,19 @@
         bufferedEnd: +bufferedEndSec.toFixed(3),          // 已缓冲末端（封顶用；也是真实数据末端的代理）
         limiterReduction: limiter ? limiter.reduction : 0,   // dB，<0 即限幅器真的在动作
         foleySpray: lastFoley,          // 采样路补的水花层（⑤）
+        // ---- UP9 / AM-010 附加读数（供 94 §4 验收 #1/#2/#6）----
+        birds: birdPool ? birdPool.count : 0,        // 海鸟实际播放次数（file:// 下唯一的"出声"证据）
+        birdReady: birdPool ? birdPool.ready : false,
+        birdMode: birdPool ? birdPool.mode : 'none', // 'graph'（过图+声像）| 'element'（file:// 直放）
+        birdAnPeak: (birdPool && birdPool.an) ? peakOf(birdPool.an) : 0,
+        birdPan: birdPan ? +birdPan.pan.value.toFixed(4) : null,
+        birdTrim: BIRD_TRIM,
+        tickTrim: TICK_TRIM,
+        ticks: tickPool ? tickPool.count : 0,        // 咔嗒实际播放次数
+        tickReady: tickPool ? tickPool.ready : false,
+        tickMode: tickPool ? tickPool.mode : 'none',
+        tickAnPeak: (tickPool && tickPool.an) ? peakOf(tickPool.an) : 0,
+        uiGain: uiGain ? uiGain.gain.value : 0,
         fileProto: IS_FILE, bgmInGraph: bgmInGraph,
         // BGM 文件诊断：区分「加载失败 / 自动播放被拒 / 跨源污染」三种回退原因
         bgmEl: bgmEl ? {
