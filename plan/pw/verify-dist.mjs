@@ -37,7 +37,16 @@ if (MODE === 'snapshot') {
   const m = manifest();
   if (!m) { console.error('dist/ 不存在'); process.exit(1); }
   fs.mkdirSync(path.dirname(DIST_BASELINE), { recursive: true });
-  fs.writeFileSync(DIST_BASELINE, m.map((x) => `${x.hash}  ${x.file}`).join('\n') + '\n');
+  // 环境头（`#` 行会在 check 的正则里被跳过，不影响解析）——
+  // 这条基线入库后可被任何 checkout 独立复核，故须写清它对应哪套构建环境。
+  const pkgV = (p) => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules', p, 'package.json'), 'utf8')).version; } catch { return '?'; } };
+  const head = [
+    '# dist/ 内容基线 —— UP6 验收 #5「Playwright 不进交付物」的比对基准。',
+    `# 记录环境：node ${process.version} · vite ${pkgV('vite')} · three ${pkgV('three')} · ${new Date().toISOString()}`,
+    '# 复核：npm run build && npm run pw:dist      （不一致 = dist ≡ f(src) 被破坏，或有 dev-only 引用泄漏）',
+    '',
+  ].join('\n');
+  fs.writeFileSync(DIST_BASELINE, head + m.map((x) => `${x.hash}  ${x.file}`).join('\n') + '\n');
   console.log(`已落基线 ${DIST_BASELINE} · ${m.length} 个文件`);
   for (const x of m) { console.log(`  ${x.hash.slice(0, 12)}…  ${String(x.size).padStart(9)} B  ${x.file}`); }
   process.exit(0);

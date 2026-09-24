@@ -10,7 +10,7 @@
     "assert": "node plan/wp5-assert.js",
     "assert:dist": "node plan/wp5-assert.js file:///D:/projects/still_water/dist/index.html?debug=1",
     "assert:shots": "node plan/wp5-assert.js --shots",
-    "audio:baseline": "python plan/92-audio-baseline.py",
+    "audio:baseline": "python plan/audio-baseline.py",
     "pw": "playwright test --config=plan/pw/playwright.config.mjs",
     "pw:update": "playwright test --config=plan/pw/playwright.config.mjs --update-snapshots",
     "pw:compare": "node plan/pw/compare-readings.mjs",

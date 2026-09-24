@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""plan/92-audio-baseline.py —— 音频资产基线体检器 + 源码常量漂移检测
+"""plan/audio-baseline.py —— 音频资产基线体检器 + 源码常量漂移检测
 
 【为什么存在】
 src/10-audio.js 里有 4 组**手工实测**的常量，它们决定了两件用户能听见的事：
@@ -27,10 +27,10 @@ assets/audio/bgm-stillwater.mp3`，见 README §音频资产），换完这 4 �
   · 静音    -80 dBFS 门（= 源码里的 `1e-4`，"数字静音"判据）
 
 【运行】
-  python plan/92-audio-baseline.py              # 体检 + 漂移检测（写 audio-build/baseline.json）
-  python plan/92-audio-baseline.py --emit-js    # 额外打印可粘贴的常量块
-  python plan/92-audio-baseline.py --seam-ab    # 额外导出循环接缝 A/B 试听对照（audio-build/seam-ab/）
-  python plan/92-audio-baseline.py --os 8       # 真峰值过采样倍数（默认 4）
+  python plan/audio-baseline.py              # 体检 + 漂移检测（写 audio-build/baseline.json）
+  python plan/audio-baseline.py --emit-js    # 额外打印可粘贴的常量块
+  python plan/audio-baseline.py --seam-ab    # 额外导出循环接缝 A/B 试听对照（audio-build/seam-ab/）
+  python plan/audio-baseline.py --os 8       # 真峰值过采样倍数（默认 4）
 
 【产物落点】audio-build/ —— .gitignore 第 8 段已忽略（"能被一条命令重建的产物一律忽略"）。
   唯一该入库的是**本脚本自身**。

@@ -24,8 +24,13 @@ export const FROZEN = [
 ];
 // 冻结哈希表：**入库**（tiny、稳定、"永远不该变"正是它的用途）
 export const FROZEN_HASHES = path.join(PW_DIR, 'frozen-hashes.json');
-// dist 清单基线：**不入库**（dist 是机器本地产物、内容哈希无跨机器意义）
-export const DIST_BASELINE = path.join(ARTIFACTS, 'pw-dist-baseline.txt');
+// dist 清单基线：**入库**（主控复核 2026-09-24 收口时订正）
+//   ⚠ 初版放在 ARTIFACTS（= test-results/，被 §5 忽略）→ 任何新 checkout 跑 `npm run pw:dist`
+//     都只能先 snapshot 再 check，等于**验收 #5 无法被独立复核**（自证）。
+//   移入 plan/pw/ 的理由：这条基线锁的不是"某台机器的产物"，而是 **dist ≡ f(src)** 这个
+//   确定性性质 —— 实测 UP5 与 UP6 两次独立构建同为 732057 B / sha256 14f8519e… 逐字符相同。
+//   故它与 frozen-hashes.json 同级；唯一的环境依赖（node/vite 版本）写在文件头注释里。
+export const DIST_BASELINE = path.join(PW_DIR, 'dist-baseline.txt');
 
 // 读数落盘位置（新旧比对的输入之一）
 export const READINGS_NEW = path.join(ARTIFACTS, 'pw-readings.json');

@@ -111,7 +111,7 @@ BGM 起播体检竞态（会永久退回合成 pad）、以及尾静音（元素
 > 🔴 **更正（2026-09-24 后置核查）**：初版本报告写的是「**这不是"咔"**，而是……静音塌陷」
 > 以及「硬切跳变 **≤ 窗内自然最大**跳变 → 首尾波形本就接近连续」。**这两句都是错的** ——
 > 拿「最大跳变」当基准太宽松：最大值通常来自窗内某个孤立瞬态，**几乎任何跳变都能"通过"**。
-> 改用 **p99.9** 做基准后独立复测（`plan/92-audio-baseline.py --seam-ab`，另一套解码与测量链）：
+> 改用 **p99.9** 做基准后独立复测（`plan/audio-baseline.py --seam-ab`，另一套解码与测量链）：
 > 硬切跳变是自然 p99.9 的 **1.41~2.07 倍**（两套口径一致）→ **改前是"能量塌陷 + 波形阶跃"两个缺陷同时存在**。
 > 修复方向本就正确（淡变把跳变从 5.06e−02 压到 6.33e−03），但**缺陷性质当时判错了**，在此更正。
 
@@ -285,7 +285,7 @@ http（graph 路），`slapMode = graph` · 进图 **4/4**：
 | # | 项 | 说明 |
 |---|---|---|
 | 1 | **⑥ BGM stems 不做** | 曲目无分轨源料（AM-012 §3.3）。若将来换支持分轨的生成器，可另开单 |
-| 2 | `BGM_TRUE_DUR = 146.832` 是**实测常量** | ⚠️ 换 BGM 后需重测 —— ✅ **2026-09-24 已有重测工具**：`python plan/92-audio-baseline.py` 一条命令重算**全部 4 组常量**并检测漂移（见 §8.5）。守卫（差值 ≥ 1.0 s）会使其自动退回估算式 → **不会静音**，最坏是留尾静音 |
+| 2 | `BGM_TRUE_DUR = 146.832` 是**实测常量** | ⚠️ 换 BGM 后需重测 —— ✅ **2026-09-24 已有重测工具**：`python plan/audio-baseline.py` 一条命令重算**全部 4 组常量**并检测漂移（见 §8.5）。守卫（差值 ≥ 1.0 s）会使其自动退回估算式 → **不会静音**，最坏是留尾静音 |
 | 3 | `file://` 的 BGM **不过 limiter** | 跨源污染下接图会静音，是为交付形态付出的代价；BGM 本身平稳（峰值 0.9514 且已 trim），可接受 |
 | 4 | `LOOP_FADE_OUT/IN = 40 ms` 的**听感**未经真机试听 | ✅ **2026-09-24 已补量化 + 试听对照**（§8.3）。结论：40 ms / tick 5 ms 的 **8 级台阶**是**抗定时器漂移**的稳健选择，**保留**；若要缩凹陷，候选是 `20 ms / 4 ms`（凹陷 55→28 ms，代价是台阶咔 −37.2→−33.2 dB）。对照音频在 `audio-build/seam-ab/` |
 | 5 | 无头环境下的音频**时序**读数有抖动 | `limAnPeak` / `limiterReduction` 在多次运行中为 0.2452~0.2691 / −0.01~−0.327 —— **方向与量级稳定**，绝对值受软件光栅吞吐影响。真机应更稳 |
@@ -298,7 +298,7 @@ http（graph 路），`slapMode = graph` · 进图 **4/4**：
 ```bash
 cd D:/projects/still_water
 node plan/wp5-assert.js      # 验收 #1：15/15（回归保护，本包未改此脚本）
-python plan/92-audio-baseline.py --seam-ab   # 资产级读数：LUFS / 真峰值 / 常量漂移 / 接缝研究（§8）
+python plan/audio-baseline.py --seam-ab   # 资产级读数：LUFS / 真峰值 / 常量漂移 / 接缝研究（§8）
 ```
 
 > ⚠️ 验收 #2~#6 用的 `_up5-verify2.js` 与它的日志是**临时件**（`.gitignore` 已忽略 `_*.js` / `*.log`），
@@ -317,7 +317,7 @@ python plan/92-audio-baseline.py --seam-ab   # 资产级读数：LUFS / 真峰�
 `.gitignore` 第 7/8 段**早就为 Python 音频链预留了位置**（连 `pyloudnorm` 都写在注释里），只是当时装不上、这条路一直悬着。
 
 **本节点未改动任何源码** —— 全部是读数补齐、口径复核与**对初版报告三处错误结论的更正**（§8.4）。
-新建工具 `plan/92-audio-baseline.py`（入库）；产物落在 `audio-build/`（已被 `.gitignore` 第 8 段忽略）。
+新建工具 `plan/audio-baseline.py`（入库）；产物落在 `audio-build/`（已被 `.gitignore` 第 8 段忽略）。
 
 ### 8.1 交叉验证：两套独立实现对齐
 
@@ -370,7 +370,7 @@ python plan/92-audio-baseline.py --seam-ab   # 资产级读数：LUFS / 真峰�
 `loopTick()` 每 `LOOP_TICK` 毫秒设一次值，于是 gain 是阶梯，每级之间是一个 Δgain 突变（听感 = "咔"）。
 **所以缩短 fade 必须同时缩短 tick，否则台阶变粗、咔反而更响。**
 
-`python plan/92-audio-baseline.py --seam-ab` 离线渲染五版（每版 3 圈，含**台阶量化**）：
+`python plan/audio-baseline.py --seam-ab` 离线渲染五版（每版 3 圈，含**台阶量化**）：
 
 | 变体 | 最弱侧 | 凹陷宽 | 级数 | Δgain | 台阶咔 | 接缝跳变 | 自然 p99.9 |
 |---|---|---|---|---|---|---|---|
@@ -410,16 +410,16 @@ python plan/92-audio-baseline.py --seam-ab   # 资产级读数：LUFS / 真峰�
 > 这三条都是**同一位作者**在补上独立测量链之后自查出来的 —— 说明「单实现单口径」容易把错误结论固化。
 > 交叉验证（§8.1）的价值正在于此。
 
-### 8.5 工具：`plan/92-audio-baseline.py`（新建，入库）
+### 8.5 工具：`plan/audio-baseline.py`（新建，入库）
 
 解决的问题：`src/10-audio.js` 里那 **4 组手工实测常量**（`BGM_LUFS_RAW` / `BGM_TRIM` /
 `BGM_TRUE_DUR` / `SLAP_LUFS_TRIM`）原先只有一条**已删除的临时脚本**能推导它们 ——
 而 `README` 明确教用户「`cp bgm-cand1.mp3 …` 换曲」→ 换完常量全错、**无人能重算**。
 
 ```bash
-python plan/92-audio-baseline.py            # 体检 + 常量漂移检测
-python plan/92-audio-baseline.py --emit-js  # 打印可粘贴的常量块（换资产后用它）
-python plan/92-audio-baseline.py --seam-ab  # 导出接缝变体试听对照（§8.3）
+python plan/audio-baseline.py            # 体检 + 常量漂移检测
+python plan/audio-baseline.py --emit-js  # 打印可粘贴的常量块（换资产后用它）
+python plan/audio-baseline.py --seam-ab  # 导出接缝变体试听对照（§8.3）
 ```
 
 依赖：`numpy` · `soundfile`(≥0.14，libsndfile ≥1.1 才支持 mp3；本机 1.2.2) · `pyloudnorm` · `scipy`。

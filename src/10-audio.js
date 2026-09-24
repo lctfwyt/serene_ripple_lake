@@ -84,7 +84,8 @@
   //   归一到四段均值 -20.05；平均增益 1.0053（≈0 dB，平均电平不变）。
   //   最大有效峰值 = 0.62 × max(SLAP_LUFS_TRIM 1.1312) × SLAP_TRIM(0.85) = 0.5961（-4.5 dBFS）≪ 1.0
   //   ⚠ 两个 trim 是**串联**的（见 playSlap() 内 `trim = SLAP_TRIM * SLAP_LUFS_TRIM[...]`），算峰值时缺一不可 ——
-  //     本注释曾写 0.701（漏乘 SLAP_TRIM），2026-09-24 由 plan/92-audio-baseline.py 复核查出并更正。
+  //     本注释曾写 0.701（漏乘 SLAP_TRIM），2026-09-24 由音频资产基线体检器
+  //     （`npm run audio:baseline` · plan/audio-baseline.py）复核查出并更正。
   var SLAP_LUFS_TRIM = [1.0256, 1.1312, 0.8491, 1.0151];
   // 声像：世界 x → pan。PAN_WORLD_REF 取 z≈-6 处的**可见半宽**（≈6.0 世界单位）——
   //   即"点到画面左右边缘附近 ≈ 满偏"，且对 x 严格单调（验收 #4 就钉这个）
