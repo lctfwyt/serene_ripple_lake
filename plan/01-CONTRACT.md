@@ -157,6 +157,11 @@ SW.lakebed = { init(scene), group, causticTexture };
 > 是 `init()` 的**内部实现**，**不新增导出**。可观测的变化只有材质侧：`bedMesh.material` 多了 `map` / `roughnessMap`，
 > 且 `material.color` 由 `0x5d6f66` 改 `0xffffff`（颜色移入 albedo 贴图，`P.bedTexture=false` 时回退）。
 > ⚠ **238 颗鹅卵石（两层 `InstancedMesh`）与 `pebble*` 参数一个字节未动** ⇒ `#14 / #15` 不受影响。
+>
+> **AM-020（同包修复轮）**：**冻结签名仍一字未动**。新增的 `refreshBedTexture()` 挂在 `SW.lakebed` 上，
+> 属 **WP1 内部附加面**（dev 调参用、非每帧路径、`?debug=1` 面板消费）。可观测面追加：`bedMesh.material` 的
+> `map`/`roughnessMap` 会被**运行时替换**，`SW.lakebed._bedTex` 记录当前贴图引用（供 `dispose` 用）。
+> 鹅卵石与 LOD 仍一字未动。⚠ `refreshBedTexture()` 的读数**不等于**冷启动读数（会话内漂移 ~0.6，见 §9 口径边界）。
 
 ### 2.5 `50-ripple.js` → `SW.ripple`（所有者：WP2）
 
@@ -405,6 +410,7 @@ var P = {
   //   ② CC0 2K 组 base64 内联 +3~10 MB，与"不膨胀体积"冲突；③ AM-005 §3 已证「照片贴图替换几何石」不划算。
   //   → 用 `document.createElement('canvas')` 运行时生成（与 `makeCausticTexture()` 同路径）：
   //     一次周期性多八度值噪声 + 低对比 cellular 出高度场，派生 albedo(sRGB) 与 roughness。
+  //   ⚠ 以下数值块与 `src/00-config.js` **逐字对应**，改配置必须同步改这里（唯一真值源是 `src/00-config.js`）。
   //   bedTexture   总开关。false = 退回纯色湖底（material.color 回 0x5d6f66，不挂 map/roughnessMap）
   //   bedTexSize   贴图边长（**2 的幂** → 才能 generateMipmaps）；albedo 与 roughness 同尺寸
   //   bedTexScale  世界 → UV 缩放（= 每世界单位多少 UV）；**越小 tile 越大、重复越少**
@@ -413,8 +419,15 @@ var P = {
   //   bedMacroScale / bedMacroGain  macro 层（第二 UV 低频采样）—— **打破 tiling 重复感**
   //     （AM-005 §3：照片类纹理 repeat > 6 次肉眼可辨；macro 周期 ≈ 1/0.035 ≈ 28.6 世界单位
   //      ⇒ 全湖底 90 单位仅重复 ~3 次）
-  bedTexture: true, bedTexSize: 512, bedTexScale: 0.30, bedTexGrain: 0.55,
-  bedRoughVar: 0.20, bedMacroScale: 0.035, bedMacroGain: 0.12,
+  //   —— 以下 5 个为 **AM-020 新增**（观感整形）——
+  //   bedTexDark   暗部压缩：0 = 对称（默认，保持）；1 = 只亮不暗（曾定稿、被用户否决 ⇒ 仅作调试杠杆）
+  //   bedTexSpeck  高频衰减（细点密度）：1 = 原样；越小细密噪点越少
+  //   bedCellAmt   cellular 权重（cell 边界 = 暗缝网格；原值 0.14）
+  //   bedTexWarp   域扭曲（整数频率 ⇒ 平铺无缝性不受影响）；**理由不是修"格子底纹"**（已证伪，见 AM-020 §4）
+  //   bedTexBase   基准色明度倍率。**保持 1** —— 调亮地面会顶穿 #6（1.25 ⇒ 12.92 < 14）
+  bedTexture: true, bedTexSize: 512, bedTexScale: 0.60, bedTexGrain: 0.25,
+  bedRoughVar: 0.20, bedMacroScale: 0.035, bedMacroGain: 0.10,
+  bedTexDark: 0, bedTexSpeck: 0.45, bedCellAmt: 0.02, bedTexBase: 1, bedTexWarp: 0.22,
 
   // 交互
   splash: true, cameraSway: false, swayAmp: 0.002,
@@ -459,8 +472,8 @@ var P = {
 | `vendor/three.min.js` | **WP1** | 只读 |
 | `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`；**UP3/AM-017 改 env 段**；**UP4-lite/AM-019 改湖底贴图段**） |
 | `src/30-scene.js` | **WP1 → UP2 → UP3**（AM-017，波次 8 起移交） | 只读（`applyTimeState` 在 WP1 内实现，WP3 只提供 `TimeState`；**环境光照段属 UP3**） |
-| `src/40-lakebed.js` | **WP1 → UP4-lite**（AM-019，波次 9 起移交） | 只读（UP3/AM-017 连材质都没碰，只从 `30-scene.js` 用 `traverse` 设 `envMapIntensity`；**UP4-lite/AM-019 加湖底 tiling 贴图 —— 但 `InstancedMesh` 两层 LOD 与 `pebble*` 参数一个字节未动**） |
-| `src/90-debug.js` | **WP1** | 只读（读数已按 §5 暴露，WP2/3/4 只需保证自己的 probe 返回对应字段） |
+| `src/40-lakebed.js` | **WP1 → UP4-lite**（AM-019，波次 9 起移交） | 只读（UP3/AM-017 连材质都没碰，只从 `30-scene.js` 用 `traverse` 设 `envMapIntensity`；**UP4-lite/AM-019 加湖底 tiling 贴图 —— 但 `InstancedMesh` 两层 LOD 与 `pebble*` 参数一个字节未动**；**AM-020 同包修复轮：贴图观感整容 + 新增 `refreshBedTexture()` 运行时重建面 —— 鹅卵石与 LOD 仍一字未动**） |
+| `src/90-debug.js` | **WP1** | 只读（读数已按 §5 暴露，WP2/3/4 只需保证自己的 probe 返回对应字段）。🔴 **AM-020 记一次越界**：主控在 `?debug=1` 面板**新增「湖底贴图」滑杆组**（10 项，140 ms 防抖重建；`bedMacroScale`/`bedMacroGain` 两项走 uniform 真·实时）。越界理由：这是**纯 dev-only 面板**，不进交付物、不改 `SW.debug` 冻结签名；所有者 WP1 该波次未在跑。**已追认**（同 AM-017/AM-019 的先例） |
 | `src/99-main.js` | **WP1** | 只读 |
 | `src/50-ripple.js` | **WP2** | 只读 |
 | `src/60-water.js` | **WP2 → UP8 → UP3**（AM-017，波次 8 起移交） | 只读（UP3 只动**反射那一行 + 3 个 uniform**） |
@@ -550,7 +563,7 @@ ENV_MIP_BIAS        = clamp(uWaterRough × 8.0, 0, 4)              // 粗糙度 
 惰性重建阈值        ENV_EPS = 0.02（envDist 签名距离）；实测自动时钟 4s 内重建 **0** 次
 ```
 
-**湖底贴图自检**（AM-019 新增，改贴图尺寸 / 缩放 / 噪声口径时必须重算）：
+**湖底贴图自检**（AM-019 新增 / **AM-020 修订**，改贴图尺寸 / 缩放 / 噪声口径时必须重算）：
 
 ```
 贴图尺寸            = (bedTexSize, bedTexSize) = 512×512     // 必须 2 的幂 → 才能 generateMipmaps
@@ -558,15 +571,44 @@ ENV_MIP_BIAS        = clamp(uWaterRough × 8.0, 0, 4)              // 粗糙度 
                      ⇒ 平铺接缝处的相邻像素差分与内部同分布
                      （验证口径：|f[N−1] − f[0]| 应 ≈ mean_i |f[i+1] − f[i]|，**不是 ≈ 0**
                        —— 采样点间隔处处相同，接缝不比内部更"跳"即为无缝）
+                     **AM-020 量化地板**：判据「跨缝/内部 < 1.5」只在**内部相邻差分 > ~1 亮度级**时有效。
+                     实测 grain 0.30 / speck 0.50 时内部步长只有 0.016（< 1 LSB @8bit）
+                     ⇒ 绝大多数相邻对量化后相等、比值失去意义（该组实测 Y=1.962 是假报警）。
+                     本包定稿的步长在 0.075 量级，判据有效（实测比值 0.873~1.133）。
+                     要覆盖"极平滑"参数区，须改在**高度场 float** 上算，不能算在 8 位贴图上。
+ALBEDO 均值归一      sm[k] = 1 + grain·2·(dv ≥ 0 ? dv : dv·(1−bedTexDark))，dv = h[k] − 0.5
+                     sScale = (N·N) / Σ sm          // ← **AM-020：亮度守恒改为代码显式保证**
+                     albedo = sm[k] · sScale        // ⇒ 与 grain / bedTexDark 取值**无关**地恒成立
+                     对比 AM-019：当时靠"对称 ⇒ 均值天然为 1"的巧合；现在是**加强**守门条件。
+warp 域扭曲          h += a · pvnoise(i·f/N + w1·f, j·f/N + w2·f, f, s)，w1/w2 = (pvnoise(...) − 0.5)·bedTexWarp
+                     ⚠ 频率取**整数**（FWN = 3）⇒ 周期仍是 N ⇒ 平铺无缝性不变（已实测）。
 albedo/roughness UV 用 PlaneGeometry **内建 uv** + texture.repeat.set(R, R)，R = BED_SIZE × bedTexScale
                      （走 three 标准 mipmap / aniso 路径；与 BED_SIZE / BED_SEG 天然耦合，改它需重算）
 macro UV            uv = vWXZ × bedMacroScale                // **世界坐标**（第二 UV，与 map 解耦 ——
                      同一张图不能有两种 scale 的内建 uv，这是唯一必须手写采样的那一层）
-tile 尺寸           = BED_SIZE / R = 1 / bedTexScale 世界单位/次  // 0.30 → 3.33 单位/次 ⇒ 90 单位重复 27 次
+tile 尺寸           = BED_SIZE / R = 1 / bedTexScale 世界单位/次
+                     AM-019: 0.30 → 3.33 单位/次 ⇒ 90 单位重复 27 次
+                     AM-020: 0.60 → 1.67 单位/次 ⇒ 90 单位重复 54 次（**调细以散掉斑块感**）
 macro 周期          = 1 / bedMacroScale ≈ 28.6 世界单位       // 90 / 28.6 ≈ 3.1 次  ⇒ 打破规则重复
-亮度守恒            albedo 的 **linear 均值** ≈ 原 material.color(0x5d6f66) 的 linear 值
-                     ⚠ 这条是 #6（湖底可读 sMed > 14，改前实测 14.92 → **余量仅 6.6%**）的守门条件；
-                     贴图整体压暗 = 直接打挂 #6。实测以断言读数为准校准。
+                     ⚠ AM-020 实测：macro 层**换不来 #6** —— 周期 ≫ #6 采样区（几米），区内近似常数。
+                       macroGain 0.12→0.34 时 #6 只动 0.04。别指望 macro 补判据余量。
+亮度守恒            albedo 的 **linear 均值** = 原 material.color(0x5d6f66) 的 linear 值（由 sScale 保证）
+                     🔴 **#6 的天然位置 = "地面完全无贴图"的地板**：
+                       `#6` 量的是**地面 vs 鹅卵石**的区内反差 ⇒ 把地面压平/调亮**都会降低 #6**。
+                       同一 60 帧中位口径实测：地板 `?bedtex=0` = **14.85** · 本包定稿 H2 = **15.00~15.02**
+                       ⇒ 本包只在地板上方 0.15~0.17。**"降低底部纹路存在感"的路线到这里就到头了**，
+                       再往下压不是调不出来，是判据的固有代价。要动这个方向必须先动判据（走变更单）。
+```
+
+**判据读数的口径边界（AM-020 §4-⑤，收口复核新增 —— 与 §9 其他算式同等强制）**：
+
+```
+跨候选比较          **必须走冷启动**（独立起页 / `plan/wp5-assert.js`）。
+                    会话内切换 `SW.P` + `refreshBedTexture()` 后，`#6` 会随"已跑时长 + 已渲染帧数"
+                    漂移，实测同一份配置先后读出 **15.38 / 14.74 / 14.36**（漂移 ~0.6，相对阈值 14 不可忽略）。
+                    已排除的原因：不是 refreshBedTexture 失真（参数不变时 14.99 = 冷启动 14.95，
+                    albedo 逐位相同 hash 1906563278）、也不是 resetP 没恢复。
+                    ⇒ 调试滑杆只用于看**方向**；定稿读数一律取自冷启动断言。
 ```
 
 **几何自检**（改机位后必须重算，`plan/02-AMENDMENTS.md AM-001 §2.2` 有完整算式）：
@@ -662,4 +704,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 2026-09-25 | **AM-010（UP9 海鸟环境音 + 咔嗒 API）**：§2.1 `SW.audio` 追加 `sfxTick(step)`（签名由 `90-WAVE5 §5` 冻结，`step ∈ [0,1]`、返回 boolean、自带 ≤25 ms 节流、受 `#snd` 管辖）；§6 音频参数段追加 `birds` / `birdGapMin` / `birdGapMax` / `uiVolume`（第四条总线 `uiGain` 与 bgm/hand/amb 并列进 limiter）。**海鸟与咔嗒一律走 `<audio>` 元素池**（`file://` 无 `decodeAudioData`），建池错峰 tick 5.2 s / bird 6.5 s（排在 `SLAP_DELAY=4000` 之后）。新增资产 `assets/audio/bird1~6.wav`（SoundDino，免费商用免署名）+ `tick1~2.wav`（Mixkit Free License）；随机全走 `rng`（独立种子，不消耗渲染随机序列）。代码面只在 `10-audio.js` 与 `00-config.js` 音频段（零越界）；断言阈值零改动 | **UP9** · 契约 §2.1/§6 · UP10（消费 `sfxTick`） |
 | 2026-09-25 | **AM-017（UP3 环境光照，程序化 equirect + PMREM）**：① §2.3 `SW.scene` **冻结签名一字未动**，只追加附加属性 `env`（{ready,equirect,rt,rebuilds,res,err}）+ 附加方法 `buildEnv(s)` / `dropEnv()`；并写明三条约束（必须是运行时 DataTexture · r160 无 intensity/rotation → 走 `material.envMapIntensity` + 生成时定朝向 · `scene.environment` 只作用于 MeshStandardMaterial）。② §2.6 `SW.water.probe()` 追加 `envReady` / `envGain`；`uniforms` 追加 `uEnvEq`/`uEnvReady`/`uEnvGain`。③ §6 追加 env 参数段（`envEnabled` / `envIntensity` / `envResolution` / `envWaterGain` / `envHemiScale` / `envAmbScale`）。④ §7 所有权：`30-scene.js` WP1→UP2→**UP3**、`60-water.js` WP2→UP8→**UP3**、`00-config.js` 注明 env 段。⑤ §9 新增「**环境贴图自检**」算式块（`ENV_EQUIRECT_UV` 的**非线性 v** 口径 / 尺寸必须 POT / mip 偏置 / 太阳瓣角宽下限 / 惰性重建阈值）。**断言阈值一律未动**——#13 2.136→2.106（+10.5% 余量）、#6 15.05→14.93（地板 14）、#3/#5 微移；四态 R−B 重测标定。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md` §AM-017，过程见 `plan/99-UP3-hdri.md §7` | **UP3** · 契约 §2.3/§2.6/§6/§7/§9 · 主控（`full.png` 是否重录 + `dist-baseline.txt` 重落） |
 | 2026-09-25 | **AM-015（UP11 BGM 选曲器，已完工）**：① §2.1 `SW.audio` 追加 `bgmInfo()` / `setBgmTrack(i)`；§2.8 + §4 新增选曲控件 `#sw-bgm`（右上 `#snd` 正下方，「**BGM：** + 每曲一枚 chip」，纯 `<button>`，**不做原生 `<select>`** —— 曾实现过、按雨桐裁决整体回滚）；§6 `bgmFile` → `bgmFiles`（**单曲 → 曲目列表**，进页面随机一首）；§7 所有者 `80-ui.js` / `10-audio.js` / `00-config.js` / `assets/audio/*` 四方更新。② 资产改名：`bgm-stillwater.mp3` → **`bgm-mingjing.mp3`**（曲名「明镜」）、`bgm-cand1.mp3` → **`bgm-weifeng.mp3`**（曲名「微风」），文件名与曲名同源。③ **每首一组 {trim, trueDur}**（`BGM_TRACKS` 是唯一真值源；`BGM_TRIM`/`BGM_TRUE_DUR` 两标量保留、首项直接引用 → `audio-baseline.py` 漂移检测仍全绿、零重复字面量）；元素切歌 = 淡出 0.22 s → 静音窗内换 src/trim → 淡入 0.34 s，避免"接两次图"导致峰值翻倍。④ 随机只用 `rng`（独立流 `seed ^ Date.now()`，不消耗渲染序列）；修掉一处**既有缺陷**：`tryFileBgm()` 建图后未刷新 `el.volume`，元素音量停在 `P.bgmVolume`（比母带目标响 0.94 dB）直到首次 duck/回卷。⑤ **断言阈值零改动**；免构建 + dist 两入口 118/118、`npm run assert` 与 `assert:dist` 各 **15/15**、`audio:baseline` 全绿、`env-narrow` 不重叠零违规。**pw 像素基线 `full.png` 待主控重录**（差异 2866 px 全部落在 `#sw-bgm` 的 bbox `x[1100,1257] y[56,80]` 内、零外溢）；`ui-panel.png` / `bed-clip.png` 未受影响。两条**挂账**：`audio-baseline.py` 只验首曲常量（次曲无自动漂移检查）、dist 与 pw 基线由主控重录 | **UP11** · 契约 §2.1/§2.8/§4/§6/§7 · 主控（基线重录） |
-| 2026-09-25 | **AM-019（UP4-lite 湖底程序化 tiling 贴图）**：① §2.4 `SW.lakebed` **冻结签名一字未动**（贴图是 `init()` 内部实现，不新增导出），加注「`material` 增 `map`/`roughnessMap`、`color` `0x5d6f66→0xffffff`、**238 颗鹅卵石与 `pebble*` 未动**」。② §6 追加「湖底贴图」参数段 7 个（`bedTexture`/`bedTexSize`/`bedTexScale`/`bedTexGrain`/`bedRoughVar`/`bedMacroScale`/`bedMacroGain`）。③ §7 所有权：`40-lakebed.js` `WP1 → UP4-lite`、`00-config.js` 注明湖底贴图段。④ §9 新增「**湖底贴图自检**」算式块（无缝条件 / POT / UV 世界坐标口径 / tile 与 macro 周期 / **亮度守恒**）。🔴 **本包重定义原 UP4**：「外部 CC0 贴图**替换**湖底 + 实例数 238→40」**作废**（会废 #14/#15、动路线图 §1 保护清单）→ 改「湖底平面加**程序化** tiling 贴图、**两层 LOD 原样**」。立项依据 = `AM-005 §3` 末句后门。**断言阈值一律未动**。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md §AM-019`，过程见 `plan/100-UP4-lite.md` | **UP4-lite** · 契约 §2.4/§6/§7/§9 · 主控（基线重录） |
+| 2026-09-25 | **AM-020（湖底贴图观感整容 · 定稿 H2「低对比」）**：① §6 湖底贴图参数段 **7 → 12 个**（+`bedTexDark`/`bedTexSpeck`/`bedCellAmt`/`bedTexWarp`/`bedTexBase`），并把 H2 定稿值同步（`bedTexScale 0.30→0.60` · `bedTexGrain 0.55→0.25` · `bedMacroGain 0.12→0.10`）；加注「本块与 `src/00-config.js` 逐字对应，唯一真值源是后者」。② §9 湖底贴图自检**修订**：新增「ALBEDO 均值归一」（亮度守恒由**代码显式保证**，不再依赖对称巧合）、warp 的整数频率说明、tile 0.60 的重算、**无缝判据的量化地板**（内部步长需 > ~1 亮度级，8 位量化会制造假报警）、🔴 **`#6` 的天然位置 = 「地面无贴图」地板（同口径 14.85；H2 = 15.00~15.02）⇒ "降低底部纹路存在感"这条路已到尽头**。③ §9 **新增判据口径边界**：「跨候选比较必须走冷启动」—— 会话内切换参数的 `#6` 会漂 ~0.6。④ §7：`90-debug.js`（WP1）**记一次越界**（新增湖底滑杆组，dev-only，已追认）；`40-lakebed.js` 加注 AM-020。⑤ §2.4 `SW.lakebed` **冻结签名仍一字未动**，`refreshBedTexture()` 是 WP1 内部附加面。**断言阈值一律未动**。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md §AM-020` | **UP4-lite 修复轮** · 契约 §6/§7/§9/§10 · 主控 |
