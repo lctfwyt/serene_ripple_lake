@@ -206,7 +206,7 @@ bedMacroGain: 0.12       // macro 层幅度
 | 8 | 无缝（数值） | 接缝/内部 = **0.449（横）/ 0.655（纵）**（判据 < 1.5）· 周期恒等式 `max\|f(x)−f(x+f)\| = 0.000e+0` · `E[H] = 0.5000` | ✅ |
 | 9 | `?bedtex=0` 降级等价 | **硬证明**见 §7.4：与改前逐像素差 ≤1 LSB、**任何阈值下 0 px 超阈** | ✅ |
 | 10 | 两入口 console 0 报错 | 两入口均 `JS 错误 (0)` / `Log error (0)` | ✅ |
-| 11 | 体积增量 ≈ 0 | `dist/index.html` **779,484 B**（改前 776,364 B ⇒ **+3,120 B / +0.40%**），**零外部资产** | ✅ |
+| 11 | 体积增量 ≈ 0 | `dist/index.html` **779,589 B**（改前 776,364 B ⇒ **+3,225 B / +0.415%**），**零外部资产** | ✅ |
 | 12 | 禁 `Math.random` | `grep Math.random src/40-lakebed.js` → 仅注释一处，**代码零命中** | ✅ |
 
 断言阈值**一个未改**；冻结件 `plan/wp5-assert.js` / `wp5-env.js` 零改动。
@@ -221,7 +221,7 @@ bedMacroGain: 0.12       // macro 层幅度
 | `#13` 反光柱 | 2.111（1.897~2.231）· 质心 634.5 | 2.089（1.919~2.205）· 质心 635.5 | 在 **AM-008 已记的 ~3% 运行间方差**内（`_STATUS` 挂账：四组采样 2.047~2.115） |
 | `#14` LOD 接缝 | 0.809 | **0.809** | 逐字不变 |
 | `#15` 覆盖率 | 0.4377 / 0.4548 | **0.4377 / 0.4548** | 逐字不变 |
-| `dist/index.html` | 776,364 B | **779,484 B** | +3,120 B（纯代码行） |
+| `dist/index.html` | 776,364 B | **779,589 B** | +3,225 B（纯代码行） |
 
 - `#4` 涟漪衰减 4.00s 墙钟 · `#8` 音频态 running · `#1` anyNaN=false · `#2` calls=6 / tris=53088 —— 均与改前一致。
 - `#14` / `#15` **逐字符相同**是本包最关键的一条：它证明**238 颗鹅卵石（88 + 150）与两层 LOD 一个字节没动**，
@@ -308,4 +308,43 @@ roughness 512² `NoColorSpace` 同 repeat；macro 128² `NoColorSpace` + `Linear
 
 ### 7.7 提交原文
 
-_（提交后由 `docs(up4)` 补录 `git log -1 --stat` 原文）_
+```
+commit 04732edb3db344c8d245a490e086682ff66ea6ee
+Author: lctfwyt <lctfwyt@outlook.com>
+Date:   Fri Sep 25 12:37:04 2026 +0800
+
+    feat(up4): 湖底程序化 tiling 贴图（AM-019）
+
+ plan/01-CONTRACT.md               |  45 +++++-
+ plan/02-AMENDMENTS.md             |   7 +-
+ plan/03-COLLAB-PROTOCOL.md        |  37 +++++
+ plan/04-BOARD.md                  |  11 ++
+ plan/100-UP4-lite.md              | 311 ++++++++++++++++++++++++++++++++++++++
+ plan/98b-AMENDMENTS-ARCHIVE-v1.md | 110 ++++++++++++++
+ plan/_STATUS.md                   |   8 +-
+ src/00-config.js                  |  24 ++-
+ src/40-lakebed.js                 | 185 ++++++++++++++++++++++-
+ 9 files changed, 725 insertions(+), 13 deletions(-)
+```
+
+模式 **A · 独占** ⇒ 自己提。按 `03-COLLAB-PROTOCOL §7.1` **逐条列名 `git add`**（禁 `-A`），
+9 个文件**恰好**等于白名单 + 收尾四步文档。
+未提交项：`plan/pw/tests/__snapshots__/*.png` 与 `plan/pw/dist-baseline.txt` —— **属主控地盘**，
+由收口提交（`chore(up4)`）单独处理。
+
+### 7.8 主控收口（同一人复核）
+
+| 项 | 动作 | 结果 |
+|---|---|---|
+| 独立重跑 | `assert` / `assert:dist` / `pw` | 15/15 · 15/15 · **14 passed** |
+| 越界核查 | `index.html` / `vendor/**` / `30-scene.js` / `60-water.js` / `90-debug.js` 零改动；改动仅 2 个 src 文件 | ✅ |
+| 冻结件 | `npm run pw:frozen` | ✅ `wp5-assert.js` `a7575b48…` · `wp5-env.js` `bd9dd0e8…` **基线与当前逐位相同** |
+| pw 基线重录 | `--update-snapshots=all`（三条） | `bed-clip` 32,614 → **49,355 B** · `full` 475,105 → **578,630 B** · `ui-panel` 4,451 → 4,451 B；**重录后复跑 `pw` 14 passed** |
+| dist 基线重落 | `npm run build && npm run pw:dist:snapshot` → `npm run pw:dist` | `./index.html` 776,364 → **779,589 B**（`22102742323e…`）；15 文件**逐文件一致**，无 dev-only 引用泄漏 |
+
+> 🔴 **订正一处自己的读数错误（主控自查）**：施工记录里写的 `dist/index.html = 779,484 B` **是错的** ——
+> 那是**上一次残留的旧构建产物**（构建发生在最后一处源码微调之前），不是当前源码的产物。
+> 收口重建后实测 **779,589 B / sha256 `22102742323e…`**，且**连跑 3 次构建逐位相同**（= `dist ≡ f(src)` 未被破坏）。
+> 因此增量是 **+3,225 B / +0.415%**（非 +3,120 / +0.40%）—— 全部相关文档（本文 §7.1/§7.2/§7.8 ·
+> `_STATUS` · `98b §AM-019` · `04-BOARD`）**已按 779,589 B 统一订正**。
+> 教训：**报体积前必须重建一次**；`ls -l dist/` 读到的是"最后一次构建"，不等于"当前源码"。
