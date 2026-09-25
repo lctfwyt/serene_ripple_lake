@@ -153,6 +153,11 @@ SW.scene.dropEnv()      // 退回旧光照（envEnabled=false / 建失败）—�
 SW.lakebed = { init(scene), group, causticTexture };
 ```
 
+> **AM-019（UP4-lite）**：`SW.lakebed` **冻结签名一字未动** —— 湖底 tiling 贴图（程序化 albedo / roughness / macro）
+> 是 `init()` 的**内部实现**，**不新增导出**。可观测的变化只有材质侧：`bedMesh.material` 多了 `map` / `roughnessMap`，
+> 且 `material.color` 由 `0x5d6f66` 改 `0xffffff`（颜色移入 albedo 贴图，`P.bedTexture=false` 时回退）。
+> ⚠ **238 颗鹅卵石（两层 `InstancedMesh`）与 `pebble*` 参数一个字节未动** ⇒ `#14 / #15` 不受影响。
+
 ### 2.5 `50-ripple.js` → `SW.ripple`（所有者：WP2）
 
 ```js
@@ -395,6 +400,22 @@ var P = {
   envEnabled: true, envIntensity: 0.9, envResolution: 128,
   envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
 
+  // 湖底贴图（程序化 tiling）—— AM-019 新增（UP4-lite）
+  //   来源**不是**外部扫描件：① `file://` 下外部图片进不了 WebGL 纹理（AM-005 §3 实测 SecurityError）；
+  //   ② CC0 2K 组 base64 内联 +3~10 MB，与"不膨胀体积"冲突；③ AM-005 §3 已证「照片贴图替换几何石」不划算。
+  //   → 用 `document.createElement('canvas')` 运行时生成（与 `makeCausticTexture()` 同路径）：
+  //     一次周期性多八度值噪声 + 低对比 cellular 出高度场，派生 albedo(sRGB) 与 roughness。
+  //   bedTexture   总开关。false = 退回纯色湖底（material.color 回 0x5d6f66，不挂 map/roughnessMap）
+  //   bedTexSize   贴图边长（**2 的幂** → 才能 generateMipmaps）；albedo 与 roughness 同尺寸
+  //   bedTexScale  世界 → UV 缩放（= 每世界单位多少 UV）；**越小 tile 越大、重复越少**
+  //   bedTexGrain  albedo 明暗幅度（颗粒对比）
+  //   bedRoughVar  粗糙度变化幅度（湿润感：高点更光滑）
+  //   bedMacroScale / bedMacroGain  macro 层（第二 UV 低频采样）—— **打破 tiling 重复感**
+  //     （AM-005 §3：照片类纹理 repeat > 6 次肉眼可辨；macro 周期 ≈ 1/0.035 ≈ 28.6 世界单位
+  //      ⇒ 全湖底 90 单位仅重复 ~3 次）
+  bedTexture: true, bedTexSize: 512, bedTexScale: 0.30, bedTexGrain: 0.55,
+  bedRoughVar: 0.20, bedMacroScale: 0.035, bedMacroGain: 0.12,
+
   // 交互
   splash: true, cameraSway: false, swayAmp: 0.002,
 
@@ -436,9 +457,9 @@ var P = {
 |---|---|---|
 | `index.html` | **WP1** | 只读 |
 | `vendor/three.min.js` | **WP1** | 只读 |
-| `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`；**UP3/AM-017 改 env 段**） |
+| `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`；**UP3/AM-017 改 env 段**；**UP4-lite/AM-019 改湖底贴图段**） |
 | `src/30-scene.js` | **WP1 → UP2 → UP3**（AM-017，波次 8 起移交） | 只读（`applyTimeState` 在 WP1 内实现，WP3 只提供 `TimeState`；**环境光照段属 UP3**） |
-| `src/40-lakebed.js` | **WP1** | 只读（UP3/AM-017 连材质都没碰，只从 `30-scene.js` 用 `traverse` 设 `envMapIntensity`） |
+| `src/40-lakebed.js` | **WP1 → UP4-lite**（AM-019，波次 9 起移交） | 只读（UP3/AM-017 连材质都没碰，只从 `30-scene.js` 用 `traverse` 设 `envMapIntensity`；**UP4-lite/AM-019 加湖底 tiling 贴图 —— 但 `InstancedMesh` 两层 LOD 与 `pebble*` 参数一个字节未动**） |
 | `src/90-debug.js` | **WP1** | 只读（读数已按 §5 暴露，WP2/3/4 只需保证自己的 probe 返回对应字段） |
 | `src/99-main.js` | **WP1** | 只读 |
 | `src/50-ripple.js` | **WP2** | 只读 |
@@ -527,6 +548,25 @@ ENV_MIP_BIAS        = clamp(uWaterRough × 8.0, 0, 4)              // 粗糙度 
                        ⚠ 必须 ≳ mip1 的一个纹素（≈5.6°）量级，否则针尖瓣在 mip1 上被抹成 0
                        → 实测「峰值没起来、中位反而升」→ 反光柱判据 #13 反而变差
 惰性重建阈值        ENV_EPS = 0.02（envDist 签名距离）；实测自动时钟 4s 内重建 **0** 次
+```
+
+**湖底贴图自检**（AM-019 新增，改贴图尺寸 / 缩放 / 噪声口径时必须重算）：
+
+```
+贴图尺寸            = (bedTexSize, bedTexSize) = 512×512     // 必须 2 的幂 → 才能 generateMipmaps
+无缝条件            周期值噪声：格点索引做 mod(N) 包裹 ⇒ f(x) = f(x + N)
+                     ⇒ 平铺接缝处的相邻像素差分与内部同分布
+                     （验证口径：|f[N−1] − f[0]| 应 ≈ mean_i |f[i+1] − f[i]|，**不是 ≈ 0**
+                       —— 采样点间隔处处相同，接缝不比内部更"跳"即为无缝）
+albedo/roughness UV 用 PlaneGeometry **内建 uv** + texture.repeat.set(R, R)，R = BED_SIZE × bedTexScale
+                     （走 three 标准 mipmap / aniso 路径；与 BED_SIZE / BED_SEG 天然耦合，改它需重算）
+macro UV            uv = vWXZ × bedMacroScale                // **世界坐标**（第二 UV，与 map 解耦 ——
+                     同一张图不能有两种 scale 的内建 uv，这是唯一必须手写采样的那一层）
+tile 尺寸           = BED_SIZE / R = 1 / bedTexScale 世界单位/次  // 0.30 → 3.33 单位/次 ⇒ 90 单位重复 27 次
+macro 周期          = 1 / bedMacroScale ≈ 28.6 世界单位       // 90 / 28.6 ≈ 3.1 次  ⇒ 打破规则重复
+亮度守恒            albedo 的 **linear 均值** ≈ 原 material.color(0x5d6f66) 的 linear 值
+                     ⚠ 这条是 #6（湖底可读 sMed > 14，改前实测 14.92 → **余量仅 6.6%**）的守门条件；
+                     贴图整体压暗 = 直接打挂 #6。实测以断言读数为准校准。
 ```
 
 **几何自检**（改机位后必须重算，`plan/02-AMENDMENTS.md AM-001 §2.2` 有完整算式）：
@@ -622,3 +662,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 2026-09-25 | **AM-010（UP9 海鸟环境音 + 咔嗒 API）**：§2.1 `SW.audio` 追加 `sfxTick(step)`（签名由 `90-WAVE5 §5` 冻结，`step ∈ [0,1]`、返回 boolean、自带 ≤25 ms 节流、受 `#snd` 管辖）；§6 音频参数段追加 `birds` / `birdGapMin` / `birdGapMax` / `uiVolume`（第四条总线 `uiGain` 与 bgm/hand/amb 并列进 limiter）。**海鸟与咔嗒一律走 `<audio>` 元素池**（`file://` 无 `decodeAudioData`），建池错峰 tick 5.2 s / bird 6.5 s（排在 `SLAP_DELAY=4000` 之后）。新增资产 `assets/audio/bird1~6.wav`（SoundDino，免费商用免署名）+ `tick1~2.wav`（Mixkit Free License）；随机全走 `rng`（独立种子，不消耗渲染随机序列）。代码面只在 `10-audio.js` 与 `00-config.js` 音频段（零越界）；断言阈值零改动 | **UP9** · 契约 §2.1/§6 · UP10（消费 `sfxTick`） |
 | 2026-09-25 | **AM-017（UP3 环境光照，程序化 equirect + PMREM）**：① §2.3 `SW.scene` **冻结签名一字未动**，只追加附加属性 `env`（{ready,equirect,rt,rebuilds,res,err}）+ 附加方法 `buildEnv(s)` / `dropEnv()`；并写明三条约束（必须是运行时 DataTexture · r160 无 intensity/rotation → 走 `material.envMapIntensity` + 生成时定朝向 · `scene.environment` 只作用于 MeshStandardMaterial）。② §2.6 `SW.water.probe()` 追加 `envReady` / `envGain`；`uniforms` 追加 `uEnvEq`/`uEnvReady`/`uEnvGain`。③ §6 追加 env 参数段（`envEnabled` / `envIntensity` / `envResolution` / `envWaterGain` / `envHemiScale` / `envAmbScale`）。④ §7 所有权：`30-scene.js` WP1→UP2→**UP3**、`60-water.js` WP2→UP8→**UP3**、`00-config.js` 注明 env 段。⑤ §9 新增「**环境贴图自检**」算式块（`ENV_EQUIRECT_UV` 的**非线性 v** 口径 / 尺寸必须 POT / mip 偏置 / 太阳瓣角宽下限 / 惰性重建阈值）。**断言阈值一律未动**——#13 2.136→2.106（+10.5% 余量）、#6 15.05→14.93（地板 14）、#3/#5 微移；四态 R−B 重测标定。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md` §AM-017，过程见 `plan/99-UP3-hdri.md §7` | **UP3** · 契约 §2.3/§2.6/§6/§7/§9 · 主控（`full.png` 是否重录 + `dist-baseline.txt` 重落） |
 | 2026-09-25 | **AM-015（UP11 BGM 选曲器，已完工）**：① §2.1 `SW.audio` 追加 `bgmInfo()` / `setBgmTrack(i)`；§2.8 + §4 新增选曲控件 `#sw-bgm`（右上 `#snd` 正下方，「**BGM：** + 每曲一枚 chip」，纯 `<button>`，**不做原生 `<select>`** —— 曾实现过、按雨桐裁决整体回滚）；§6 `bgmFile` → `bgmFiles`（**单曲 → 曲目列表**，进页面随机一首）；§7 所有者 `80-ui.js` / `10-audio.js` / `00-config.js` / `assets/audio/*` 四方更新。② 资产改名：`bgm-stillwater.mp3` → **`bgm-mingjing.mp3`**（曲名「明镜」）、`bgm-cand1.mp3` → **`bgm-weifeng.mp3`**（曲名「微风」），文件名与曲名同源。③ **每首一组 {trim, trueDur}**（`BGM_TRACKS` 是唯一真值源；`BGM_TRIM`/`BGM_TRUE_DUR` 两标量保留、首项直接引用 → `audio-baseline.py` 漂移检测仍全绿、零重复字面量）；元素切歌 = 淡出 0.22 s → 静音窗内换 src/trim → 淡入 0.34 s，避免"接两次图"导致峰值翻倍。④ 随机只用 `rng`（独立流 `seed ^ Date.now()`，不消耗渲染序列）；修掉一处**既有缺陷**：`tryFileBgm()` 建图后未刷新 `el.volume`，元素音量停在 `P.bgmVolume`（比母带目标响 0.94 dB）直到首次 duck/回卷。⑤ **断言阈值零改动**；免构建 + dist 两入口 118/118、`npm run assert` 与 `assert:dist` 各 **15/15**、`audio:baseline` 全绿、`env-narrow` 不重叠零违规。**pw 像素基线 `full.png` 待主控重录**（差异 2866 px 全部落在 `#sw-bgm` 的 bbox `x[1100,1257] y[56,80]` 内、零外溢）；`ui-panel.png` / `bed-clip.png` 未受影响。两条**挂账**：`audio-baseline.py` 只验首曲常量（次曲无自动漂移检查）、dist 与 pw 基线由主控重录 | **UP11** · 契约 §2.1/§2.8/§4/§6/§7 · 主控（基线重录） |
+| 2026-09-25 | **AM-019（UP4-lite 湖底程序化 tiling 贴图）**：① §2.4 `SW.lakebed` **冻结签名一字未动**（贴图是 `init()` 内部实现，不新增导出），加注「`material` 增 `map`/`roughnessMap`、`color` `0x5d6f66→0xffffff`、**238 颗鹅卵石与 `pebble*` 未动**」。② §6 追加「湖底贴图」参数段 7 个（`bedTexture`/`bedTexSize`/`bedTexScale`/`bedTexGrain`/`bedRoughVar`/`bedMacroScale`/`bedMacroGain`）。③ §7 所有权：`40-lakebed.js` `WP1 → UP4-lite`、`00-config.js` 注明湖底贴图段。④ §9 新增「**湖底贴图自检**」算式块（无缝条件 / POT / UV 世界坐标口径 / tile 与 macro 周期 / **亮度守恒**）。🔴 **本包重定义原 UP4**：「外部 CC0 贴图**替换**湖底 + 实例数 238→40」**作废**（会废 #14/#15、动路线图 §1 保护清单）→ 改「湖底平面加**程序化** tiling 贴图、**两层 LOD 原样**」。立项依据 = `AM-005 §3` 末句后门。**断言阈值一律未动**。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md §AM-019`，过程见 `plan/100-UP4-lite.md` | **UP4-lite** · 契约 §2.4/§6/§7/§9 · 主控（基线重录） |

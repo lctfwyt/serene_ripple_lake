@@ -61,10 +61,159 @@
     tex.magFilter = THREE.LinearFilter;
     tex.generateMipmaps = false;
     tex.colorSpace = THREE.NoColorSpace;   // 这是"光强"不是"颜色"，不要做 sRGB 解码
-    return tex;
+  return tex;
+}
+
+// ============================ 湖底 tiling 贴图（程序化）—— AM-019 / UP4-lite
+// 无缝靠「格点索引 mod N 包裹」：x = N 处恰好回到 x = 0 ⇒ f[y][0] === f[y][N−1]。
+// 与 makeCausticTexture() 的「整数频率」是同一目标的两种写法（这里要有机噪声，不是规则正弦）。
+function pvnoise(x, y, N, s) {
+  var xi = Math.floor(x), yi = Math.floor(y);
+  var u = x - xi, v = y - yi;
+  u = u * u * (3 - 2 * u); v = v * v * (3 - 2 * v);
+  var x0 = ((xi % N) + N) % N, x1 = (x0 + 1) % N;
+  var y0 = ((yi % N) + N) % N, y1 = (y0 + 1) % N;
+  var a = h2(x0, y0, s), b = h2(x1, y0, s);
+  var c = h2(x0, y1, s), d = h2(x1, y1, s);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+// 周期 Voronoi F1：每格一个特征点，返回最近距离（给地面一点「碎石簇」的团块感）
+function pcell(x, y, N, s) {
+  var xi = Math.floor(x), yi = Math.floor(y);
+  var best = 1e9, dx, dy, gx, gy, wx, wy, fx, fy, ddx, ddy, d2;
+  for (dy = -1; dy <= 1; dy++) {
+    for (dx = -1; dx <= 1; dx++) {
+      gx = xi + dx; gy = yi + dy;
+      wx = ((gx % N) + N) % N; wy = ((gy % N) + N) % N;
+      fx = gx + h2(wx, wy, s);
+      fy = gy + h2(wx, wy, s + 101);
+      ddx = fx - x; ddy = fy - y; d2 = ddx * ddx + ddy * ddy;
+      if (d2 < best) { best = d2; }
+    }
+  }
+  return Math.sqrt(best);
+}
+
+// 1×1 灰占位：bedTexture=false 时 macro uniform 用它（0.5 → shader 里 ×2 = 1 → 无影响）
+var _bedWhite1 = null;
+function bedWhite1() {
+  if (_bedWhite1) { return _bedWhite1; }
+  var cv = document.createElement('canvas');
+  cv.width = cv.height = 1;
+  var c = cv.getContext('2d');
+  c.fillStyle = 'rgb(128,128,128)';
+  c.fillRect(0, 0, 1, 1);
+  _bedWhite1 = new THREE.CanvasTexture(cv);
+  _bedWhite1.colorSpace = THREE.NoColorSpace;
+  _bedWhite1.needsUpdate = true;
+  return _bedWhite1;
+}
+
+// 一次高度场 → albedo（颜色，sRGB）+ roughness（湿润变化，linear）
+function makeBedTextures() {
+  var N = SW.P.bedTexSize | 0;
+  var OCT = [[4, 0.46, 11], [9, 0.30, 37], [21, 0.16, 71], [47, 0.08, 113]];
+  var CN = 11;                       // cellular 每 tile 格数（整数 ⇒ 有周期）
+  var H = new Float32Array(N * N);
+  var i, j, k, h, f, a, s;
+
+  for (j = 0; j < N; j++) {
+    for (i = 0; i < N; i++) {
+      h = 0;
+      for (k = 0; k < OCT.length; k++) {
+        f = OCT[k][0]; a = OCT[k][1]; s = OCT[k][2];
+        h += a * pvnoise(i * f / N, j * f / N, f, s);   // f 为整数 ⇒ 周期 = f
+      }
+      var cel = pcell(i * CN / N, j * CN / N, CN, 211);
+      if (cel > 1) { cel = 1; }
+      h = h * 0.86 + (1 - cel) * 0.14;                   // 均值仍 ≈ 0.5
+      H[j * N + i] = h < 0 ? 0 : (h > 1 ? 1 : h);
+    }
   }
 
-  // ---------------------------------------------- shader 注入：世界坐标 varying
+  // 均值归一到 0.5 —— 亮度守恒的前提（契约 §9「湖底贴图自检」）：
+  //   cellular 项的分布偏高（实测 E[cel] ≈ 0.81 ⇒ 组合均值被拉到 0.456），
+  //   而 albedo 的亮度均值必须 ≈ 原 material.color 的亮度 ⇒ 一次性平移校正。
+  var sumH = 0;
+  for (k = 0; k < N * N; k++) { sumH += H[k]; }
+  var hOff = 0.5 - sumH / (N * N);
+  for (k = 0; k < N * N; k++) {
+    var hv = H[k] + hOff;
+    H[k] = hv < 0 ? 0 : (hv > 1 ? 1 : hv);
+  }
+
+  // 基准色 = 原 material.color 0x5d6f66 的 sRGB（颜色从材质移进贴图，PBR 惯例）
+  var BR = 93, BG = 111, BB = 102;
+  var grain = SW.P.bedTexGrain, rvar = SW.P.bedRoughVar;
+
+  var cad = document.createElement('canvas'); cad.width = cad.height = N;
+  var crd = document.createElement('canvas'); crd.width = crd.height = N;
+  var ctxA = cad.getContext('2d'), ctxR = crd.getContext('2d');
+  var imgA = ctxA.createImageData(N, N), imgR = ctxR.createImageData(N, N);
+  var da = imgA.data, dr = imgR.data;
+
+  for (k = 0; k < N * N; k++) {
+    h = H[k];
+    var sm = 1 + grain * 2 * (h - 0.5);          // 均值 1；grain 0.55 → [0.45, 1.55]
+    var o = k * 4;
+    da[o] = Math.min(255, BR * sm);
+    da[o + 1] = Math.min(255, BG * sm);
+    da[o + 2] = Math.min(255, BB * sm);
+    da[o + 3] = 255;
+    var rv = (1 - rvar * h) * 255;               // 高处更光滑（被水磨亮）
+    if (rv < 0) { rv = 0; } else if (rv > 255) { rv = 255; }
+    dr[o] = dr[o + 1] = dr[o + 2] = rv;
+    dr[o + 3] = 255;
+  }
+  ctxA.putImageData(imgA, 0, 0);
+  ctxR.putImageData(imgR, 0, 0);
+
+  var rep = BED_SIZE * SW.P.bedTexScale;         // 世界 → UV：每 tile = 1/bedTexScale 世界单位
+  var albedo = new THREE.CanvasTexture(cad);
+  albedo.wrapS = albedo.wrapT = THREE.RepeatWrapping;
+  albedo.repeat.set(rep, rep);
+  albedo.colorSpace = THREE.SRGBColorSpace;      // 颜色 → 需 sRGB 解码
+  albedo.needsUpdate = true;
+
+  var rough = new THREE.CanvasTexture(crd);
+  rough.wrapS = rough.wrapT = THREE.RepeatWrapping;
+  rough.repeat.set(rep, rep);
+  rough.colorSpace = THREE.NoColorSpace;         // 数据纹理 → 不解码
+  rough.needsUpdate = true;
+
+  return { albedo: albedo, roughness: rough };
+}
+
+// 低频 macro 层：第二 UV 采样，打破 tiling 重复感（AM-005 §3：repeat > 6 次肉眼可辨）
+function makeBedMacroTexture() {
+  var N = 128;
+  var cv = document.createElement('canvas'); cv.width = cv.height = N;
+  var ctx = cv.getContext('2d');
+  var img = ctx.createImageData(N, N), d = img.data;
+  for (var j = 0; j < N; j++) {
+    for (var i = 0; i < N; i++) {
+      var h = 0.55 * pvnoise(i * 3 / N, j * 3 / N, 3, 401)
+            + 0.30 * pvnoise(i * 7 / N, j * 7 / N, 7, 431)
+            + 0.15 * pvnoise(i * 13 / N, j * 13 / N, 13, 461);
+      var v = Math.round(255 * (0.25 + 0.5 * h));   // 均值 0.5 → shader 里 ×2 = 1
+      var o = (j * N + i) * 4;
+      d[o] = d[o + 1] = d[o + 2] = v;
+      d[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  var tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// ---------------------------------------------- shader 注入：世界坐标 varying
   var WORLD_VARY = [
     'varying vec2 vWXZ;',
     'varying vec3 vWPos;'
@@ -113,15 +262,25 @@
   }
 
   // ------------------------------------------------ 湖底材质：叠一层水下光斑
-  function makeBedMaterial(causticTex) {
+  function makeBedMaterial(causticTex, albedoTex, roughTex, macroTex) {
+    var useTex = !!albedoTex;
     var mat = new THREE.MeshStandardMaterial({
-      color: 0x5d6f66, roughness: 0.92, metalness: 0.0
+      // AM-019：颜色从材质移进 albedo 贴图（PBR 惯例）→ 关贴图时退回原纯色
+      color: useTex ? 0xffffff : 0x5d6f66, roughness: 0.92, metalness: 0.0
     });
+    if (useTex) {
+      mat.map = albedoTex;
+      mat.roughnessMap = roughTex;
+    }
     mat.onBeforeCompile = function (shader) {
       shader.uniforms.uCausticTex = { value: causticTex };
       shader.uniforms.uCausticScale = { value: SW.P.causticScale };
       shader.uniforms.uCausticTime = { value: 0 };
       shader.uniforms.uCausticStrength = { value: SW.P.caustics ? SW.P.causticStrength : 0 };
+      // 湖底 macro 层（AM-019）：贴图关闭时 gain=0；uniform 恒指向 1×1 占位，避免空纹样
+      shader.uniforms.uBedMacroTex = { value: macroTex || bedWhite1() };
+      shader.uniforms.uBedMacroScale = { value: SW.P.bedMacroScale };
+      shader.uniforms.uBedMacroGain = { value: useTex ? SW.P.bedMacroGain : 0 };
       injectWorldVarying(shader);
       shader.vertexShader = shader.vertexShader.replace(
         '#include <common>',
@@ -133,8 +292,12 @@
         'uniform sampler2D uCausticTex;\n' +
         'uniform float uCausticScale;\n' +
         'uniform float uCausticTime;\n' +
-        'uniform float uCausticStrength;'
+        'uniform float uCausticStrength;\n' +
+        'uniform sampler2D uBedMacroTex;\n' +
+        'uniform float uBedMacroScale;\n' +
+        'uniform float uBedMacroGain;'
       ).replace(
+        // 🔴 caustic 与 macro 必须**合并进同一次 replace**：分两次写，第二次会找不到 anchor
         '#include <color_fragment>',
         '#include <color_fragment>\n' +
         '  vec2 cuv = vWXZ * uCausticScale\n' +
@@ -142,7 +305,9 @@
         '  vec3 caus = texture2D(uCausticTex, cuv).rgb;\n' +
         '  caus *= 0.55 + 0.45 * texture2D(uCausticTex, vWXZ * uCausticScale * 0.37\n' +
         '           + vec2(uCausticTime * -0.0021, uCausticTime * 0.0031)).r;\n' +
-        '  totalEmissiveRadiance += caus * uCausticStrength;'
+        '  totalEmissiveRadiance += caus * uCausticStrength;\n' +
+        '  vec3 swBedM = texture2D(uBedMacroTex, vWXZ * uBedMacroScale).rgb;\n' +
+        '  diffuseColor.rgb *= mix(vec3(1.0), swBedM * 2.0, uBedMacroGain);'
       );
       mat.userData.shader = shader;
     };
@@ -279,7 +444,13 @@
       geo.computeVertexNormals();
 
       this.causticTexture = makeCausticTexture();
-      var bedMat = makeBedMaterial(this.causticTexture);
+      // AM-019：湖底 tiling 贴图（程序化）—— 关闭时不生成任何贴图，材质退回纯色
+      var bedA = null, bedR = null, bedMacro = null;
+      if (SW.P.bedTexture) {
+        var bt = makeBedTextures();
+        bedA = bt.albedo; bedR = bt.roughness; bedMacro = makeBedMacroTexture();
+      }
+      var bedMat = makeBedMaterial(this.causticTexture, bedA, bedR, bedMacro);
       var bed = new THREE.Mesh(geo, bedMat);
       bed.position.set(0, 0, 0);
       bed.name = 'lakebed.bed';

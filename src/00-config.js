@@ -65,8 +65,24 @@
     //                 两者对 #13（反光柱 peak/median）的作用方向相反，分开才能各自调。
     //   envHemiScale / envAmbScale  加 env 后环境光会**重复计**，把 hemi / ambient 按此比例扣回
     //                 （hemi × 0.50、ambient × 0.40 → 净环境光量基本持平，但方向性与色相更物理）
-    envEnabled: true, envIntensity: 0.9, envResolution: 128,
-    envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+  envEnabled: true, envIntensity: 0.9, envResolution: 128,
+  envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+
+  // 湖底贴图（程序化 tiling）—— AM-019 新增（UP4-lite）
+  //   来源**不是**外部扫描件：① file:// 下外部图片进不了 WebGL 纹理（AM-005 §3 实测 SecurityError）；
+  //   ② CC0 2K 组 base64 内联 +3~10 MB，与"不膨胀体积"冲突；③ AM-005 §3 已证「照片贴图替换几何石」不划算。
+  //   → 用 canvas 运行时生成（与 makeCausticTexture() 同路径）：周期值噪声 + 低对比 cellular 出高度场，
+  //     派生 albedo（颜色，sRGB）与 roughness（湿润变化）。
+  //   bedTexture   总开关。false = 退回纯色湖底（material.color 回 0x5d6f66、不挂 map/roughnessMap）
+  //   bedTexSize   贴图边长（2 的幂 → 才能 generateMipmaps）
+  //   bedTexScale  世界 → UV 缩放（每世界单位多少 UV）；越小 tile 越大、重复越少
+  //   bedTexGrain  albedo 明暗幅度（颗粒对比）
+  //   bedRoughVar  粗糙度变化幅度（湿润感：高处更光滑）
+  //   bedMacroScale / bedMacroGain  macro 层（第二 UV 低频）—— 打破 tiling 重复感
+  //                 （AM-005 §3：照片类纹理 repeat > 6 次肉眼可辨；macro 周期 ≈ 28.6 世界单位
+  //                  ⇒ 全湖底 90 单位仅重复 ~3 次）
+  bedTexture: true, bedTexSize: 512, bedTexScale: 0.30, bedTexGrain: 0.55,
+  bedRoughVar: 0.20, bedMacroScale: 0.035, bedMacroGain: 0.12,
 
     // 交互
     splash: true, cameraSway: false, swayAmp: 0.002,
@@ -111,6 +127,9 @@
 
   // ?debug=1 → 打开 debug 面板。参数表本身保持字面量不变，这里只改运行时值。
   P.debug = /[?&]debug=1(?:&|$)/.test(window.location.search);
+  // ?bedtex=0 → 关闭湖底 tiling 贴图（AM-019 的降级路径，做法同 ?nopost=1）。
+  //   贴图在 SW.lakebed.init() 里按此值决定是否生成 ⇒ 必须在 init 之前解析。
+  P.bedTexture = !/[?&]bedtex=0(?:&|$)/.test(window.location.search);
 
   SW.P = P;
 
@@ -121,6 +140,7 @@
     var d = JSON.parse(JSON.stringify(SW.P0));
     for (var k in d) { if (Object.prototype.hasOwnProperty.call(d, k)) { SW.P[k] = d[k]; } }
     SW.P.debug = P.debug; // 启动参数（?debug=1）不参与重置
+    SW.P.bedTexture = P.bedTexture; // 同上（?bedtex=0）
     return SW.P;
   };
 

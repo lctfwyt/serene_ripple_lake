@@ -2118,3 +2118,113 @@ UP3 那"98~100% 像素变、0 像素超阈"的极端读数，正是两层叠加�
 | 绕过 pixelmatch 自建比较器 | 重造轮子；且 `toHaveScreenshot` 的 `actual/diff/expected.png` 是调试资产，值得保留 |
 | 因哨兵变红就回退基线重录 | **反了** —— 基线重录是对的（旧基线是 UP3 **之前**的画面，属陈旧）；该修的是哨兵 |
 | 给像素门提高灵敏度（子阈值全局变化也要红） | 会与"容忍有意的渲染演进"冲突；这是**产品取向**，须另开一条基线讨论 |
+
+---
+
+# AM-019 · UP4-lite 湖底程序化 tiling 贴图（✅ 已应用 2026-09-25）
+
+> 波次 9 · 所有者 UP4-lite · 包文档 `plan/100-UP4-lite.md` · 原定号 AM-019 由主控开包当刻分配。
+> **本条重定义了 `60-UPGRADE-ROADMAP §3-UP4` 的原规格**，与路线图冲突处一律以本条 + 包文档为准。
+
+## 1 · 背景 / 依据
+
+- 需求原文（雨桐 2026-09-25）：「有没有可能在海底贴一整张鹅卵石的图？我也觉得没必要每个石头贴图，
+  如果是每个石头就还是程序化细节，不要膨胀体积。」
+- **立项依据 = `AM-005 §3` 的末句**。该条否的是**「用铺满鹅卵石的图片*替换 / 补充*几何石」**（标题原文），
+  并实测给出四条代价；但末句明确留了后门：**「可借用的是程序化 canvas 纹理给远景补密铺底噪，*不是替换近景几何*」**。
+  本包踩的正是这后门 —— 几何石保留、湖底平面补贴图、零外部资产。
+- **重定义 UP4**：原 UP4 = 外部 CC0 贴图**替换**湖底 + 实例数 238→40 ⇒ **废 #14/#15**（AM-007 二次修订）
+  + 动路线图 §1「保护清单」的 `InstancedMesh 两层 LOD`。现改为**只给湖底平面加一张程序化贴图，两层 LOD 不动**
+  ⇒ 收益（湖底地面有纹理）保留、代价（废断言 / 动保护清单 / 涨体积）全躲。
+
+## 2 · 变更内容
+
+**契约面**（`01-CONTRACT.md`）：
+
+- §6 追加「湖底贴图」参数段 7 个（`bedTexture` / `bedTexSize` / `bedTexScale` / `bedTexGrain` /
+  `bedRoughVar` / `bedMacroScale` / `bedMacroGain`）；
+- §2.4 `SW.lakebed` **冻结签名一字未动**（贴图是 `init()` 内部实现，不新增导出）；
+- §7 注明 `40-lakebed.js` 所有者链 `WP1 → UP4-lite`；
+- §9 追加「**湖底贴图自检**」算式块（无缝条件 / POT / UV 口径 / macro 周期 / 亮度守恒）；
+- §10 变更记录一行。
+
+**代码面**（`src/40-lakebed.js`，UP4-lite 全权）：
+
+- `pvnoise(x,y,N,s)` / `pcell(x,y,N,s)` —— 周期值噪声 / 周期 Voronoi（`h2` 的 mod-N 包裹，**零 `Math.random`**）；
+- `makeBedTextures()` —— 一遍周期性多八度值噪声 + 低对比 cellular ⇒ 高度场 `H`（**均值归一到 0.5** = 亮度守恒前提）
+  ⇒ 派生 **albedo（`SRGBColorSpace`）** 与 **roughness（`NoColorSpace`）** 两张 **512² `CanvasTexture`**（POT ⇒ 生成 mipmap）；
+- `makeBedMacroTexture()` —— **128² 低频** `CanvasTexture`（`NoColorSpace`、`LinearFilter`、无 mipmap），打破 tiling 重复感；
+- `makeBedMaterial(causticTex, albedoTex, roughTex, macroTex)` —— 挂 `map` / `roughnessMap`；
+  `color` `0x5d6f66 → 0xffffff`（颜色移入贴图，PBR 惯例）；caustic 与 macro 的 shader 注入
+  **合并进同一次 `.replace('#include <color_fragment>', …)`**（分两次 replace 会因第一次已改变字符串而找不到 anchor）；
+- **UV 两层口径**：albedo / roughness 走 `PlaneGeometry` **内建 uv + `texture.repeat.set(R,R)`**（`R = 90 × 0.30 = 27`，
+  three 标准 mipmap 路径）；**只有 macro 层**用世界坐标 `vWXZ × bedMacroScale` 手写采样
+  （同一张图不能有两种 scale 的内建 uv ⇒ 第二 UV 只能手写）；
+- 关闭路径：`?bedtex=0`（= `P.bedTexture=false`）⇒ 不生成、不挂 `map`/`roughnessMap`、`color` 回 `0x5d6f66`、
+  `uBedMacroGain = 0`、`uBedMacroTex` 指向 1×1 灰占位 ⇒ **`mix(vec3(1.0), …, 0.0)` 恒等**。
+
+**资产面**：**零外部资产**（`document.createElement('canvas')` 运行时生成，与 `makeCausticTexture()` 同路径
+⇒ `file://` 可用、两入口一致 ⇒ 也正好绕开 `AM-005 §3-①`「`file://` 下外部图片进不了 WebGL 纹理」）。
+**显存 ≈2.7 MiB**（512²×2 含 mip ≈1.33×2 + 128² 0.06）—— ⚠️ 立项时写的「≈1 MB」是低估，已订正。
+
+## 3 · 影响面（不与他人重叠）
+
+| 文件 | 归属 |
+|---|---|
+| `src/40-lakebed.js` | **UP4-lite**（所有者链 WP1 → UP4-lite） |
+| `src/00-config.js` **仅湖底贴图段** | UP4-lite |
+| `plan/100-UP4-lite.md` | UP4-lite 新建 |
+| 契约 §2.4 注 / §6 / §7 / §9 / §10 | UP4-lite（分段） |
+| `index.html` · `vendor/**` · `30-scene.js` · `60-water.js` · `90-debug.js` · `10-audio.js` · `80-ui.js` | **未碰** |
+| 冻结件 `wp5-assert.js` / `wp5-env.js` / 断言阈值 | **未碰** |
+| `plan/pw/**` 基线 | **未碰**（主控收口重录） |
+| **238 颗鹅卵石 / `InstancedMesh` / LOD** | **未碰**（⇒ #14 / #15 逐字不变） |
+
+## 4 · 验收判据
+
+见 `100-UP4-lite.md §5`（12 条）：双入口 15/15 · **#14/#15 逐字不变** · **#6 改前后两套读数**
+（⚠ 立项时余量仅 6.6%，最紧的一条）· #13 对比 · pw 14 passed · 贴图无缝（数值自检）· `?bedtex=0` 降级等价 ·
+console 0 · 体积增量 ≈ 0 · 禁 `Math.random`。
+
+## 5 · 应用记录（✅ 全部应用并验证 · UP4-lite · 2026-09-25 12:3x）
+
+| 验收面 | 实测 |
+|---|---|
+| 双入口 | `assert` 15/15 · `assert:dist` 15/15 · **console 0 报错** |
+| **保护清单 / 断言不碰** | `#14` `0.809`（far 46.95 / near 58.06）· `#15` `0.4377 / 0.4548`（面积 103.67 / 88 颗）—— **与改前逐字符相同** |
+| `#6`（唯一直接风险点） | 改前 `14.90` → 改后 `15.40`（余量 **6.4% → 10.0%**）；多轮采样两簇不重叠（前 14.80~14.92 / 后 15.34~16.14） |
+| `#5` / `#13` | `#5` **`2.108 @sun` 一字不变**（albedo 色相中性达标）· `#13` `2.111 → 2.089`（在 AM-008 已记 ~3% 运行间方差内） |
+| pw | **14 passed**（含哨兵 A/B/C，3×3 注入生效） |
+| 无缝自检 | 接缝/内部 = **0.449（横）/ 0.655（纵）** < 1.5 · 周期恒等式 `max\|f(x)−f(x+f)\| = 0.000e+0` · `E[H] = 0.5000` |
+| **`?bedtex=0` 降级等价** | **硬证明**（HEAD 源码独立副本 vs 当前 `?bedtex=0`，合成帧同口径）：最大通道差 **1 级**、**任何阈值（含 `t=0.02`）0 px 超阈**；确定性读数 `#6.std` **14.80 == 14.80** ⇒ 差异 ≤ 渲染器自身复现抖动 |
+| 体积 | `dist/index.html` **779,484 B**（改前 776,364 B ⇒ **+3,120 B / +0.40%**）；**零外部资产** |
+| `Math.random` | `src/40-lakebed.js` **零命中** |
+| 提交 | 见 `100-UP4-lite.md §7.7` |
+
+### 5.1 ⚠️ 与立项预期不同的一点（须记档）
+
+立项预估「pw 像素回归应该红」，**实测 ①②③ 全绿**。定向取证结论：
+
+| 对比（合成帧 / 1280×720 / 钉相位） | full maxChan | full diffPct | bed maxChan | bed diffPct | 最大 `delta` | **过阈 t=0.2** |
+|---|---|---|---|---|---|---|
+| ① 噪声地板（同 URL 两页） | 1 | 0.002% | 0 | 0% | 0.6 | **0 px** |
+| ② 改前 vs `?bedtex=0` | 1 | 0.027% | 1 | 0.064% | 0.6 | **0 px** |
+| ③ 改前 vs 贴图开 | **29** | **49.006%** | **28** | **56.589%** | **719.5** | **0 px** |
+
+贴图确实改了画面（③ 有 49% / 57% 像素变化、单像素最大差 28~29 级），但 `threshold 0.2` ⇒
+判"不同"需 `delta > 35215×0.2² = 1408.6`，对应单通道差 **≈37.5 级**；实测最大 `delta = 719.5`
+只有门槛的一半 ⇒ **`toHaveScreenshot` 返回 0 差异像素是数学必然**，不是断言失效。
+门收紧到 `t=0.1` 立刻现形（full **5981 px** / bed-clip **1013 px**）。
+
+⇒ **AM-019 的验收证据不依赖 pw 像素回归**（它天生是亚阈值改动的盲区，同源于 `03-COLLAB-PROTOCOL §8.2`）。
+本包的画面变化以专项量化（上表）+ `#6` / `#3` 的读数位移为准。
+**主控收口**：三条基线 `--update-snapshots=all` 重录 + `plan/pw/dist-baseline.txt` 重落。
+
+### 5.2 🔎 取证踩过的坑（值得记档）
+
+第一版探针用「裸渲染 `r.render()` + `readPixels`」，实测 `hideLakebed → 0 差异`、`clearMagenta → 0 差异`、
+`bedTexOff → 0 差异`，**而 `hideWater → 99.93%`**。根因：**裸渲染里湖底被不透明水面挡住**，
+只能透过折射源 RT（`sceneRT`）看到；而 `sceneRT` 只在**完整入口 `SW.scene.render()` 的步骤①**里刷新
+（`30-scene.js:450-460`）⇒ 裸渲染恒读到**上一帧的旧 `sceneRT`**。
+⇒ 该口径**不适合**量湖底材质变化；改用「合成帧截图（= `toHaveScreenshot` 同口径）」后一切正常。
+（顺带解释 `90-debug.js:28` 那句「需要同帧内先 render 一次」的真实边界。）
