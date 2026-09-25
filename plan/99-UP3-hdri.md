@@ -150,12 +150,15 @@ npm run assert:dist  → node plan/wp5-assert.js file:///…/dist/index.html?deb
 
 ## §6 收尾与「不做」
 
-### A. 收尾四步
+### A. 收尾（四步 + 提交）
 
 1. 完工记录写进本文 **§7**
 2. `plan/_STATUS.md` 只**追加**自己一行
 3. **AM-017 关单**：`02-AMENDMENTS.md` §2.1 移到 §2 总表 → 全文移 `98b` 归档 → 契约 §2.6 / §6 / §10 同步
 4. `04-BOARD.md` 主控箱留言清零
+5. **提交**：本包本轮**独占工作区 → 模式 A，你自己提**（`feat(up3): …（AM-017）`）
+   —— 细则见 `03-COLLAB-PROTOCOL.md §7.1`：**只 `git add` 白名单里的文件，禁 `-A`**；不许 amend / 动 tag；`plan/pw/**` 不自己重录。
+   ⚠ **别和 WP6（AM-016）同时开** —— 它也要 `00-config.js`；真并行就只能转**模式 B（不提交）**。
 
 ### B. 明确**不做**（留档，别顺手做）
 

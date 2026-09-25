@@ -8,12 +8,13 @@
 
 ## 0. 怎么用
 
-**每个新聊天框的开场白格式**（**四份**文件缺一不可）：
+**每个新聊天框的开场白格式**（**六份**文件缺一不可）：
 
 ```
 @plan/00-INDEX.md @plan/01-CONTRACT.md @plan/02-AMENDMENTS.md @plan/03-COLLAB-PROTOCOL.md @plan/04-BOARD.md @plan/20-WP2-water-ripple.md
 先读 02-AMENDMENTS.md，应用所有影响本包的未决变更单；再看 04-BOARD.md 有没有指向本包的未处理留言；然后按 WP2 开工。
 动手前先复述：你拥有哪些文件、哪些文件不许碰、本包要应用哪几条变更单。
+收尾按 03-COLLAB-PROTOCOL.md §7 四步；提交按 §7.1（只 add 自己的文件、禁 -A；并行波次不提交，交主控统一提）。
 ```
 
 | 文件 | 作用 | 不读会怎样 |
