@@ -112,22 +112,39 @@ function bedWhite1() {
 
 // 一次高度场 → albedo（颜色，sRGB）+ roughness（湿润变化，linear）
 function makeBedTextures() {
-  var N = SW.P.bedTexSize | 0;
-  var OCT = [[4, 0.46, 11], [9, 0.30, 37], [21, 0.16, 71], [47, 0.08, 113]];
+  var P = SW.P;
+  var N = P.bedTexSize | 0;
+  // octave 表 [freq, weight, seed]。weight 先按「高频衰减 bedTexSpeck」削两个高频项、
+  // 再整体归一到 1 ⇒ **总振幅不变**，只是把能量从"细密噪点"搬到"大尺度斑驳"。
+  // 依据（AM-020 实测）：纯降对比会连带把 #6 的余量吃光，而"脏"的来源主要是**细点密度**
+  // ⇒ 正解是**换分布（低频化）**，不是单纯**减幅度**。
+  var wHi = [0.46, 0.30, 0.16 * P.bedTexSpeck, 0.08 * P.bedTexSpeck];
+  var wSum = wHi[0] + wHi[1] + wHi[2] + wHi[3];
+  var OCT = [[4, wHi[0] / wSum, 11], [9, wHi[1] / wSum, 37],
+             [21, wHi[2] / wSum, 71], [47, wHi[3] / wSum, 113]];
   var CN = 11;                       // cellular 每 tile 格数（整数 ⇒ 有周期）
+  var cellAmt = P.bedCellAmt;        // cellular 权重（cell 边界成暗缝网格 ⇒ "石子缝"观感）
+  // 域扭曲（AM-020）：削高频细点后，值噪声的**格点底纹**会浮出来（方块/菱形网格感）。
+  // 先用另一层噪声偏移采样坐标，破坏轴对齐的规律性。warp 自身取**整数频率 FWN**、
+  // 且偏移量以「归一化 tile 空间」表达（换算成各 octave 的格距时乘 f）⇒ 周期不变，仍然无缝。
+  var WARP = P.bedTexWarp, FWN = 3;
   var H = new Float32Array(N * N);
-  var i, j, k, h, f, a, s;
+  var i, j, k, h, f, a, s, w1, w2;
 
   for (j = 0; j < N; j++) {
     for (i = 0; i < N; i++) {
+      if (WARP > 0) {
+        w1 = (pvnoise(i * FWN / N, j * FWN / N, FWN, 501) - 0.5) * WARP;
+        w2 = (pvnoise(i * FWN / N, j * FWN / N, FWN, 541) - 0.5) * WARP;
+      } else { w1 = 0; w2 = 0; }
       h = 0;
       for (k = 0; k < OCT.length; k++) {
         f = OCT[k][0]; a = OCT[k][1]; s = OCT[k][2];
-        h += a * pvnoise(i * f / N, j * f / N, f, s);   // f 为整数 ⇒ 周期 = f
+        h += a * pvnoise(i * f / N + w1 * f, j * f / N + w2 * f, f, s);  // f 为整数 ⇒ 周期 = f
       }
       var cel = pcell(i * CN / N, j * CN / N, CN, 211);
       if (cel > 1) { cel = 1; }
-      h = h * 0.86 + (1 - cel) * 0.14;                   // 均值仍 ≈ 0.5
+      h = h * (1 - cellAmt) + (1 - cel) * cellAmt;       // 权重和 = 1 ⇒ 均值仍 ≈ 0.5
       H[j * N + i] = h < 0 ? 0 : (h > 1 ? 1 : h);
     }
   }
@@ -143,9 +160,25 @@ function makeBedTextures() {
     H[k] = hv < 0 ? 0 : (hv > 1 ? 1 : hv);
   }
 
-  // 基准色 = 原 material.color 0x5d6f66 的 sRGB（颜色从材质移进贴图，PBR 惯例）
-  var BR = 93, BG = 111, BB = 102;
-  var grain = SW.P.bedTexGrain, rvar = SW.P.bedRoughVar;
+  // 基准色 = 原 material.color 0x5d6f66 的 sRGB（颜色从材质移进贴图，PBR 惯例）。
+  //   bedTexBase 只对基准色做**明度**缩放（1 = 原色）—— "把湖底调淡"用它；
+  //   ⚠ 它直接改整体的反照率水平 ⇒ 动了必须重测 #6 的余量（AM-020 §3）。
+  var bs = P.bedTexBase;
+  var BR = Math.min(255, 93 * bs), BG = Math.min(255, 111 * bs), BB = Math.min(255, 102 * bs);
+  var grain = P.bedTexGrain, rvar = P.bedRoughVar, darkK = P.bedTexDark;
+
+  // ① **非对称对比**：原式 `1 + grain*2*(h−0.5)` 对暗部同样按 grain 压 —— grain 0.55 时
+  //    暗部到 ×0.45，密集黑点就是"脏"。这里暗部只压 (1−bedTexDark)：
+  //    bedTexDark = 0 退化为原对称式；= 1 则暗部完全不压（只亮不暗）⇒ "黑的部分改淡"。
+  // ② 压缩后**按全图均值归一**（sScale）⇒ albedo 亮度均值恒 = 1
+  //    ⇒ 契约 §9「亮度守恒」不再依赖参数取值，**恒成立**（是把守门条件加强，不是放松）。
+  var smRow = new Float32Array(N * N), sumS = 0;
+  for (k = 0; k < N * N; k++) {
+    var dv = H[k] - 0.5;
+    var vv = 1 + grain * 2 * (dv >= 0 ? dv : dv * (1 - darkK));
+    smRow[k] = vv; sumS += vv;
+  }
+  var sScale = (N * N) / sumS;
 
   var cad = document.createElement('canvas'); cad.width = cad.height = N;
   var crd = document.createElement('canvas'); crd.width = crd.height = N;
@@ -155,7 +188,7 @@ function makeBedTextures() {
 
   for (k = 0; k < N * N; k++) {
     h = H[k];
-    var sm = 1 + grain * 2 * (h - 0.5);          // 均值 1；grain 0.55 → [0.45, 1.55]
+    var sm = smRow[k] * sScale;                  // 均值 1；对称式 grain 0.55 → [0.45, 1.55]
     var o = k * 4;
     da[o] = Math.min(255, BR * sm);
     da[o + 1] = Math.min(255, BG * sm);
@@ -426,6 +459,7 @@ function makeBedMacroTexture() {
     pebblesFar: null,   // 中远景层（80 面）—— AM-004 新增
     _causticTime: 0,
     _bedShader: null,
+    _bedTex: null,
 
     init: function (scene) {
       var P = SW.P;
@@ -456,6 +490,8 @@ function makeBedMacroTexture() {
       bed.name = 'lakebed.bed';
       group.add(bed);
       this.bedMesh = bed;
+      // 记下贴图引用 —— refreshBedTexture() 靠它 dispose 旧份，不靠读 material.map（AM-020）
+      this._bedTex = (bedA || bedMacro) ? { albedo: bedA, rough: bedR, macro: bedMacro } : null;
 
       // ---- 鹅卵石（AM-004：梯形场 + 双层 LOD + 5 档调色板）----
       var F = P.pebbleFieldZ;          // [-3.0, -24.0]  契约 §9 PEBBLE_FIELD_Z
@@ -526,6 +562,48 @@ function makeBedMacroTexture() {
       return this;
     },
 
+    // 按当前 SW.P **重建**湖底贴图（AM-020）。与 init 同源（makeBedTextures / makeBedMacroTexture），
+    // 旧贴图 dispose 掉，不泄漏。
+    // 用途：?debug=1 面板的湖底滑杆 + 出包前的候选对照。不是每帧路径。
+    //
+    // ⚠ **实测边界（AM-020 §4-⑤，主控复核）** —— 别把滑杆读数当冷启动读数用：
+    //   · 重建本身是**忠实**的：albedo 逐位相同（hash 1906563278 @512²）；
+    //     **参数不变只调一次 refresh** 得 #6 = 14.99，与冷启动 14.95 一致 ✅
+    //   · 但**会话内继续切换参数**后读数会漂：同一份 H2 配置先后读出 15.38 / 14.74 / 14.36，
+    //     漂移量 ~0.6（`#6` 阈值 14，这个量级不可忽略）。冷启动/重载后立刻回到 14.95。
+    //   · ⇒ **候选排序必须用冷启动（独立起页）确认**，会话内切换只适合看"方向"。
+    //     本包定稿的最终读数一律来自 `plan/wp5-assert.js`（冷启动 · 60 帧中位）。
+    refreshBedTexture: function () {
+      var m = this.bedMesh && this.bedMesh.material;
+      if (!m) { return this; }
+      var old = this._bedTex;
+      if (old) {
+        if (old.albedo) { old.albedo.dispose(); }
+        if (old.rough) { old.rough.dispose(); }
+        if (old.macro) { old.macro.dispose(); }
+        this._bedTex = null;
+      }
+      var sh = m.userData.shader;
+      if (!SW.P.bedTexture) {
+        m.map = null; m.roughnessMap = null;
+        m.color.setHex(0x5d6f66);                    // 退回 AM-019 之前的纯色湖底
+        if (sh) { sh.uniforms.uBedMacroGain.value = 0; }
+        m.needsUpdate = true;
+        return this;
+      }
+      var bt = makeBedTextures(), macro = makeBedMacroTexture();
+      m.map = bt.albedo; m.roughnessMap = bt.roughness;
+      m.color.setHex(0xffffff);                      // PBR 惯例：颜色在贴图里，基色回白
+      if (sh) {                                      // 编译过才谈得上改 uniform；否则 onBeforeCompile 已取值
+        sh.uniforms.uBedMacroTex.value = macro;
+        sh.uniforms.uBedMacroScale.value = SW.P.bedMacroScale;
+        sh.uniforms.uBedMacroGain.value = SW.P.bedMacroGain;
+      }
+      m.needsUpdate = true;
+      this._bedTex = { albedo: bt.albedo, rough: bt.roughness, macro: macro };
+      return this;
+    },
+
     // 由 30-scene.js 的 render(dt) 调用
     tick: function (dt) {
       this._causticTime += dt;
@@ -536,6 +614,9 @@ function makeBedMacroTexture() {
         // causticStrength 现在读作**峰值**，实际强度 = 峰值 × 昼夜因子（AM-005）
         sh.uniforms.uCausticStrength.value =
           SW.P.caustics ? SW.P.causticStrength * causticDayFactor() : 0;
+        // macro 层两个"尺度/强度"类参数不重建贴图就能生效（AM-020：滑杆拖动即时可见）
+        sh.uniforms.uBedMacroScale.value = SW.P.bedMacroScale;
+        sh.uniforms.uBedMacroGain.value = SW.P.bedTexture ? SW.P.bedMacroGain : 0;
       }
     }
   };

@@ -247,21 +247,82 @@
         box.appendChild(row);
       });
 
+      // —— 湖底贴图（AM-020）——
+      // 与上一组的关键差别：这些参数**要重建贴图**（512² canvas 生成 ≈150~250ms）才生效，
+      // 所以用 140ms 防抖 —— 拖动过程不重建，**松手即出结果**，避免每 input 事件卡一次主线程。
+      // 例外：bedMacroScale / bedMacroGain 每帧读 uniform（40-lakebed.tick）→ 无重建、真·实时。
+      var bedBox = document.createElement('div');
+      bedBox.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid rgba(216,230,234,.25)';
+      var bedTitle = document.createElement('div');
+      bedTitle.textContent = '湖底贴图（松手生效）';
+      bedTitle.style.cssText = 'opacity:.75';
+      bedBox.appendChild(bedTitle);
+
+      var bedRebuild = null;
+      function scheduleBedRebuild() {
+        if (bedRebuild) { clearTimeout(bedRebuild); }
+        bedRebuild = setTimeout(function () {
+          bedRebuild = null;
+          if (SW.lakebed && SW.lakebed.refreshBedTexture) { SW.lakebed.refreshBedTexture(); }
+        }, 140);
+      }
+
+      var bedDefs = [
+        // [SW.P 字段, passProp, 标签, min, max, step, 小数位]
+        ['bedTexGrain',   null, '颗粒幅度  ', 0,     0.9,   0.01,  2],
+        ['bedTexDark',    null, '暗部压缩  ', 0,     1,     0.02,  2],
+        ['bedTexSpeck',   null, '细点衰减  ', 0.05,  1.2,   0.05,  2],
+        ['bedCellAmt',    null, '石子缝    ', 0,     0.20,  0.005, 3],
+        ['bedTexWarp',    null, '域扭曲    ', 0,     0.50,  0.02,  2],
+        ['bedTexScale',   null, 'tile 密度 ', 0.08,  0.80,  0.01,  2],
+        ['bedRoughVar',   null, '湿润变化  ', 0,     0.60,  0.01,  2],
+        ['bedTexBase',    null, '地面明度  ', 0.6,   1.8,   0.02,  2],
+        ['bedMacroScale', null, 'macro 尺度', 0.005, 0.080, 0.001, 3],
+        ['bedMacroGain',  null, 'macro 强度', 0,     0.40,  0.01,  2]
+      ];
+      var bedLive = { bedMacroScale: 1, bedMacroGain: 1 };   // 走 uniform，无需重建
+
+      bedDefs.forEach(function (d) {
+        var field = d[0], label = d[2], min = d[3], max = d[4], step = d[5], dec = d[6];
+        var row = document.createElement('div');
+        row.style.cssText = 'white-space:nowrap;margin:2px 0';
+        var lab = document.createElement('span');
+        lab.textContent = label;
+        var input = document.createElement('input');
+        input.type = 'range'; input.min = min; input.max = max; input.step = step;
+        input.value = SW.P[field];
+        input.style.cssText = 'width:110px;vertical-align:middle;accent-color:#7fb8c9;height:14px';
+        var val = document.createElement('span');
+        val.textContent = Number(SW.P[field]).toFixed(dec);
+        val.style.cssText = 'display:inline-block;width:48px;text-align:right';
+        input.addEventListener('input', function () {
+          var v = parseFloat(input.value);
+          SW.P[field] = v;
+          val.textContent = v.toFixed(dec);
+          if (!bedLive[field]) { scheduleBedRebuild(); }
+        });
+        row.appendChild(lab); row.appendChild(input); row.appendChild(val);
+        bedBox.appendChild(row);
+      });
+      box.appendChild(bedBox);
+
       var reset = document.createElement('button');
       reset.textContent = '重置默认';
       reset.style.cssText = 'pointer-events:auto;margin-top:4px;font:inherit;color:inherit;' +
         'background:rgba(216,230,234,.12);border:1px solid rgba(216,230,234,.3);border-radius:4px;padding:1px 8px;cursor:pointer';
       reset.addEventListener('click', function () {
         var P0 = SW.P0;
-        defs.forEach(function (d) {
+        var all = defs.concat(bedDefs);
+        all.forEach(function (d) {
           SW.P[d[0]] = P0[d[0]];
           if (d[1] && SW.post && SW.post.bloomPass) { SW.post.bloomPass[d[1]] = P0[d[0]]; }
         });
         var rows = box.querySelectorAll('input');
-        defs.forEach(function (d, i) {
+        all.forEach(function (d, i) {
           rows[i].value = P0[d[0]];
           rows[i].nextSibling.textContent = Number(P0[d[0]]).toFixed(d[6]);
         });
+        scheduleBedRebuild();       // 湖底贴图参数回默认后要重建才看得出（AM-020）
       });
       box.appendChild(reset);
 

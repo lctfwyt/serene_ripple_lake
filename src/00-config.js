@@ -76,13 +76,38 @@
   //   bedTexture   总开关。false = 退回纯色湖底（material.color 回 0x5d6f66、不挂 map/roughnessMap）
   //   bedTexSize   贴图边长（2 的幂 → 才能 generateMipmaps）
   //   bedTexScale  世界 → UV 缩放（每世界单位多少 UV）；越小 tile 越大、重复越少
-  //   bedTexGrain  albedo 明暗幅度（颗粒对比）
+  //                0.60 ⇒ tile 1.67 世界单位；0.30 ⇒ 3.33。**调细 tile 是 AM-020 散掉"斑块感"的主手段**
+  //   bedTexGrain  albedo 明暗幅度（颗粒对比）。AM-020 由 0.55 降到 0.25 —— 这是"降低底部纹路
+  //                存在感"的正面杠杆，且**保持对称**（不压暗部，见 bedTexDark）。
   //   bedRoughVar  粗糙度变化幅度（湿润感：高处更光滑）
   //   bedMacroScale / bedMacroGain  macro 层（第二 UV 低频）—— 打破 tiling 重复感
   //                 （AM-005 §3：照片类纹理 repeat > 6 次肉眼可辨；macro 周期 ≈ 28.6 世界单位
   //                  ⇒ 全湖底 90 单位仅重复 ~3 次）
-  bedTexture: true, bedTexSize: 512, bedTexScale: 0.30, bedTexGrain: 0.55,
-  bedRoughVar: 0.20, bedMacroScale: 0.035, bedMacroGain: 0.12,
+  //   ⚠ AM-020 实测：macro 层**换不来 #6** —— 周期 28.6 世界单位 ≫ #6 采样区（几米），
+  //     区内近似常数。macroGain 0.12→0.34 时 #6 只动 0.04。
+  bedTexture: true, bedTexSize: 512, bedTexScale: 0.60, bedTexGrain: 0.25,
+  bedRoughVar: 0.20, bedMacroScale: 0.035, bedMacroGain: 0.10,
+  // 观感整形 —— AM-020 新增。默认值 = AM-020 的**调定结果**（不是中性值）。
+  //   bedTexDark  **暗部压缩**：0 = 原对称式（暗部同样按 ×(1−grain) 压，密集黑点就是"脏"的来源）；
+  //               1 = 只亮不暗。
+  //               ⚠ **本包最终取 0，即保持对称。** 曾一度定稿 1.0（配 grain 0.90）把纹理能量整体
+  //                 翻到亮侧（贴图 min 72→97、#6 回到 15.55），但雨桐看了对照板否决 ——
+  //                 **"亮斑不好看"**（暗斑被压平 ⇒ 变成亮斑 ⇒ 观感发云）。故本参数留在 `0`，
+  //                 只作为**调试滑杆上的一根备选杠杆**，不是当前观感。
+  //   bedTexSpeck 高频衰减：1 = 原样；越小则细密噪点越少（细点密度是"脏"的第二来源）。
+  //   bedCellAmt  cellular 权重（原值 0.14）：cell 边界成暗缝 ⇒ "石子缝"网格观感，调到基本消失。
+  //   bedTexWarp  域扭曲：0 = 关。**不是**修"格子底纹"用的（那个判断已被证伪，见 AM-020 §4），
+  //               实际作用是**在不加细噪点的前提下补回有机结构**（内部相邻差分 0.016→0.075）。
+  //               取整数频率 ⇒ 平铺无缝性不受影响（契约 §9 自检仍成立）。
+  //   ⚠ bedTexBase 保持 1：拿它"把地面整体调亮"会顶穿 #6（实测 1.25 ⇒ #6 = 12.92 < 14，
+  //     因为地面变亮 ⇒ 与鹅卵石的反差缩小 ⇒ 区内 std 掉）。要更亮请走
+  //     「压 bedTexSpeck」的方向，别动基准色。
+  //   🔴 **本包的核心机理（决定了调参边界）**：#6「湖底仍可读」量的是**地面 vs 鹅卵石**的
+  //     区内标准差 ⇒ **把地面压平/调亮都会【降低】#6**。所以"降低底部纹路存在感"这条路
+  //     天然会把 #6 压到**无贴图地板**附近。实测（同一 60 帧中位口径）：地板 `?bedtex=0`
+  //     = 14.85，本包定稿 = 15.02（冷启动复测 14.95）。⇒ 差距只剩 0.1~0.2，
+  //     **再往下压就没有余量了**，且这不是调不出来，是判据的固有代价（详见 AM-020 §3④/§5）。
+  bedTexDark: 0, bedTexSpeck: 0.45, bedCellAmt: 0.02, bedTexBase: 1, bedTexWarp: 0.22,
 
     // 交互
     splash: true, cameraSway: false, swayAmp: 0.002,
