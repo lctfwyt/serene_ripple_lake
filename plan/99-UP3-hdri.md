@@ -297,5 +297,42 @@ UP11 是"2866 raw px → 8 px 超阈"，本包更极端："99% raw px → 0 px �
 
 ### §7.8 提交
 
-（`git log -1 --stat` 原文粘贴于此处 —— 见提交后补录）
+模式 A（本轮独占工作区，UP3 自己提）。逐条 `git add` 白名单 10 个文件，**未用** `-A`/`.`；
+工作区提交后 `git status --porcelain` 为空；tag `baseline-pre-tier12` 未动。
+
+`git log -1 --stat` 原文：
+
+```text
+commit 382f763bbb28ac822e2e8c59a264d48eee37dbe0
+Author: lctfwyt <lctfwyt@outlook.com>
+Date:   Fri Sep 25 11:24:11 2026 +0800
+
+    feat(up3): 程序化环境光 equirect DataTexture + PMREM（AM-017）
+
+    - 新增运行时生成的环境贴图：128×64 POT equirect DataTexture → PMREMGenerator；
+      零网络加载、无外部 .hdr，file:// 双击即用。内容由当前 keyframe 的天空渐变 +
+      太阳瓣实时算出，与天空球 shader 同算式。
+    - 水面（60-water）：直接按 equirectUv() 采样环境贴图 + 按粗糙度 mip 偏置；
+      湖底（30-scene）：scene.environment（仅作用于 MeshStandardMaterial）。
+    - 环境光会与半球光/环境光重复计光 → 开启后按 envHemiScale/envAmbScale 按比例收回；
+      惰性重建（ENV_EPS=0.02），重烘失败自动回退、画面不黑。
+    - 双入口各 15/15；#13 2.106/2.096（余量 10.5%/10.3%）· #6 14.93/14.88 ·
+      #5 逐字不变 · AM-007 四态 R−B 未破；pw 14 passed；dist 776,364 B（+10,075）。
+    - 关闭：P.envEnabled=false（回退纯天空球反光）。
+
+ README.md                         |  13 ++-
+ plan/01-CONTRACT.md               |  68 ++++++++++++-
+ plan/02-AMENDMENTS.md             |  11 +-
+ plan/04-BOARD.md                  |   7 +-
+ plan/98b-AMENDMENTS-ARCHIVE-v1.md | 149 +++++++++++++++++++++++++++
+ plan/99-UP3-hdri.md               | 123 +++++++++++++++++++++-
+ plan/_STATUS.md                   |   2 +
+ src/00-config.js                  |  15 +++
+ src/30-scene.js                   | 207 +++++++++++++++++++++++++++++++++++++-
+ src/60-water.js                   |  58 ++++++++++-
+ 10 files changed, 634 insertions(+), 19 deletions(-)
+```
+
+> **补录说明**：README 环境光照小节已含在 `382f763` 提交内；本 §7.8 的 `git log` 原文按
+> `03-COLLAB-PROTOCOL §7.1-4`（提交后贴进包文档）补录，随一个 `docs(up3)` 小提交入库 —— 不 `--amend`。
 
