@@ -158,6 +158,17 @@
     glitterDetail: 0.16, glitterRough: 0.065, glitterJitter: 0.15,
     // glitterDetail: 0.10, glitterRough: 0.3, glitterJitter: 0.15,
 
+    // 细节波表方向（AM-022 §2-D · 雨桐拍板「A2/A3 取中间 = ±15」）—— 本包的主改动
+    //   swDirSpread  **双向半角（度）**：16 个波压到 90°±s 与 270°±s 两组，组内连续随机。
+    //     0 = 各向同性（旧行为，碎网）；15 = 定稿（横纹 + 之字形）；44 = 碎网感回升。
+    //     实测（午夜全画面）：s=0 柱宽 43.8% / 横纹比 1.53 → s=15 收窄 + 横纹比约 3.5。
+    //   swZigAmp    之字形相位幅度：给每个波叠一条沿 x 的低频正弦 ⇒ 波峰线左右摆动。
+    //     0 = 关（横纹会"死板"成百叶窗）；0.85 = 定稿。
+    //   swZigFreq   之字形空间频率（沿世界 x）。
+    // ⚠ 这三项**不在每帧路径上**：改完必须调 `SW.water.rebuildWaves()` 重编着色器才生效
+    //   （debug 面板那组滑杆已内置防抖 + 自动调用）。
+    swDirSpread: 15, swZigAmp: 0.85, swZigFreq: 0.75,
+
     // 调试
     debug: false
   };

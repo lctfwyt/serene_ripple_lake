@@ -85,7 +85,16 @@
   // ============================================== 细节波表（编译期常量 → 注入 GLSL）
   // 渲染路径禁止 Math.random（断言要可复现）→ 用固定种子的 SW.util.newRng，
   // 在模块加载时把 16 个波的（方向 / 波数 / 幅度 / 相位 / 色散速度）烤成 GLSL 字面量。
-  var DETAIL = (function buildDetail() {
+  // AM-022 §2-D：方向重铸 —— buildDetail 由「一次性 IIFE 常量」改为**可传参重建**。
+  //   mode = { halfDeg: 双向半角(度), zig: {a, f} }
+  //   · halfDeg 为 0 / 缺省 ⇒ 各向同性（**与原实现逐位等价**，rng 序列未变）
+  //   · halfDeg = 15 ⇒ 16 个波压到 90°±15° 与 270°±15° 两组；组内仍是**连续随机** ——
+  //     因为 u0 的分层抖动已经把 16 个值铺满 [0,1)，band 只是对每组做一次仿射压缩，
+  //     **不是**只有 +15/−15 两个离散值（实测 ±5 档取到 15 个不同角度）。
+  //   ⚠ rng 消耗序列必须与原实现**逐位一致**（否则连"现状"都会变）：
+  //     shuffle 15 次 → uu 16 次 → 角度抖动 16 次 → ph 16 次 → 二次 shuffle 15 次。
+  //     ⇒ 只允许在"角度计算之后"插入纯算术，**不许新增 rng() 调用**。
+  function buildDetail(mode) {
     var rng = SW.util.newRng(DETAIL_SEED);
     var TAU = Math.PI * 2, N = DETAIL_N;
     var slot = [], i, j, t;
@@ -96,7 +105,14 @@
       var uu = (i + 0.2 + 0.6 * rng()) / N;
       var lam = LAM_MAX * Math.pow(LAM_MIN / LAM_MAX, uu);
       var k = TAU / lam;
-      var ang = (slot[i] + 0.5 + 0.7 * (rng() * 2 - 1)) / N * TAU;
+      var u0 = (slot[i] + 0.5 + 0.7 * (rng() * 2 - 1)) / N;   // 分层抖动 → u0 在 [0,1) 均匀铺开
+      var u = u0;
+      if (mode && mode.halfDeg) {
+        var s = mode.halfDeg / 360;                            // ← 换算：s × 360° = 半角（不是 ×180°）
+        var base = (u0 < 0.5) ? 0.25 : 0.75;                   // 双向：90°(横纹主向) / 270° 两组
+        u = base + ((u0 * 2) % 1 - 0.5) * 2 * s;               // 组内连续随机 ∈ [base−s, base+s]
+      }
+      var ang = u * TAU;
       w.push({
         k: k,
         dx: Math.cos(ang), dz: Math.sin(ang),
@@ -114,24 +130,43 @@
     var sumS = 0;
     for (i = 0; i < N; i++) { sumS += w[i].amp * w[i].amp / 2; }
     return { w: w, norm: 1 / Math.sqrt(sumS), n: N, sumS: sumS };
-  })();
+  }
 
-  function detailGLSL() {
+  function detailGLSL(mode) {
+    var D = buildDetail(mode);
     var L = [], i, b;
     var f = function (v) { return (Math.abs(v) < 1e-8 ? 0 : v).toFixed(5); };
+    L.push('// AM-022 dir-mode: halfDeg=' + ((mode && mode.halfDeg) ? mode.halfDeg : 'iso') +
+      ' · zig=' + ((mode && mode.zig) ? 'on' : 'off'));
     L.push('float wband(float k, float pw) { return smoothstep(1.6, 4.5, 6.2831853 / max(k * pw, 1e-6)); }');
     L.push('vec2 swDetail(vec2 p, float t, float pw) {');
     L.push('  vec2 q = p + vec2(sin(p.y * 0.27 + t * 0.11), cos(p.x * 0.31 - t * 0.09)) * ' + WARP_AMP.toFixed(3) + ';');
     L.push('  float jsp = 0.6 + 1.6 * uGlitterJitter;');
     L.push('  vec2 g = vec2(0.0);');
-    for (i = 0; i < DETAIL.n; i++) {
-      b = DETAIL.w[i];
+    for (i = 0; i < D.n; i++) {
+      b = D.w[i];
+      var ph = f(b.ph);
+      // 之字形：给每个波的相位叠一条沿 x 的低频正弦 ⇒ 波峰线左右摆动，横纹不会"死板"成百叶窗
+      if (mode && mode.zig) {
+        ph = f(b.ph) + ' + ' + f(mode.zig.a) + ' * sin(p.x * ' + f(mode.zig.f) + ' + ' + f(b.ph) + ')';
+      }
       L.push('  g += vec2(' + f(b.dx) + ', ' + f(b.dz) + ') * (' + f(b.amp) + ' * wband(' + f(b.k) +
-        ', pw) * cos(' + f(b.kx) + ' * q.x + ' + f(b.kz) + ' * q.y + t * ' + f(b.om) + ' * jsp + ' + f(b.ph) + '));');
+        ', pw) * cos(' + f(b.kx) + ' * q.x + ' + f(b.kz) + ' * q.y + t * ' + f(b.om) + ' * jsp + ' + ph + '));');
     }
-    L.push('  return g * ' + f(DETAIL.norm) + ';');
+    L.push('  return g * ' + f(D.norm) + ';');
     L.push('}');
     return L.join('\n');
+  }
+
+  // FRAG 里 swDetail 块的占位符 —— 运行时想换方向档，重新生成一次 GLSL 再 replace 即可。
+  // 用占位符而不是把整段 FRAG 也函数化，是为了让「换波表」这个动作**只碰一处字符串**。
+  var DETAIL_SLOT = '__SW_DETAIL_BLOCK__';
+  // 从 SW.P 读当前方向档（debug 滑杆改的就是这三个值）
+  function waveMode() {
+    return {
+      halfDeg: (typeof SW.P.swDirSpread === 'number' && isFinite(SW.P.swDirSpread)) ? SW.P.swDirSpread : 0,
+      zig: (SW.P.swZigAmp > 0) ? { a: SW.P.swZigAmp, f: SW.P.swZigFreq } : null
+    };
   }
 
   var FRAG = [
@@ -206,7 +241,9 @@
     //   最后整体归一到 RMS 斜率 = 1 —— uGlitterDetail 的语义与改造前完全一致。
     //   pw = 每像素的世界尺寸：波长在屏幕上不足 ~2px 的波会被滤掉（远景自动变平，
     //   不再"发麻"，也省掉无谓的高频采样）。
-    detailGLSL(),
+    //   AM-022：此处原本直接嵌 `detailGLSL()` 的结果（编译期常量）。现改为占位符，
+    //   由 `fragShader(mode)` 在**建材质时 + 每次重建时**替换 ⇒ 方向档可运行时改。
+    DETAIL_SLOT,
 
     'void main() {',
     '  vec2 suv = clamp(vClip.xy / vClip.w * 0.5 + 0.5, vec2(0.0), vec2(1.0));',
@@ -319,6 +356,13 @@
     '  #include <fog_fragment>',
     '}'
   ].join('\n');
+
+  // 把当前方向档的 swDetail 块填进 FRAG 模板。
+  // ⚠ 每次调用都会重跑 buildDetail（16 个波 + 字符串拼接，≈ 1ms 级），但**不重编 GLSL**：
+  //   真正的重编发生在调用方写 `mat.fragmentShader` 后置 `needsUpdate = true`。
+  function fragShader(mode) {
+    return FRAG.replace(DETAIL_SLOT, detailGLSL(mode));
+  }
 
   // UP3 / AM-017：env 未就绪时占位的 1×1 纹理。
   //   sampler2D **不能为 null**（three 会绑一张无 image 的空纹理 → 采样结果不确定）。
@@ -453,7 +497,8 @@
       mat = new THREE.ShaderMaterial({
         uniforms: uniforms,
         vertexShader: VERT,
-        fragmentShader: FRAG,
+        // AM-022：不再直接用 FRAG（里面是占位符），按当前方向档现填。
+        fragmentShader: fragShader(waveMode()),
         defines: defines,
         fog: true,
         transparent: false,
@@ -529,6 +574,18 @@
 
     setRefract: function (bool) {
       if (u) { u.uRefract.value = bool ? 1 : 0; }
+    },
+
+    // AM-022 §2-D：按当前 SW.P 的 swDirSpread / swZigAmp / swZigFreq **重建细节波表**。
+    //   · 代价：three 会丢弃旧程序重编一次（首帧 ~50~200ms 卡顿）⇒ 只给 debug 面板用，
+    //     且调用方要防抖（见 90-debug.js 的「水面波纹（松手生效）」组）。
+    //   · 只换 swDetail 块，**不动 uniform / 不动 defines** ⇒ WP_PROBE 等宏不受影响。
+    //   · 返回是否真的重建了（未 init 时返回 false，调用方不该报错）。
+    rebuildWaves: function () {
+      if (!mat) { return false; }
+      mat.fragmentShader = fragShader(waveMode());
+      mat.needsUpdate = true;
+      return true;
     },
 
     probe: function () {

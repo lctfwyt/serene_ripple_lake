@@ -306,13 +306,64 @@
       });
       box.appendChild(bedBox);
 
+      // ── 水面波纹方向（AM-022 §2-D · 雨桐要求「这个参数放 debug 模式以后可调」）──
+      // 与湖底那组同构：改完**要重编着色器**（three 丢弃旧程序，首帧 ~50~200ms 卡顿）
+      // ⇒ 同样走 140ms 防抖，松手才重建。半角 0 = 回到各向同性碎网（改前形态）。
+      var waveBox = document.createElement('div');
+      waveBox.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid rgba(216,230,234,.25)';
+      var waveTitle = document.createElement('div');
+      waveTitle.textContent = '水面波纹（松手生效）';
+      waveTitle.style.cssText = 'opacity:.75';
+      waveBox.appendChild(waveTitle);
+
+      var waveRebuild = null;
+      function scheduleWaveRebuild() {
+        if (waveRebuild) { clearTimeout(waveRebuild); }
+        waveRebuild = setTimeout(function () {
+          waveRebuild = null;
+          if (SW.water && SW.water.rebuildWaves) { SW.water.rebuildWaves(); }
+        }, 140);
+      }
+
+      var waveDefs = [
+        // [SW.P 字段, passProp, 标签, min, max, step, 小数位]
+        ['swDirSpread', null, '方向半角  ', 0,   90,  0.5,  1],   // 0 = 各向同性 · 15 = 定稿 · 44 = 碎网回升
+        ['swZigAmp',    null, '之字幅度  ', 0,   2.0, 0.05, 2],   // 0 = 关（横纹变百叶窗）
+        ['swZigFreq',   null, '之字频率  ', 0.1, 2.0, 0.05, 2]
+      ];
+
+      waveDefs.forEach(function (d) {
+        var field = d[0], label = d[2], min = d[3], max = d[4], step = d[5], dec = d[6];
+        var row = document.createElement('div');
+        row.style.cssText = 'white-space:nowrap;margin:2px 0';
+        var lab = document.createElement('span');
+        lab.textContent = label;
+        var input = document.createElement('input');
+        input.type = 'range'; input.min = min; input.max = max; input.step = step;
+        input.value = SW.P[field];
+        input.style.cssText = 'width:110px;vertical-align:middle;accent-color:#7fb8c9;height:14px';
+        var val = document.createElement('span');
+        val.textContent = Number(SW.P[field]).toFixed(dec);
+        val.style.cssText = 'display:inline-block;width:48px;text-align:right';
+        input.addEventListener('input', function () {
+          var v = parseFloat(input.value);
+          SW.P[field] = v;
+          val.textContent = v.toFixed(dec);
+          scheduleWaveRebuild();       // 三个都是重建型，没有 live 项
+        });
+        row.appendChild(lab); row.appendChild(input); row.appendChild(val);
+        waveBox.appendChild(row);
+      });
+      box.appendChild(waveBox);
+
       var reset = document.createElement('button');
       reset.textContent = '重置默认';
       reset.style.cssText = 'pointer-events:auto;margin-top:4px;font:inherit;color:inherit;' +
         'background:rgba(216,230,234,.12);border:1px solid rgba(216,230,234,.3);border-radius:4px;padding:1px 8px;cursor:pointer';
       reset.addEventListener('click', function () {
         var P0 = SW.P0;
-        var all = defs.concat(bedDefs);
+        // ⚠ 顺序必须与 DOM 里 input 的出现顺序一致（下面按索引回写 rows[i]）
+        var all = defs.concat(bedDefs).concat(waveDefs);
         all.forEach(function (d) {
           SW.P[d[0]] = P0[d[0]];
           if (d[1] && SW.post && SW.post.bloomPass) { SW.post.bloomPass[d[1]] = P0[d[0]]; }
@@ -323,6 +374,7 @@
           rows[i].nextSibling.textContent = Number(P0[d[0]]).toFixed(d[6]);
         });
         scheduleBedRebuild();       // 湖底贴图参数回默认后要重建才看得出（AM-020）
+        scheduleWaveRebuild();      // 波纹方向同理 —— 回默认要重编着色器（AM-022）
       });
       box.appendChild(reset);
 
