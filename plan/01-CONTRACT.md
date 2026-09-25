@@ -468,6 +468,11 @@ var P = {
   //   （不在每帧路径上；debug 面板「水面波纹」组已内置防抖 + 自动调用）。
   //   swDirSpread = 双向半角（度）：0 = 各向同性（与 AM-022 之前的形态**逐位等价**）· 15 = 定稿。
   swDirSpread: 15, swZigAmp: 0.85, swZigFreq: 0.75,
+  // AM-025 §3-② 新增：**白天档**波表半角（度）。`swDirSpread` 语义收窄为「夜段档」。
+  //   逐时值 = lerp(swDirSpread, swDirSpreadDay, TimeState.envSunSpread)，量化 3° 档、
+  //   **只在跨档时重编着色器**（见 60-water.js 的 rawHalf / quantHalf / applyWaveHalf）。
+  //   45 ≈ 近各向同性（曝光横向铺开）· 15 = 纵纹为主（月柱细直）。三档对比板 pv-am025-spread.png。
+  swDirSpreadDay: 45,
 
   // 调试
   debug: false
@@ -735,3 +740,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-25 | AM-022：swDirSpread/swZigAmp/swZigFreq + rebuildWaves()；13 键 fogD 全降；5.50 冷青灰；20.50 配色 | 主控 |
 | 09-25 | AM-023：`20-time.js` 的 `gGain` 22.50/2.00→0.55 + 夜段四键并轨 + 白天四键归零；断言 #11 下限 0.8→0.5（判据面，非契约面） | UP13 |
 | 09-25 | AM-024：`TimeState` 加 `envSunSpread`（§2.2）· §6 加 `envSunSpreadGain` · §9 `SUN_AZ_DESIGN` ±8°→**0°**（N4 az 全归 0）；`#5` 复跑 2.108（4.00 压彩度保判据） | UP13 二轮 |
+| 09-25 | AM-025：§6 加 `swDirSpreadDay`（波表方向逐时化，`swDirSpread` 语义收窄为夜段档）；`20-time.js` 白天 `gGain` 0→0.12 + 夜段 `sun` 彩度 0.034→0.012、`gli`→0.006 + 日光色温单调化 + 18.50 降曝光；`30-scene.js` `D2A_DISC_DROP` 1.7→0.9 | UP13 三轮 |

@@ -15,6 +15,9 @@
 //                **只乘标量**：不动 `N` 的构造、不动 `D·Vis·Fs`（AM-024 硬约束 3）⇒ `#3` 折射不漂。
 //                `uGlitterNear`（默认 1）只作对比出图 / 降级的运行时混合，交付态恒 1。
 //                常量与两端推导（画面下沿 4.83 m / #13 采样带下沿 7.02 m）见下方 D2B 常量区。
+//   AM-025 §3-② — 波表方向**逐时化**：`swDirSpread` 由全局常量改为「夜 15 / 昼 45」按
+//                `TimeState.envSunSpread` 插值（`rawHalf()`），**量化 3° 档、只在跨档重编**。
+//                这是「曝光横向不展开」的唯一杠杆（D2a 改的是光源角宽，改不了法线分布）。
 //
 // 三条铁律（WP2 §3）：水面绝不进 sceneRT · depth 纹理 NEAREST · RT 与主 pass 同相机投影。
 // 前两条由 WP1 在 30-scene.js 里保证；第三条这里直接用**同一个 camera 对象**当 rtCamera，
@@ -197,12 +200,47 @@
   // FRAG 里 swDetail 块的占位符 —— 运行时想换方向档，重新生成一次 GLSL 再 replace 即可。
   // 用占位符而不是把整段 FRAG 也函数化，是为了让「换波表」这个动作**只碰一处字符串**。
   var DETAIL_SLOT = '__SW_DETAIL_BLOCK__';
-  // 从 SW.P 读当前方向档（debug 滑杆改的就是这三个值）
-  function waveMode() {
+
+  // ── AM-025：波表方向**逐时化**（雨桐「曝光没有横向展开，还是一小条」）──────────────
+  // 病根：`swDirSpread = 15` 原本是**全局常量**，全天都把波表定向成「纵纹为主」
+  //   ⇒ 水面法线沿 x 的变化被压窄 ⇒ 反射方向横向聚集 ⇒ 亮带必然窄。
+  //   **env 弥散（D2a）改的是"光源角宽"，改不了"水面法线的横向分布"** —— 本条才是那个杠杆。
+  // 做法：在 `P.swDirSpread`（夜段 15）与 `P.swDirSpreadDay`（白天 45）之间按
+  //   `TimeState.envSunSpread` 插值（0 = 夜 / 1 = 昼）。刻意与 D2a **共用同一个标量**：
+  //   两者表达同一件事（白天光被散开），分开只会多一路必须同步的字段。
+  //   ⚠ 若要解耦：加逐键字段 / 换插值源即可 —— `rawHalf()` 是本文件唯一的读取点。
+  // 重建纪律（AM-025 硬约束 3）：重编着色器 ≈50~200 ms ⇒ **量化到 3° 一档，只在跨档时重编**，
+  //   绝不每帧。夜 15 → 昼 45 全程只 10 个台阶，自动时钟下一小时也迈不过一格。
+  var WAVE_Q = 3;              // 档位量化（度）
+  var curHalf = null;          // 当前**已编进 shader** 的档位（量化值）
+  function c01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+  function rawHalf() {
+    var P = SW.P;
+    var base = (typeof P.swDirSpread === 'number' && isFinite(P.swDirSpread)) ? P.swDirSpread : 15;
+    var day = (typeof P.swDirSpreadDay === 'number' && isFinite(P.swDirSpreadDay)) ? P.swDirSpreadDay : base;
+    var s = 0;
+    if (SW.time && SW.time.current) {
+      try { var st = SW.time.current(); if (st) { s = c01(st.envSunSpread || 0); } } catch (e) { s = 0; }
+    }
+    return base + (day - base) * s;
+  }
+  function quantHalf() { return Math.round(rawHalf() / WAVE_Q) * WAVE_Q; }
+
+  // 从 SW.P / TimeState 组装方向档（debug 滑杆改的就是 P 里的三个值）
+  function waveMode(halfDeg) {
     return {
-      halfDeg: (typeof SW.P.swDirSpread === 'number' && isFinite(SW.P.swDirSpread)) ? SW.P.swDirSpread : 0,
+      halfDeg: (typeof halfDeg === 'number' && isFinite(halfDeg)) ? halfDeg : rawHalf(),
       zig: (SW.P.swZigAmp > 0) ? { a: SW.P.swZigAmp, f: SW.P.swZigFreq } : null
     };
+  }
+  // 真正重编：换 fragmentShader 字符串 + needsUpdate（three 丢弃旧程序重编，首帧 ~50~200ms）
+  function applyWaveHalf(h) {
+    if (!mat) { return false; }
+    mat.fragmentShader = fragShader(waveMode(h));
+    mat.needsUpdate = true;
+    curHalf = Math.round(h / WAVE_Q) * WAVE_Q;   // 记**档位**（不是精确值）⇒ 手动重建后不会反复重编
+    return true;
   }
 
   var FRAG = [
@@ -551,11 +589,15 @@
       var defines = {};
       if (P.debug) { defines.WP_PROBE = ''; }
 
+      // AM-025：首编用当前时刻的逐时档（夜 15 / 昼 45），并记下档位供 update() 的跨档检测用。
+      var h0 = rawHalf();
+      curHalf = Math.round(h0 / WAVE_Q) * WAVE_Q;
+
       mat = new THREE.ShaderMaterial({
         uniforms: uniforms,
         vertexShader: VERT,
         // AM-022：不再直接用 FRAG（里面是占位符），按当前方向档现填。
-        fragmentShader: fragShader(waveMode()),
+        fragmentShader: fragShader(waveMode(h0)),
         defines: defines,
         fog: true,
         transparent: false,
@@ -619,6 +661,12 @@
       u.uGlitterRough.value = SW.P.glitterRough;
       u.uGlitterJitter.value = SW.P.glitterJitter;
 
+      // ── AM-025：波表方向逐时化 —— **只在跨档时重编**（rebuild ≈50~200ms，绝不能每帧）──
+      //   时间先于本函数推进（契约 §2.10 的渲染循环顺序：time.update → ... → water.update）
+      //   ⇒ 这里读到的 envSunSpread 是当帧的新值。
+      var q = quantHalf();
+      if (curHalf === null || Math.abs(q - curHalf) >= WAVE_Q - 1e-6) { applyWaveHalf(q); }
+
       // ★ UP3 / AM-017：env 供给。水面**不拥有**环境贴图（构建在 30-scene.js），
       //   只消费 SW.scene.env。重建会换新贴图 → 必须每帧重指（同 uHeight 的道理）。
       var ev = SW.scene.env;
@@ -647,11 +695,11 @@
     //     且调用方要防抖（见 90-debug.js 的「水面波纹（松手生效）」组）。
     //   · 只换 swDetail 块，**不动 uniform / 不动 defines** ⇒ WP_PROBE 等宏不受影响。
     //   · 返回是否真的重建了（未 init 时返回 false，调用方不该报错）。
+    //   AM-025：手动重建用**精确值**（滑杆的 0.5° 步进仍然有效）；跨档检测按量化档位走，
+    //     所以手动改完之后不会被时间路径反复重编（见 applyWaveHalf 的 curHalf 记法）。
     rebuildWaves: function () {
       if (!mat) { return false; }
-      mat.fragmentShader = fragShader(waveMode());
-      mat.needsUpdate = true;
-      return true;
+      return applyWaveHalf(rawHalf());
     },
 
     probe: function () {
@@ -671,6 +719,9 @@
         detailGain: SW.P.glitterDetail,
         alphaEff: Math.sqrt(ar * ar + SW.P.glitterDetail * SW.P.glitterDetail * DETAIL_ALPHA_W),
         sunDir: u ? u.uSunDir.value.toArray() : [0, 1, 0],
+        // —— AM-025：波表方向档（已编进 shader 的档位 / 当前时刻应收的精确值）——
+        waveHalf: curHalf,
+        waveHalfNow: +rawHalf().toFixed(2),
         // —— AM-024 D2b：距离权重是否生效（1/0）+ 当前光源仰角下的最近处权重（与 GLSL 同式）——
         glitterNear: u ? u.uGlitterNear.value : 0,
         glitterNearMin: u ? +d2bMinAt(u.uSunDir.value.y).toFixed(4) : 0,
