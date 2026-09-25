@@ -382,8 +382,12 @@ function check(id, name, ok, detail) {
     check(10, '低光时段落 [22°,30°]·硬上限32°·正午≥33°', lowOk && lowCap && noonOk,
       `晨${elev(5.5).toFixed(4)} 昏${elev(18.5).toFixed(4)} 夜${elev(22.5).toFixed(4)} ∈[22,30]${lowOk?'✓':'✗'} ≤32${lowCap?'✓':'✗'}` +
       `  正午${elev(12.5).toFixed(2)} ≥33${noonOk?'✓':'✗'}  · 容差 ±1e-6（19.5°→22° 的 rad↔deg 往返有 ~1e-14 噪声）`);
-    check(11, '夜间月光强度非零', states[22.5].sunI > 0.4 && states[22.5].glitterGain >= 0.8,
-      `sunI(22.5)=${states[22.5].sunI.toFixed(2)} (>0.4)  glitterGain=${states[22.5].glitterGain.toFixed(2)} (≥0.8)`);
+    // AM-023（2026-09-25 雨桐裁决）：glitterGain 子判据 0.8 → **0.5**，与 #7 的硬下限对齐。
+    //   原 0.8 是「夜 gGain=1.20」时代的口径；UP13 §2-C 落地 0.55 档后它只剩冗余 ——
+    //   月光是否"非零"已由 **#13 像素口径**（peak/median，实测 2.54）真正兜底，
+    //   另有 `sunI > 0.4`（现 0.70）守主光。**sunI 那半条一字未动。**
+    check(11, '夜间月光强度非零', states[22.5].sunI > 0.4 && states[22.5].glitterGain >= 0.5,
+      `sunI(22.5)=${states[22.5].sunI.toFixed(2)} (>0.4)  glitterGain=${states[22.5].glitterGain.toFixed(2)} (≥0.5)`);
     const hHalf = Math.atan(Math.tan(34 / 2 * Math.PI / 180) * A) * 180 / Math.PI;
     const azHalf = Math.min(22, Math.max(7, hHalf - 6));
     const azOk = [5.5, 12.5, 18.5, 22.5].every((h) => {
