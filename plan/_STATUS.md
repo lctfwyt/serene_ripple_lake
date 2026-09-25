@@ -65,6 +65,7 @@
 | **UP11 BGM 选曲器（AM-015）** | 09-25 04:5x | ✅ | 单曲 → 曲目列表：两首改名 **明镜 / 微风**（`git mv`，字节未动）+ 右上「**BGM：** + 并排 chip」（形态三轮迭代终点：胶囊 → 原生下拉 → 回滚回 chip，理由见 96 §7.3）+ 随机首播（`rng` 独立流，不耗渲染序列）+ `?bgm=<n>` 钉选；切歌 = 淡出 .22 → 静音窗换源/换 trim → 淡入 .34（元素一曲一个，避免接两次图）。**118/118 · 15/15 双入口 · `audio:baseline` 全绿 · `env-narrow` 零违规 · console 0**；顺带修 `tryFileBgm()` 元素音量初值缺陷（预存：曾比母带目标响 0.94 dB） | ① pw `full.png` 待主控重录（差异 2866 px 全在 `#sw-bgm` bbox 内，零外溢）② `plan/pw/dist-baseline.txt` 含旧文件名 ③ `audio-baseline.py` 只自动验首曲 → 次曲无漂移检查（全文 96 §7.6） |
 
 | **波次 6 主控复核** | 09-25 03:05 | ✅ | UP9/UP10 独立复验通过：15/15 · `dist ≡ f(src)` 766 339 B · 冻结件哈希未动 · 海鸟 `birds=6`/`bgmCur 12.65 s`（BGM 未被打死）· 拖动 `ticks=17`（`sfxTick` 真出声）· 无限拖动 hour 恒有限 · 帧逐位可复现（A≡B，mean 0.0）· 0 报错。**修正 4 项**：①编号冲突裁 AM-014/015/016 ②契约 §4 `#hour` 描述改「刻度尺(role=slider)」③`00-config.js` 音频段缩进归位 ④`10-audio.js` probe 重复键 `tickTrim` 去重 | `full.png` 由主控重录；dist 基线重落 |
+| **UP3 环境光照（AM-017）** | 09-25 11:22 | ✅ | 程序化 env 落地（**零网络** · 无外部 HDRI）：128×64 equirect DataTexture → PMREM；水面走 `swEnvUV` + mip 偏置 `clamp(rough*8,0,4)`，湖底走 `scene.environment`（`MeshStandardMaterial` 专属，绕开 `40-lakebed.js`）；双入口 **15/15**；#13 **2.106 / 2.096**（余量 10.5% / 10.3%）· #6 **14.93 / 14.88** · #5 逐字不变 · 四态 R−B 未破；`pw` **14 passed**（env 开/关帧 maxΔ 50/255 < `threshold 0.2`，指纹逐位同）；降级验证 `envEnabled=false` + PMREM 抛错均不黑屏 | ① `pw:dist` 基线 `./index.html` 776,364 B（+10,075）待主控重落 ② `full.png` 是否重录待裁 ③ AM-017 已关单（全文移 98b） |
 
 > 各包详情：包文档 `## 完工记录` 节，或报告文件 `90a-UP8-report.md` / `91-UP5-audio.md` / `92-UP6-playwright.md`。
 
@@ -92,6 +93,7 @@
 | AM-014 | 刻度尺手感：惯性 + 中线突出层 + 命中区 padding | ✅ | UP10 09-25 01:2x（全文移 98b） |
 | AM-015 | UP11 BGM 选择器：曲目列表 + 选曲 chip + 两首改名 | ✅ | UP11 09-25 04:5x（全文见 02-AMENDMENTS §6） |
 | AM-016 | WP6 参数固化流程 | ⬜ 预留 | 波次 7（原定 AM-013，冲突顺延） |
+| AM-017 | UP3 程序化环境光（equirect DataTexture + PMREM） | ✅ | UP3 09-25 11:22（全文移 98b） |
 
 ---
 

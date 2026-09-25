@@ -1877,3 +1877,152 @@ UP2（全部动作）：
 - `full.png` 像素基线仍待主控 `pw:update`（AM-011 起挂起，本增量未加重）
 - dist 基线重落 **766,289 B**（src/80-ui.js 增量所致，`pw:dist` check 通过）
 - AM-012/013 编号冲突仍待主控裁（留言板 09-25 00:55 已报）；本单**顺延用 AM-014** 避开
+
+---
+
+# AM-017 · UP3 环境光照：程序化 equirect DataTexture + PMREMGenerator（✅ 已应用 2026-09-25）
+
+> 关闭时间：2026-09-25 11:2x　·　包文档：`plan/99-UP3-hdri.md`（完工记录 §7）　·　波次 8
+> 原定 `AM-010`，该号在 09-25 被 UP9 海鸟环境音占用 → 主控顺延为 **AM-017**（见 §2.1 与 90-WAVE4 §7 订正块）。
+> 施工口径以 `99-UP3-hdri.md` 为准；与 `60-UPGRADE-ROADMAP.md §3-UP3` 冲突处以包文档为准。
+
+## 1 · 背景 / 依据
+
+需求（路线图 §3-UP3）：现状只有 1 DirectionalLight + 1 HemisphereLight（两色手猜）+ 1 AmbientLight，
+**无 env map、无 PMREM**；水面 `60-water.js:243` 用一对 `uSkyTop`/`uSkyBottom` 二色渐变在"假装天空"。
+
+**主控裁决（2026-09-25）：环境贴图来源改为「程序化」，不用外部 HDRI。** 三条实测代价：
+
+| 调研事实 | 对「真 HDRI」的影响 |
+|---|---|
+| Poly Haven 1K `.hdr` 实测 1.6~1.7 MB/张 → 4 张内联 ≈ **8.5 MB** | 单 HTML 771 KB → **~9 MB（12×）**，与"双击即开的单文件"交付形态冲突 |
+| 🔴 r160 **没有 `environmentRotation`** | 13 个 keyframe 的太阳方位随小时走，固定朝向的 HDRI 只对得上其中一个 → 正中"会和 13 个 keyframe 打架" |
+| 真月光 HDRI 稀缺 | 4 张里至少 1 张还得程序化补 |
+
+**决定性约束**：`npm run assert` 与 `assert:dist` **两条入口都在 `file://` 下跑** →
+fetch / XHR / `<img>` 拉 `.hdr` 会在**两条线上同时拿不到**，那不是"降级"。只有运行时生成的
+`DataTexture` 能通吃，而程序化方案天然满足这条。
+
+## 2 · 变更内容
+
+**契约面**（`plan/01-CONTRACT.md`）
+- §2.3 `SW.scene`：**冻结签名一字未动**，只追加附加属性 `env`（`{ready,equirect,rt,rebuilds,res,err}`）
+  + 附加方法 `buildEnv(s)` / `dropEnv()`；写明三条约束（运行时 DataTexture · r160 无 intensity/rotation
+  → 走 `material.envMapIntensity` + 生成时定朝向 · `scene.environment` 只作用于 `MeshStandardMaterial`）。
+- §2.6 `SW.water`：`probe()` 追加 `envReady` / `envGain`；`uniforms` 追加 `uEnvEq` / `uEnvReady` / `uEnvGain`。
+- §6：追加 env 参数段 `envEnabled` / `envIntensity` / `envResolution` / `envWaterGain` / `envHemiScale` / `envAmbScale`。
+- §7：所有权 `30-scene.js` WP1→UP2→**UP3**、`60-water.js` WP2→UP8→**UP3**、`00-config.js` 注明 env 段。
+- §9：新增「**环境贴图自检**」算式块（`ENV_EQUIRECT_UV` 的**非线性 v** 口径 / 尺寸必须 POT /
+  `ENV_MIP_BIAS` / 太阳瓣角宽下限 / 惰性重建阈值 `ENV_EPS`）。
+- §10：变更记录一行。
+
+**代码面**（三个文件，零越界）
+- `src/30-scene.js`（UP3 所有者）
+  - 模块区常量：`ENV_EPS=0.02` · `AMB_BASE=0.12` · `ENV_SUN_DISC=2.5` · `ENV_SUN_DEXP=300` ·
+    `ENV_SUN_GLOW=0.20` · `ENV_SUN_GEXP=20` · `ENV_SUN_AMP=1.6` · `ENV_GROUND_MIN=0.16` · `ENV_REBUILD_MAX=40`。
+  - `envDist(a,b)` 签名距离（只统计 skyTop/skyBottom/sunColor/sunIntensity/sunAz/sunElev，逐项取绝对值累加）。
+  - `buildEnvEquirect(s,W,H)`：128×64 `DataTexture`（`HalfFloatType` + `EquirectangularReflectionMapping`），
+    上半球 `smoothstep(-0.06,0.62,y)^0.85` 的 skyBottom→skyTop 渐变（**与天空球 shader 同一算式**）
+    + 太阳瓣（紧致 `pow(d,300)×2.5` + 绕日晕 `pow(d,20)×0.20`，幅度 `×max(sunIntensity,0.25)×1.6`）
+    + 下半球按 `sstep(-0.75,0.02,y)` 压到 `0.16~1.0` 的"地面/水体半球"。
+    `minFilter=LinearMipmapLinear` + `generateMipmaps` → 水面按粗糙度取 mip。
+  - `buildEnv(s)`：惰性建 `PMREMGenerator` → `compileEquirectangularShader()` → `fromEquirectangular()`
+    → `scene.environment = rt.texture`；**双缓冲释放**（只回收"上上张"），带 `envEps` 阈值 + 重建上限护栏；
+    整段 `try/catch` → 失败即降级（画面绝不黑）。
+  - `_applyEnvIntensity(force)`：`scene.traverse` 把所有 `MeshStandardMaterial` 的 `envMapIntensity`
+    写成 `P.envIntensity`（r160 无 `scene.environmentIntensity`）。**不碰 `40-lakebed.js`**。
+  - `applyTimeState`：env 开关翻转 / 签名超阈值时重烘；env 生效时 `hemi.intensity ×= envHemiScale`、
+    `amb.intensity = 0.12 × envAmbScale`（扣回重复计的环境光）。
+- `src/60-water.js`（只动反射那一行 + 3 个 uniform）
+  - 新增 `swEnvUV(d)`：`u = atan(d.z,d.x)·(1/2π)+0.5`、`v = asin(clamp(d.y,-1,1))·(1/π)+0.5`
+    —— **与 three 的 `equirectUv()` 逐字一致**（v 是非线性的）。
+  - `refl` 由 `mix(uSkyBottom,uSkyTop,st)` 改为：`uEnvReady>0.5` 时采样
+    `texture2D(uEnvEq, swEnvUV(R), clamp(uWaterRough*8.0,0,4))`（世界空间反射向量 + 粗糙度 mip 偏置）；
+    `uSkyTop/uSkyBottom` **保留为 fallback**。
+  - 占位 `1×1 DataTexture`（sampler2D 不能为 null）；`update()` 每帧从 `SW.scene.env.equirect` 重指。
+- `src/00-config.js`（仅 env 段）：`envEnabled:true, envIntensity:0.9, envResolution:128,
+  envWaterGain:0.75, envHemiScale:0.50, envAmbScale:0.40`。
+
+## 3 · 影响面（不与他人重叠）
+
+| 文件 | 归属 |
+|---|---|
+| `src/30-scene.js` | UP3（WP1 → UP2 → UP3 所有者链） |
+| `src/60-water.js` | UP3（WP2 → UP8 → UP3 所有者链） |
+| `src/00-config.js` **仅 env 段** | UP3 |
+| `index.html` / `vendor/**` | 🔴 **逐字节零改动**（`git diff` 为空，一票否决级） |
+| `src/40-lakebed.js` | **未碰**（`envMapIntensity` 经 `traverse` 设） |
+| 冻结件 `wp5-assert.js` / `wp5-env.js` / `plan/pw/**` / 断言阈值 | **未碰** |
+
+## 4 · 验收判据 + 实测结果
+
+| # | 判据 | 结果 |
+|---|---|---|
+| 1 | `vendor/` 与 `index.html` 逐字节未改 | ✅ `git diff -- index.html vendor/` 为空 |
+| 2 | 零网络加载 | ✅ src 无 fetch / XHR / `<img>` / `TextureLoader`；pw `10-assert` `requestfailed (0)`；`pw:dist`「引用泄漏检查: 无」 |
+| 3 | 环境光确实生效 | ✅ `scene.environment` 非空、`_envMatCount=3`（bed + 2 层鹅卵石）；湖底(正午 z∈[0.35,0.65]×[0.06,0.34]) 均值 **138.87 → 152.11（+9.5%）**，std 基本不变（14.92 → 14.88） |
+| 4 | 水面反射换了来源 + 随粗糙度变化 | ✅ 探针 uProbe=5 直读 `refl`（h=22.5）：env 关 mean/std **19.89 / 5.23** → env 开 **51.72 / 51.12**；waterRough 0.02 → 0.60 使 std **54.92 → 25.45**（mip 偏置生效） |
+| 5 | 15/15 两入口全过 | ✅ 免构建 + dist 各 **15/15**；前后读数见 §5 |
+| 6 | 不受影响的断言确实没动 | ✅ #2 `calls=6 / tris=53088`、#14 `0.809`、#15 `0.4377/0.4548`、#7 `1.000/0.1500`、#9~#12 全部与改前逐字相同 |
+| 7 | AM-007 §1 四态 R−B 重测 | ✅ 见 §5（区分度未破） |
+| 8 | `#13` 读数与余量 | ⚠ 余量 **10.5% / 10.3%**（>10%，达标线之上）；已按包文档要求挂留言板 |
+| 9 | console 0 报错（两入口） | ✅ 0 / 0 |
+| 10 | 两种降级都不黑 | ✅ ① `envEnabled=false` → `sceneEnv=false`、`waterEnvReady=false`、hemi 0.42 / amb 0.12 回原值，画面 82.72（非黑）② 强制 `PMREMGenerator.fromEquirectangular` 抛错 → `err="SIMULATED PMREM FAILURE"`、`ready=false`、画面 82.83（非黑）；③ 恢复后 env 正常 |
+| 11 | 窄屏 / 移动端不回归 | ✅ `npm run pw` **14 passed**；`ui-panel` / `bed-clip` 未红（本包不动 UI） |
+| 12 | dist 与基线 | ✅ `npm run build` → `dist/index.html` **776,364 B**（改前 766,289 B，**+10,075 B / +1.3%**，只小幅变化）；13 个音频资产逐字节未变 |
+
+**惰性重建实测**：自动时钟 4 s 内重建 **0** 次（`rebuilds` 5 → 5，帧率 ~56 fps）；
+阶段测试中每次改参数强制重烘才计数 +1。
+
+## 5 · 前后两套读数（口径：`1306,876 → 1280×720`）
+
+| 读数 | 改前（免构建 / dist） | 改后（免构建 / dist） | 变化 |
+|---|---|---|---|
+| **#13** peak/median(24相位中位) | 2.136 / 2.130 | **2.106 / 2.096** | −0.03（余量 10.5%/10.3%） |
+| #13 亮带质心 | 635.0 / 636.8 | 633.6 / 637.8（49.5%/49.8%） | 噪声内 |
+| **#6** 湖底 std（60 帧中位，正午） | 15.05 / 15.02 | **14.93 / 14.88** | −0.12（地板 14，余量 +6.6%） |
+| **#5** chromaStep max | 2.108 @sun | **2.108 @sun** | 逐字不变 |
+| **#3** 折射差分 | 18.8%/4.67/91 · 19.0%/4.65/81 | **17.8%/4.76/78 · 17.8%/4.75/72** | 仍远高于判据 |
+| #2 calls/tris | 6 / 53088 | 6 / 53088 | 未变 |
+| #14 / #15 | 0.809 · 0.4377/0.4548 | 0.809 · 0.4377/0.4548 | 未变 |
+| **AM-007 §1 四态 R−B** | 4.26 · **−32.11** · 40.73 · −32.91 | **4.81 · −32.96 · 41.40 · −33.45** | 四态区分度保持（暖冷跨度 74.9 vs 73.8） |
+| 四态全幅亮度 | 137.46 · 157.36 · 131.17 · 83.03 | 139.26 · **162.62** · 134.52 · 84.61 | 午 +3.3% 最大 |
+
+**两入口一致性**：15 条 detail 逐字相同；R−B / 亮度差 ≤0.05；`demo` 四条读数差 ≤0.9（噪纹相位）。
+
+## 6 · pw 像素基线的结论（**无需重录**，与 99 §5 的预期不同）
+
+`npm run pw` **14 passed** —— `full.png` / `ui-panel.png` / `bed-clip.png` **全部未红**。
+不是"没改"，而是被 Playwright 的 `threshold: 0.2` 吃掉。实测（同口径同相位 h=12.5 / uTime=7）：
+
+| 量 | 值 |
+|---|---|
+| env 开 / 关 帧指纹 | 4136680232 / 1606781963（不同） |
+| max 通道差 | **50 / 255 = 0.196** ← 恰好在 `threshold 0.2` 之下 |
+| RMS / PSNR | 9.90 / **28.2 dB**（不钉相位的噪声是 20.1~32 dB） |
+| 有差异素比例 | **99.0%** |
+
+→ 结论：UP3 改变了 99% 的像素，但**没有一个像素越过感知阈值** → 基线保持绿。
+代价是**这条基线对 UP3 不设防**（与 `03-COLLAB-PROTOCOL.md §8.2` 记录的盲区同源；
+UP11 是"2866 raw px → 8 px 超阈"，本包更极端："99% raw px → 0 px 超阈"）。
+**是否为新画面重录 `full.png` 由主控裁**：重录 = 基线反映 UP3 后的真实画面；
+不重录 = 保留"升级前画面"的原始比对能力。两者都成立，本包**不自作主张**（`03 §7.1-③`）。
+
+## 7 · 挂账（需主控处理）
+
+1. `plan/pw/dist-baseline.txt` 中 `./index.html` 的 sha256 仍是改前值
+   （check 输出：`! 776364 B ./index.html` · `改动: ./index.html`，其余 14 个文件 `=` 全等）→ **待主控重落**。
+2. `full.png` 是否重录（见 §6）。
+3. `plan/shots-wp5/*.png` 四张证据帧**未被覆写**（未跑 `--shots`；时间戳仍是 2026-09-24T05:16:42）——
+   按 `70-REPO-BASELINE §56`，它们是"升级前"的唯一视觉证据，**保持原样**。
+
+## 8 · 明确不做（留档）
+
+| 不做 | 理由 |
+|---|---|
+| 外部 Poly Haven HDRI | 见 §1 三条代价；真要做"水里有云"另开一包 |
+| 每帧重烘 PMREM | 惰性重建（`envEps` + 重建上限护栏），实测 4 s 内 0 次 |
+| 改 `vendor/` 补 `environmentIntensity` | 不碰第三方运行时；走 `material.envMapIntensity` |
+| 改断言阈值 | 铁律。红了报主控 |
+| 给 `90-debug.js` 加 env 滑杆 | 不占本包额度；雨桐要调 env 强度由主控另开 |
+| 动 `40-lakebed.js` 的材质 | 会让 `#14/#15` 失去对象（UP4 地盘） |

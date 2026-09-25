@@ -53,6 +53,21 @@
     bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85,
     vignetteAmp: 0.16, grainAmp: 0,
 
+    // 环境光照（程序化 equirect + PMREM）—— AM-017 新增（UP3 落地）
+    //   来源刻意**不是**外部 HDRI：r160 没有 environmentRotation（13 个 keyframe 的太阳方位
+    //   随小时走，固定朝向的 HDRI 只对得上其中一个），且 4 张 1K .hdr ≈ 9 MB 会把单文件交付
+    //   撑爆；更关键的是**两条断言入口都在 file:// 下跑** → 运行时生成的 DataTexture 才能通吃。
+    //   依据与实测见 plan/99-UP3-hdri.md §3-①。
+    //   envEnabled    总开关。false = 完全退回旧光照（hemi/ambient 原值 + 水面二色渐变反射）
+    //   envIntensity  湖底 IBL 强度 → 逐帧写 material.envMapIntensity（r160 无 scene.environmentIntensity）
+    //   envResolution equirect 宽度（高度 = 宽度/2，必须 2 的幂才能生成 mip）
+    //   envWaterGain  水面反射的 env 强度。**与湖底分开**：底是漫反射 IBL、水是镜面反射，
+    //                 两者对 #13（反光柱 peak/median）的作用方向相反，分开才能各自调。
+    //   envHemiScale / envAmbScale  加 env 后环境光会**重复计**，把 hemi / ambient 按此比例扣回
+    //                 （hemi × 0.50、ambient × 0.40 → 净环境光量基本持平，但方向性与色相更物理）
+    envEnabled: true, envIntensity: 0.9, envResolution: 128,
+    envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+
     // 交互
     splash: true, cameraSway: false, swayAmp: 0.002,
 

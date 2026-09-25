@@ -17,6 +17,16 @@ Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无�
 反光带**近端会自然展开成扇形**（25° 俯角下的几何必然，真实月光路同理）；晨 / 昏因太阳方位偏 **−8° / +8°**，
 带子会相应**偏右 / 偏左**，夜间（方位 0°）居中。
 
+## 环境光照（IBL）
+水面与湖底的反光来自一张**运行时生成的**环境贴图 —— 128×64 equirect `DataTexture` → `PMREMGenerator`，
+**不加载任何 `.hdr` 文件**（`file://` 双击即可用，零网络请求）。
+贴图内容由当前 keyframe 的天空渐变色 + 太阳瓣实时算出：白日带暖色日面、夜间是冷色月晕，与天空球同一算式。
+- 水面：自定义 shader 直接按 `equirectUv()` 采样，并按粗糙度加 mip 偏置（越糙越糊）。
+- 湖底（两层鹅卵石）：走 `scene.environment`（只作用于 `MeshStandardMaterial`）。
+- ✋ 环境光会和半球光 / 环境光**重复计光** → 开启后自动把两者按比例收回（`envHemiScale` / `envAmbScale`），避免过曝。
+- 只在天色变化超过阈值时才重烘（惰性重建），自动走时下不产生额外开销；重烘失败自动回退、画面不黑。
+- 关掉：`P.envEnabled = false`（退回纯天空球反光）。
+
 ## 降级
 | 条件 | 行为 |
 |---|---|
@@ -27,7 +37,8 @@ Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无�
 ## 可调参数
 全部在 `src/00-config.js` 的 `P` 里，改完刷新即可。控制台执行 `SW.resetP()` 复位。
 几个常用项：`exposure` 整体明暗 · `fogDensity` 按天走（keyframe 里）· `glitterDetail` / `glitterRough` 反光带破碎感与宽度 ·
-`caustics` 湖底水下光斑（**默认 `false`**，置 `true` 才开；强度已做昼夜调制）· `pebbleScaleNear` / `pebbleScaleFar` 石头尺寸（**两层必须同区间**）。
+`caustics` 湖底水下光斑（**默认 `false`**，置 `true` 才开；强度已做昼夜调制）· `pebbleScaleNear` / `pebbleScaleFar` 石头尺寸（**两层必须同区间**）·
+`envEnabled` 环境光照总开关 · `envIntensity` 湖底 IBL 强度 · `envWaterGain` 水面环境反光增益 · `envResolution` 环境贴图宽（POT，默认 128）。
 
 ## 开发 / 构建（可选）
 

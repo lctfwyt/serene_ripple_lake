@@ -125,6 +125,28 @@ SW.scene = {
 };
 ```
 
+**AM-017（2026-09-25，UP3）**：`SW.scene` **冻结签名一字未动**，只追加**附加便利属性 / 方法**
+（与 `sceneRT` / `rtCamera` 同级，不属于 §2.3 冻结面）：
+
+```js
+SW.scene.env            // 只读消费：{ ready, equirect, rt, rebuilds, res, err }
+                        //   `60-water.js` 只读 ready / equirect，**不得重建**
+SW.scene.buildEnv(s)    // 用 TimeState 重建 equirect + PMREM；返回 boolean（是否生效）
+SW.scene.dropEnv()      // 退回旧光照（envEnabled=false / 建失败）——不销毁 PMREM
+```
+
+**约束**：
+① 环境贴图**必须是运行时生成的 `DataTexture`** —— `vendor/**` 与 `index.html` 逐字节零改动，
+   **两条入口（免构建 / dist）都在 `file://` 下跑**，fetch / XHR / `<img>` 拉 `.hdr` 会在两条线上
+   同时拿不到，不是"降级"。
+② r160 **无** `scene.environmentIntensity` / `environmentRotation` → 强度走 `material.envMapIntensity`
+   （在 `30-scene.js` 里用 `traverse` 设，**不碰 `40-lakebed.js`**），朝向靠"生成时就画对"。
+③ 环境光**只作用于 `MeshStandardMaterial`**（= 两层鹅卵石湖底）。水面是自定义 `ShaderMaterial`，
+   **不采样 PMREM 的 CubeUV RT**（r160 的 `CUBEUV_*` 定义是给内建材质注入的，自定义材质拿不到），
+   改为在 `60-water.js` 里直接采样**同一张 equirect + mip 偏置**（uv 口径见 §9 `ENV_EQUIRECT_UV`）。
+   视觉等价、零编译风险。`uSkyTop` / `uSkyBottom` **保留为 fallback**，env 未就绪时走旧二色渐变。
+
+
 ### 2.4 `40-lakebed.js` → `SW.lakebed`（所有者：WP1）
 
 ```js
@@ -155,9 +177,15 @@ SW.water = {
   mesh, material, uniforms,
   update(dt),
   setRefract(bool),       // 供断言用：关掉折射做像素差分
-  probe()                 // → { refract, normalGain, tris }
+  probe()                 // → { refract, normalGain, tris, envReady, envGain }
 };
 ```
+
+**AM-017（2026-09-25，UP3）**：`probe()` 追加 `envReady`（环境反射是否在跑，降级判据 #10 读它）
+与 `envGain`（`P.envWaterGain`）；`uniforms` 追加 `uEnvEq` / `uEnvReady` / `uEnvGain`
+（`uEnvEq` 每帧从 `SW.scene.env.equirect` 重指 —— 重建会换贴图，同 `uHeight` 的道理）。
+`setRefract` / 其余方法签名未动。
+
 
 ### 2.6b `65-post.js` → `SW.post`（所有者：UP2 · **AM-009 新增**）
 
@@ -353,6 +381,20 @@ var P = {
   bloom: true, bloomStrength: 0.55, bloomRadius: 0.40, bloomThreshold: 0.85,
   vignetteAmp: 0.16, grainAmp: 0,
 
+  // 环境光照（程序化 equirect + PMREM）—— AM-017 新增（UP3 落地）
+  //   来源刻意**不是**外部 HDRI：r160 无 environmentRotation（13 个 keyframe 的太阳方位随小时走，
+  //   固定朝向的 HDRI 只对得上其中一个）· 4 张 1K .hdr ≈ 9 MB 会撑爆单文件交付 ·
+  //   **两条断言入口都在 file:// 下跑** → 只有运行时生成的 DataTexture 能通吃。见 `99-UP3-hdri.md §3-①`。
+  //   envEnabled    总开关。false = 完全退回旧光照（hemi/ambient 原值 + 水面二色渐变反射）
+  //   envIntensity  湖底 IBL 强度 → 逐帧写 material.envMapIntensity（r160 无 scene.environmentIntensity）
+  //   envResolution equirect 宽度（高度 = 宽度/2，必须 2 的幂才能生成 mip）
+  //   envWaterGain  水面反射的 env 强度。**与湖底分开**：底是漫反射 IBL、水是镜面反射，
+  //                 两者对 #13（反光柱 peak/median）的作用方向相反，分开才能各自调。
+  //                 取 0.75 而非 1.0：实测 1.0 会把中位亮度抬上去、#13 比值被压到 1.92（余量 1%）。
+  //   envHemiScale / envAmbScale  加 env 后环境光**重复计**，把 hemi / ambient 按此比例扣回
+  envEnabled: true, envIntensity: 0.9, envResolution: 128,
+  envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+
   // 交互
   splash: true, cameraSway: false, swayAmp: 0.002,
 
@@ -394,13 +436,13 @@ var P = {
 |---|---|---|
 | `index.html` | **WP1** | 只读 |
 | `vendor/three.min.js` | **WP1** | 只读 |
-| `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`） |
-| `src/30-scene.js` | **WP1** | 只读（`applyTimeState` 已在 WP1 内实现，WP3 只提供 `TimeState`） |
-| `src/40-lakebed.js` | **WP1** | 只读 |
+| `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`；**UP3/AM-017 改 env 段**） |
+| `src/30-scene.js` | **WP1 → UP2 → UP3**（AM-017，波次 8 起移交） | 只读（`applyTimeState` 在 WP1 内实现，WP3 只提供 `TimeState`；**环境光照段属 UP3**） |
+| `src/40-lakebed.js` | **WP1** | 只读（UP3/AM-017 连材质都没碰，只从 `30-scene.js` 用 `traverse` 设 `envMapIntensity`） |
 | `src/90-debug.js` | **WP1** | 只读（读数已按 §5 暴露，WP2/3/4 只需保证自己的 probe 返回对应字段） |
 | `src/99-main.js` | **WP1** | 只读 |
 | `src/50-ripple.js` | **WP2** | 只读 |
-| `src/60-water.js` | **WP2** | 只读 |
+| `src/60-water.js` | **WP2 → UP8 → UP3**（AM-017，波次 8 起移交） | 只读（UP3 只动**反射那一行 + 3 个 uniform**） |
 | `src/70-input.js` | **WP2** | 只读 |
 | `src/20-time.js` | **WP3** | 只读 |
 | `src/80-ui.js` | **WP3 → UP10**（AM-011）**→ UP11**（AM-015） | 只读 |
@@ -471,6 +513,21 @@ var P = {
 | `PEBBLE_LOD_SEAM_RATIO_MAX` | **1.00**（必须 <） | WP1 | WP5 | **AM-007**：LOD 接缝的**屏幕口径**判据 —— 分界带里远层屏幕直径中位 **不得大于** 近层。实测：旧参数 **1.125**（倒挂）· 统一尺寸后预测 **0.80**。⚠ 这是**分布口径**，单颗大小不可比（见 §9 注） |
 | `PEBBLE_SCALE_COMMON` | **`[0.20, 0.58]`（两层同值）** | WP1 | WP1e · WP5 | **AM-007 A 修订**：`pebbleScaleNear` 与 `pebbleScaleFar` **必须取同一区间**。改动只允许成对改 |
 | `MAX_CHROMA_STEP` | **2.5**（必须 <） | WP3 | WP5 | **AM-007 §5.2c**：**色度加权**色相步长上限。`chromaStep = ‖ΔH‖ × min(C_a, C_b)`，逐字段取 13 个相邻 keyframe 对的**最大**值。**色相只有在两端都有彩度时才可感知**，权重取 `min` 是保守取法（不会因一端很饱和就把另一端近灰的旋转算成一大步）。全表实测最大 **2.11**（`sun` 斜阳→黄昏）。⚠ **不要用 1.5** —— 按任何一般约定实现都会打挂 `sun`(2.11) / `gli`(2.10) / `wat`(1.92) / `sky`(1.80) |
+
+**环境贴图自检**（AM-017 新增，改 equirect 尺寸 / 采样口径时必须重算）：
+
+```
+ENV_EQUIRECT_UV     = ( u = atan2(dir.z, dir.x)/(2π) + 0.5 ,  v = asin(dir.y)/π + 0.5 )
+                       ⚠ v 是**非线性**的（three 的 equirectUv() 就是这条）——
+                       写成 v = dir.y*0.5+0.5 会让整张环境贴图错位、水面反射全乱。
+                       DataTexture.flipY = false → 第 0 行对应 v = 0 → dir.y = −1（正下方）。
+ENV_EQUIRECT_SIZE   = (envResolution, envResolution/2) = 128×64   // 必须 2 的幂 → 才能 generateMipmaps
+ENV_MIP_BIAS        = clamp(uWaterRough × 8.0, 0, 4)              // 粗糙度 → mip 偏置（水面侧）
+太阳瓣角宽          ≈ sqrt(2·ln2 / ENV_SUN_DEXP) = sqrt(2·ln2/300) ≈ 3.9°（半宽）
+                       ⚠ 必须 ≳ mip1 的一个纹素（≈5.6°）量级，否则针尖瓣在 mip1 上被抹成 0
+                       → 实测「峰值没起来、中位反而升」→ 反光柱判据 #13 反而变差
+惰性重建阈值        ENV_EPS = 0.02（envDist 签名距离）；实测自动时钟 4s 内重建 **0** 次
+```
 
 **几何自检**（改机位后必须重算，`plan/02-AMENDMENTS.md AM-001 §2.2` 有完整算式）：
 
@@ -563,4 +620,5 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 2026-09-25 | **AM-011（UP10 时间刻度尺）**：§2.8 加注 —— `#hour` 由 `input[type=range]` 改 `div[role=slider][tabindex=0]`（24h 环形刻度尺，DOM id 与 `SW.ui` 签名均未变）；§7 `src/80-ui.js` 所有者 WP3 → UP10。代码面只在 `80-ui.js`（零越界）；断言阈值零改动；pw 像素基线 `full.png` 待主控重录（真变更，带外区域实测逐字节相同） | **UP10** · 契约 §2.8/§7 · WP5（基线重录） |
 | 2026-09-25 | **AM-014（UP10 刻度尺手感）**：§2.8 签名/DOM id 不变 —— `#hour` 命中区加透明 padding（bbox 544×50，视觉带位置未动）、拖动加惯性（速度采样+指数衰减，常量 `R.inertia`）、拖动/滑行时中线突出层（`#sw-ruler-track::before`，静止 opacity 0 不动像素）；env-narrow「UI 不重叠」口径未改，伪元素方案天然豁免。代码面只在 `80-ui.js`（零越界）；断言阈值零改动；dist 基线重落 766,289 B | **UP10** · 契约 §10 · 主控（基线重录） |
 | 2026-09-25 | **AM-010（UP9 海鸟环境音 + 咔嗒 API）**：§2.1 `SW.audio` 追加 `sfxTick(step)`（签名由 `90-WAVE5 §5` 冻结，`step ∈ [0,1]`、返回 boolean、自带 ≤25 ms 节流、受 `#snd` 管辖）；§6 音频参数段追加 `birds` / `birdGapMin` / `birdGapMax` / `uiVolume`（第四条总线 `uiGain` 与 bgm/hand/amb 并列进 limiter）。**海鸟与咔嗒一律走 `<audio>` 元素池**（`file://` 无 `decodeAudioData`），建池错峰 tick 5.2 s / bird 6.5 s（排在 `SLAP_DELAY=4000` 之后）。新增资产 `assets/audio/bird1~6.wav`（SoundDino，免费商用免署名）+ `tick1~2.wav`（Mixkit Free License）；随机全走 `rng`（独立种子，不消耗渲染随机序列）。代码面只在 `10-audio.js` 与 `00-config.js` 音频段（零越界）；断言阈值零改动 | **UP9** · 契约 §2.1/§6 · UP10（消费 `sfxTick`） |
+| 2026-09-25 | **AM-017（UP3 环境光照，程序化 equirect + PMREM）**：① §2.3 `SW.scene` **冻结签名一字未动**，只追加附加属性 `env`（{ready,equirect,rt,rebuilds,res,err}）+ 附加方法 `buildEnv(s)` / `dropEnv()`；并写明三条约束（必须是运行时 DataTexture · r160 无 intensity/rotation → 走 `material.envMapIntensity` + 生成时定朝向 · `scene.environment` 只作用于 MeshStandardMaterial）。② §2.6 `SW.water.probe()` 追加 `envReady` / `envGain`；`uniforms` 追加 `uEnvEq`/`uEnvReady`/`uEnvGain`。③ §6 追加 env 参数段（`envEnabled` / `envIntensity` / `envResolution` / `envWaterGain` / `envHemiScale` / `envAmbScale`）。④ §7 所有权：`30-scene.js` WP1→UP2→**UP3**、`60-water.js` WP2→UP8→**UP3**、`00-config.js` 注明 env 段。⑤ §9 新增「**环境贴图自检**」算式块（`ENV_EQUIRECT_UV` 的**非线性 v** 口径 / 尺寸必须 POT / mip 偏置 / 太阳瓣角宽下限 / 惰性重建阈值）。**断言阈值一律未动**——#13 2.136→2.106（+10.5% 余量）、#6 15.05→14.93（地板 14）、#3/#5 微移；四态 R−B 重测标定。全文见 `98b-AMENDMENTS-ARCHIVE-v1.md` §AM-017，过程见 `plan/99-UP3-hdri.md §7` | **UP3** · 契约 §2.3/§2.6/§6/§7/§9 · 主控（`full.png` 是否重录 + `dist-baseline.txt` 重落） |
 | 2026-09-25 | **AM-015（UP11 BGM 选曲器，已完工）**：① §2.1 `SW.audio` 追加 `bgmInfo()` / `setBgmTrack(i)`；§2.8 + §4 新增选曲控件 `#sw-bgm`（右上 `#snd` 正下方，「**BGM：** + 每曲一枚 chip」，纯 `<button>`，**不做原生 `<select>`** —— 曾实现过、按雨桐裁决整体回滚）；§6 `bgmFile` → `bgmFiles`（**单曲 → 曲目列表**，进页面随机一首）；§7 所有者 `80-ui.js` / `10-audio.js` / `00-config.js` / `assets/audio/*` 四方更新。② 资产改名：`bgm-stillwater.mp3` → **`bgm-mingjing.mp3`**（曲名「明镜」）、`bgm-cand1.mp3` → **`bgm-weifeng.mp3`**（曲名「微风」），文件名与曲名同源。③ **每首一组 {trim, trueDur}**（`BGM_TRACKS` 是唯一真值源；`BGM_TRIM`/`BGM_TRUE_DUR` 两标量保留、首项直接引用 → `audio-baseline.py` 漂移检测仍全绿、零重复字面量）；元素切歌 = 淡出 0.22 s → 静音窗内换 src/trim → 淡入 0.34 s，避免"接两次图"导致峰值翻倍。④ 随机只用 `rng`（独立流 `seed ^ Date.now()`，不消耗渲染序列）；修掉一处**既有缺陷**：`tryFileBgm()` 建图后未刷新 `el.volume`，元素音量停在 `P.bgmVolume`（比母带目标响 0.94 dB）直到首次 duck/回卷。⑤ **断言阈值零改动**；免构建 + dist 两入口 118/118、`npm run assert` 与 `assert:dist` 各 **15/15**、`audio:baseline` 全绿、`env-narrow` 不重叠零违规。**pw 像素基线 `full.png` 待主控重录**（差异 2866 px 全部落在 `#sw-bgm` 的 bbox `x[1100,1257] y[56,80]` 内、零外溢）；`ui-panel.png` / `bed-clip.png` 未受影响。两条**挂账**：`audio-baseline.py` 只验首曲常量（次曲无自动漂移检查）、dist 与 pw 基线由主控重录 | **UP11** · 契约 §2.1/§2.8/§4/§6/§7 · 主控（基线重录） |

@@ -153,6 +153,11 @@
     'uniform vec3 uWaterColor;',
     'uniform vec3 uSkyTop;',
     'uniform vec3 uSkyBottom;',
+    // ★ UP3 / AM-017：环境贴图反射。uEnvEq 由 SW.scene.env.equirect 供给（每帧在 update() 里重指），
+    //   uEnvReady 是 0/1 开关 —— 0 时整段等于旧路径（= envEnabled=false / PMREM 建失败 的降级）。
+    'uniform sampler2D uEnvEq;',
+    'uniform float uEnvReady;',
+    'uniform float uEnvGain;',
     'uniform vec3 uCamPos;',
     'uniform vec3 uSunDir;',
     'uniform vec3 uSunRadiance;',
@@ -178,6 +183,15 @@
     'float hAt(vec2 uv) {',
     '  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { return 0.0; }',
     '  return texture2D(uHeight, uv).r;',
+    '}',
+
+    // ── UP3 / AM-017：世界空间方向 → equirect uv ─────────────────────────────
+    // 与 three 的 equirectUv() 逐字一致（u 由 atan2(z,x) 定、v 由 asin(y)/π 定，v 是**非线性**的）。
+    // 写错这个式子 → 环境反射整个错位（水里的天空带会跑到脚下），比不换还糟。
+    'vec2 swEnvUV(vec3 d) {',
+    '  float u = atan(d.z, d.x) * 0.15915494 + 0.5;',
+    '  float v = asin(clamp(d.y, -1.0, 1.0)) * 0.31830989 + 0.5;',
+    '  return vec2(u, v);',
     '}',
 
     // ── 高频细节法线的梯度（AM-002 §7.2 第 2/4 条）────────────────────────
@@ -240,7 +254,19 @@
     '  float Fr = F0 + (1.0 - F0) * pow(1.0 - NoV, 5.0);',
     '  vec3 R = reflect(-V, N);',
     '  float st = pow(smoothstep(-0.06, 0.62, R.y), 0.85);',
-    '  vec3 refl = mix(uSkyBottom, uSkyTop, st);',
+    '  vec3 reflBase = mix(uSkyBottom, uSkyTop, st);',
+    // ★ UP3 / AM-017：把「假天空」的二色渐变换成**采样环境贴图**。
+    //   采样在**世界空间反射向量** R 上做（不是屏幕空间）—— 否则转动/压缩画面时反射不会跟着几何走。
+    //   mip 偏置 = 粗糙度 → 等效 PMREM 的粗糙度感知模糊（贴图是 POT + generateMipmaps）。
+    //   uSkyTop / uSkyBottom **保留**并作为 fallback：env 未就绪（含建失败）时画面绝不黑。
+    //   水面**不**采样 PMREM 出来的 CubeUV RT：r160 的 CUBEUV_* 定义是给内建材质注入的，
+    //   自定义 ShaderMaterial 拿不到 → 改走「同一张 equirect + mip」，视觉等价、零编译风险。
+    '  vec3 refl = reflBase;',
+    '  if (uEnvReady > 0.5) {',
+    '    float envBias = clamp(uWaterRough * 8.0, 0.0, 4.0);',
+    '    vec3 envCol = texture2D(uEnvEq, swEnvUV(R), envBias).rgb * uEnvGain;',
+    '    refl = mix(reflBase, envCol, uEnvReady);',
+    '  }',
     '  vec3 col = mix(body, refl, clamp(Fr, 0.0, 1.0));',
 
     // ⑥ 反光路径（AM-002 A）：GGX + 两层法线
@@ -294,9 +320,19 @@
     '}'
   ].join('\n');
 
+  // UP3 / AM-017：env 未就绪时占位的 1×1 纹理。
+  //   sampler2D **不能为 null**（three 会绑一张无 image 的空纹理 → 采样结果不确定）。
+  //   用 1×1 的浅水色，即使 uEnvReady 判据被绕过也不会出黑块。
+  function makeEnvPlaceholder() {
+    var t = new THREE.DataTexture(
+      new Uint8Array([128, 150, 170, 255]), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    t.needsUpdate = true;
+    t.name = 'envPlaceholder';
+    return t;
+  }
+
   // 2·tan(fov/2)/drawingBufferHeight：屏幕上一像素对应多少世界单位（在 |viewZ| = 1 处）
-  function pxScale(cam) {
-    var h = 1;
+  function pxScale(cam) {    var h = 1;
     if (SW.scene.renderer) {
       var gl = SW.scene.renderer.getContext();
       if (gl && gl.drawingBufferHeight > 1) { h = gl.drawingBufferHeight; }
@@ -392,6 +428,10 @@
       uniforms.uWaterColor = { value: new THREE.Color(0.06, 0.20, 0.22) };
       uniforms.uSkyTop = { value: new THREE.Color(0.24, 0.45, 0.72) };
       uniforms.uSkyBottom = { value: new THREE.Color(0.62, 0.76, 0.78) };
+      // ★ UP3 / AM-017：env 供给入口（真正指向由 update() 每帧刷新 —— 重建后会换新贴图）
+      uniforms.uEnvEq = { value: makeEnvPlaceholder() };
+      uniforms.uEnvReady = { value: 0 };
+      uniforms.uEnvGain = { value: 1 };
       uniforms.uCamPos = { value: new THREE.Vector3().copy(cam.position) };
       uniforms.uSunDir = { value: new THREE.Vector3(0, 1, 0) };
       uniforms.uSunRadiance = { value: new THREE.Color(1, 1, 1) };
@@ -476,6 +516,15 @@
       u.uGlitterDetail.value = SW.P.glitterDetail;
       u.uGlitterRough.value = SW.P.glitterRough;
       u.uGlitterJitter.value = SW.P.glitterJitter;
+
+      // ★ UP3 / AM-017：env 供给。水面**不拥有**环境贴图（构建在 30-scene.js），
+      //   只消费 SW.scene.env。重建会换新贴图 → 必须每帧重指（同 uHeight 的道理）。
+      var ev = SW.scene.env;
+      var envOn = !!(SW.P.envEnabled && ev && ev.ready && ev.equirect);
+      if (envOn) { u.uEnvEq.value = ev.equirect; }
+      u.uEnvReady.value = envOn ? 1 : 0;
+      u.uEnvGain.value = (typeof SW.P.envWaterGain === 'number' && isFinite(SW.P.envWaterGain))
+        ? SW.P.envWaterGain : 1;
     },
 
     setRefract: function (bool) {
@@ -499,6 +548,9 @@
         detailGain: SW.P.glitterDetail,
         alphaEff: Math.sqrt(ar * ar + SW.P.glitterDetail * SW.P.glitterDetail * DETAIL_ALPHA_W),
         sunDir: u ? u.uSunDir.value.toArray() : [0, 1, 0],
+        // —— UP3 / AM-017：环境反射是否在跑（降级判据 #10 读它）——
+        envReady: !!(u && u.uEnvReady.value > 0.5),
+        envGain: u ? u.uEnvGain.value : 0,
         overBudget: tris > TRIS_BUDGET
       };
     }

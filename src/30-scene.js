@@ -1,4 +1,4 @@
-// src/30-scene.js —— 所有者：WP1
+// src/30-scene.js —— 所有者：WP1 → UP3（AM-017 起环境光照段归 UP3）
 // 签名逐字对齐 01-CONTRACT.md §2.3。其它 WP：只读。
 //
 // WP2 会用到的钩子（契约 §2.3 之外的**附加**便利属性，不影响冻结签名）：
@@ -6,6 +6,9 @@
 //                          （渲染期间自动隐藏 SW.water.mesh，避免水面被画进自己的折射 RT）。
 //   SW.scene.sceneRT    —— 已分配好，**不要重建**。颜色附件是 linear（未做 tonemap / 未编码），
 //                          DepthTexture 用 NearestFilter（用 LINEAR 会变全白）。
+//   SW.scene.env        —— **UP3 / AM-017 新增**（只读消费）：程序化环境贴图的运行时状态。
+//                          { ready, equirect, rt, rebuilds, res, err }
+//                          `60-water.js` 只读 `ready` 与 `equirect` 两个字段，**不得重建**。
 (function (SW, window, document) {
   'use strict';
   var THREE = window.THREE;
@@ -108,9 +111,109 @@
     return rt;
   }
 
+  // ═══ UP3 / AM-017：程序化环境贴图（equirect DataTexture → PMREMGenerator）══════
+  // 为什么是程序化而不是外部 HDRI：见 plan/99-UP3-hdri.md §3-①（体积 9 MB / r160 无 rotation /
+  //   真月光素材稀缺）。硬约束：`npm run assert` 与 `assert:dist` **都在 file:// 下跑** →
+  //   环境贴图必须是**运行时生成的 DataTexture**，不许 fetch / XHR / <img> 拉 .hdr
+  //   （那会在两条线上同时拿不到，不是"降级"）。
+  // r160 缺 `scene.environmentIntensity` 与 `environmentRotation` →
+  //   强度只能走 `material.envMapIntensity`，朝向只能靠"生成时就画对"
+  //   （这恰是程序化方案的天然优势）。**不要去 vendor/ 里补 API。**
+  var ENV_EPS = 0.02;          // 惰性重建阈值（签名距离）。防每帧重烘 PMREM
+  var AMB_BASE = 0.12;         // AmbientLight 基准强度；env 生效时按 P.envAmbScale 压减
+  var ENV_SUN_DISC = 2.5;      // 太阳瓣紧致分量峰值
+  // 太阳瓣的**角宽**必须够大：水面反射按粗糙度取 mip（128×64 的 mip1 一个纹素 ≈ 5.6°），
+  // 半宽 ≲2° 的针尖瓣在 mip1 上会被抹成 0 —— 实测「峰值没起来、中位反而升」→ 反光柱判据反而变差。
+  // 取 pow(d,300)（半宽 ≈ 3.9°）：在 mip0~1 上活得住，又不至于宽到像"假光斑"。
+  // 太阳的**物理**镜面高光仍由 60-water.js 的 GGX 路径（两层法线）承担，env 只补环境色。
+  var ENV_SUN_DEXP = 300;      // 紧致分量指数
+  var ENV_SUN_GLOW = 0.20;     // 太阳瓣宽泛分量峰值（绕日暖晕 → 给漫反射 IBL 方向性）
+  var ENV_SUN_GEXP = 20;       // 宽泛分量指数
+  var ENV_SUN_AMP = 1.6;       // 太阳瓣总幅度 = amp × max(sunIntensity, 0.25)
+  var ENV_GROUND_MIN = 0.16;   // 下半球（"地面/水体半球"）最暗处的相对亮度
+  var ENV_REBUILD_MAX = 40;    // 单次会话重建上限（护栏，防阈值失效时空转）
+
+  function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+  function sstep(e0, e1, x) { var t = clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); }
+  function numOr(v, d) { return (typeof v === 'number' && isFinite(v)) ? v : d; }
+
+  // TimeState → 环境签名距离：只统计**会改变环境外观**的字段。
+  //   sunAz / sunElev 是 rad，系数 0.25 → 约 0.08 rad(≈4.6°) 的位移就够触发重建。
+  //   ⚠ 同类字段间**不互相抵消**（取绝对值累加）—— 否则"天空变亮 + 太阳变暗"会被误判成没变。
+  function envDist(a, b) {
+    if (!a || !b) { return Infinity; }
+    var d = 0, i;
+    for (i = 0; i < 3; i++) {
+      d += Math.abs(numOr(a.skyTop[i], 0) - numOr(b.skyTop[i], 0));
+      d += Math.abs(numOr(a.skyBottom[i], 0) - numOr(b.skyBottom[i], 0));
+      d += 0.6 * Math.abs(numOr(a.sunColor[i], 0) - numOr(b.sunColor[i], 0));
+    }
+    d += 0.6 * Math.abs(numOr(a.sunIntensity, 0) - numOr(b.sunIntensity, 0));
+    d += 0.25 * (Math.abs(numOr(a.sunAz, 0) - numOr(b.sunAz, 0)) +
+                 Math.abs(numOr(a.sunElev, 0) - numOr(b.sunElev, 0)));
+    return d;
+  }
+
+  // 128×64（POT，可生成 mip）equirect：
+  //   上半球 skyBottom → skyTop 竖向渐变（**与天空球 shader 同一算式**：smoothstep(-0.06,0.62,y)^0.85）
+  //   + 太阳瓣（方位取 sunAz、仰角取 sunElev、色取 sunColor、幅度取 sunIntensity）
+  //   + 下半球压暗的"地面/水体半球"。色值一律**线性**，与 setRGB / 天空 uniform 同工作空间。
+  //
+  // ⚠ 采样约定必须与 three 的 equirectUv() **逐字一致**（否则环境贴图整个错位、水面反射全乱）：
+  //     u = atan2(dir.z, dir.x)/(2π) + 0.5      v = asin(dir.y)/π + 0.5      ← v 是**非线性**的！
+  //     DataTexture.flipY = false → 第 0 行对应 v = 0 → dir.y = −1（正下方）。
+  function buildEnvEquirect(s, W, H) {
+    var DU = THREE.DataUtils;
+    var toHalf = (DU && DU.toHalfFloat) ? DU.toHalfFloat : function (v) { return v; };
+    var ce = Math.cos(s.sunElev), se = Math.sin(s.sunElev);
+    var lx = ce * Math.sin(s.sunAz), ly = se, lz = ce * Math.cos(s.sunAz);
+    var T = s.skyTop, B = s.skyBottom, C = s.sunColor;
+    var amp = Math.max(0.25, numOr(s.sunIntensity, 0.7)) * ENV_SUN_AMP;
+    var data = new Uint16Array(W * H * 4);
+    var k = 0, ix, iy, i;
+    for (iy = 0; iy < H; iy++) {
+      var v = (iy + 0.5) / H;
+      var y = Math.sin((v - 0.5) * Math.PI);
+      var r = Math.sqrt(Math.max(0, 1 - y * y));
+      var up = y >= 0;
+      var t = Math.pow(sstep(-0.06, 0.62, y), 0.85);                    // 同天空球
+      var gm = ENV_GROUND_MIN + (1 - ENV_GROUND_MIN) * sstep(-0.75, 0.02, y);
+      for (ix = 0; ix < W; ix++) {
+        var phi = ((ix + 0.5) / W - 0.5) * Math.PI * 2;
+        var dx = r * Math.cos(phi), dz = r * Math.sin(phi);
+        var cr, cg, cb;
+        if (up) {
+          cr = B[0] + (T[0] - B[0]) * t;
+          cg = B[1] + (T[1] - B[1]) * t;
+          cb = B[2] + (T[2] - B[2]) * t;
+        } else {
+          cr = B[0] * gm; cg = B[1] * gm; cb = B[2] * gm;
+        }
+        var dp = dx * lx + y * ly + dz * lz;
+        if (dp > 0) {
+          var lobe = Math.pow(dp, ENV_SUN_DEXP) * ENV_SUN_DISC + Math.pow(dp, ENV_SUN_GEXP) * ENV_SUN_GLOW;
+          if (lobe > 1e-5) { var sc = lobe * amp; cr += C[0] * sc; cg += C[1] * sc; cb += C[2] * sc; }
+        }
+        data[k++] = toHalf(cr); data[k++] = toHalf(cg); data[k++] = toHalf(cb); data[k++] = toHalf(1);
+      }
+    }
+    var tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.magFilter = THREE.LinearFilter;
+    // HalfFloat + LinearMipmapLinear：水面按粗糙度取 mip → **粗糙度感知模糊**。
+    // （WebGL2 核心里 R16G16B16A16F 是 texture-filterable 的，不需要额外扩展。）
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    tex.wrapS = THREE.RepeatWrapping;          // 经度方向循环
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.unpackAlignment = 1;
+    tex.needsUpdate = true;
+    tex.name = 'envEquirect';
+    return tex;
+  }
+
   // ------------------------------------------------------ TimeState 变更判定
-  function arrEq(a, b) {
-    if (a === b) { return true; }
+  function arrEq(a, b) {    if (a === b) { return true; }
     if (!a || !b || a.length !== b.length) { return false; }
     for (var i = 0; i < a.length; i++) { if (a[i] !== b[i]) { return false; } }
     return true;
@@ -132,6 +235,10 @@
     sky: null, stars: null,
     sceneRT: null, rtCamera: null,
     lastState: null, appliedState: null,
+    // UP3 / AM-017（附加属性，非冻结签名）：程序化环境贴图的运行时状态
+    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '' },
+    _envPmrem: null, _envRT: null, _envEq: null, _envOldRT: null, _envOldEq: null,
+    _envLast: null, _envEnabledLast: null, _envMatPending: true, _envMatCount: 0,
 
     init: function (canvas) {
       var w = canvas.clientWidth || window.innerWidth;
@@ -218,7 +325,8 @@
       sun.intensity = s.sunIntensity;
       hemi.color.setRGB(s.hemiSky[0], s.hemiSky[1], s.hemiSky[2]);
       hemi.groundColor.setRGB(s.hemiGround[0], s.hemiGround[1], s.hemiGround[2]);
-      hemi.intensity = s.hemiIntensity;
+      // hemi.intensity / amb.intensity 不在这里直接赋 —— 见下方 env 段：
+      // env 生效时环境光会**重复计**，两者要按 P.envHemiScale / P.envAmbScale 一起扣回。
       fog.color.setRGB(s.fogColor[0], s.fogColor[1], s.fogColor[2]);
       fog.density = s.fogDensity;
       this.renderer.toneMappingExposure = s.exposure;
@@ -227,13 +335,104 @@
       this.stars.material.opacity = SW.util.clamp(s.starAlpha, 0, 1);
       this.sky.visible = s.starAlpha < 0.995;
 
+      // ── UP3 / AM-017：环境贴图（惰性重建）+ 环境光扣回 ─────────────────────
+      // 惰性判据 = envDist(新建状态, 上次烘图用的状态) > ENV_EPS。
+      //   `refresh()` 只在小时推进 ≥0.001 时才换状态对象 → 同一状态反复调用时 dist = 0，
+      //   不会每帧重烘；开着自动时钟时重建频率约「每几分钟一次」量级。
+      var envOn = !!SW.P.envEnabled;
+      if (envOn !== this._envEnabledLast) {          // 运行时开关翻转 → 强制重判
+        this._envEnabledLast = envOn;
+        this._envLast = null;
+      }
+      var envLive = false;
+      if (envOn) {
+        if (envDist(s, this._envLast) > ENV_EPS || !this.env.ready) {
+          this._envLast = s;
+          envLive = this.buildEnv(s);
+        } else {
+          envLive = this.env.ready;
+        }
+      } else if (this.env.ready) {
+        this.dropEnv();
+      }
+      // 建失败（env.err 非空）→ 视作没生效，光照按旧值，画面走水面二色渐变
+      if (this.env.err) { envLive = false; }
+      hemi.intensity = s.hemiIntensity * (envLive ? numOr(SW.P.envHemiScale, 1) : 1);
+      this.amb.intensity = AMB_BASE * (envLive ? numOr(SW.P.envAmbScale, 1) : 1);
+
       this.appliedState = s;
       // 只在状态真正变化时广播（否则会 60 次/秒地刷 WP2/WP3 的监听器）
       if (!sameState(prevState, s)) { prevState = s; SW.bus.emit('timechange', s); }
     },
 
+    // ─────────────────────────────── UP3 / AM-017：环境贴图构建 / 降级 ───────
+    // 返回 boolean（是否已生效）。任何异常一律吞掉并降级 ——
+    // 环境光失败**绝不能**连累画面（验收 #10-②：模拟 PMREM 建失败时画面必须走旧路径、不许黑）。
+    buildEnv: function (s) {
+      var P = SW.P;
+      var W = Math.max(8, numOr(P.envResolution, 128) | 0);
+      var H = Math.max(4, W >> 1);
+      if (this.env.rebuilds >= ENV_REBUILD_MAX) { return this.env.ready; }
+      try {
+        if (!this._envPmrem) {
+          this._envPmrem = new THREE.PMREMGenerator(this.renderer);
+          this._envPmrem.compileEquirectangularShader();
+        }
+        var eq = buildEnvEquirect(s, W, H);
+        var rt = this._envPmrem.fromEquirectangular(eq);
+        // 双缓冲释放：只回收「上上张」，避免水面当帧还指着刚被 dispose 的贴图
+        if (this._envOldRT) { this._envOldRT.dispose(); this._envOldRT = null; }
+        if (this._envOldEq) { this._envOldEq.dispose(); this._envOldEq = null; }
+        this._envOldRT = this._envRT; this._envOldEq = this._envEq;
+        this._envRT = rt; this._envEq = eq;
+        this.scene.environment = rt.texture;     // 只作用于 MeshStandardMaterial（= 两层鹅卵石湖底）
+        this.env.equirect = eq;
+        this.env.rt = rt;
+        this.env.ready = true;
+        this.env.res = W + 'x' + H;
+        this.env.err = '';
+        this.env.rebuilds++;
+        this._envMatPending = true;              // 材质 envMapIntensity / USE_ENVMAP 需要刷一次
+        return true;
+      } catch (e) {
+        this.env.err = String((e && e.message) || e);
+        this.dropEnv();
+        return false;
+      }
+    },
+
+    // envEnabled=false 或构建失败 → 退回旧光照。**不销毁** PMREM/RT（还能再开回来）。
+    dropEnv: function () {
+      if (this.scene) { this.scene.environment = null; }
+      this.env.ready = false;
+      this._envMatPending = true;
+      return false;
+    },
+
+    // 把 P.envIntensity 写到所有 MeshStandardMaterial 上。
+    //   r160 没有 scene.environmentIntensity → 强度只能逐材质写（见 99-UP3-hdri.md §3-②）。
+    //   `40-lakebed.js` 不在本包白名单 → 用 traverse 设，**不碰那个文件的一个字节**。
+    //   forceUpdate=true 时顺手 needsUpdate 一次，让 three 把 USE_ENVMAP 编进程序。
+    //   ⚠ 只在待刷标记置位时调用（needsUpdate 会触发重编程序，不能每帧做）。
+    _applyEnvIntensity: function (forceUpdate) {
+      var k = numOr(SW.P.envIntensity, 1);
+      var n = 0;
+      if (!this.scene) { return 0; }
+      this.scene.traverse(function (o) {
+        var m = o.material;
+        if (!m || !m.isMeshStandardMaterial) { return; }
+        if (m.envMapIntensity !== k) { m.envMapIntensity = k; }
+        if (forceUpdate) { m.needsUpdate = true; }
+        n++;
+      });
+      this._envMatCount = n;
+      return n;
+    },
+
     render: function (dt) {
       var r = this.renderer;
+      // ⓪'' UP3：材质 envMapIntensity 待刷（首帧湖底可能还没建出来 → 保持待刷直到落上）
+      if (this._envMatPending && this._applyEnvIntensity(true) > 0) { this._envMatPending = false; }
       // ⓪ 推进 WP1 自己的动画相位（水下光斑）。放在这里是为了不动契约 §2.10 那条冻结的渲染循环。
       if (SW.lakebed && SW.lakebed.tick) { SW.lakebed.tick(dt); }
       // ⓪' 可选的呼吸位移（P.cameraSway，默认 false）。只平移不改朝向 → 读起来像"船在轻轻晃"。
