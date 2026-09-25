@@ -215,15 +215,27 @@
   var curHalf = null;          // 当前**已编进 shader** 的档位（量化值）
   function c01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
-  function rawHalf() {
-    var P = SW.P;
-    var base = (typeof P.swDirSpread === 'number' && isFinite(P.swDirSpread)) ? P.swDirSpread : 15;
-    var day = (typeof P.swDirSpreadDay === 'number' && isFinite(P.swDirSpreadDay)) ? P.swDirSpreadDay : base;
+  // AM-028：取当帧的「白昼弥散度」0~1（= `TimeState.envSunSpread`）。
+  //   `rawHalf` / `mixBySpread` 共用它 —— 全项目只有这一处读，换插值源改这里即可。
+  function spread01() {
     var s = 0;
     if (SW.time && SW.time.current) {
       try { var st = SW.time.current(); if (st) { s = c01(st.envSunSpread || 0); } } catch (e) { s = 0; }
     }
-    return base + (day - base) * s;
+    return s;
+  }
+  // 两个「夜段档 / 白天档」标量按 spread01() 插值。夜段 s=0 ⇒ 逐位返回 nightV。
+  function mixBySpread(nightV, dayV) {
+    var a = (typeof nightV === 'number' && isFinite(nightV)) ? nightV : 0;
+    var b = (typeof dayV === 'number' && isFinite(dayV)) ? dayV : a;
+    return a + (b - a) * spread01();
+  }
+
+  function rawHalf() {
+    var P = SW.P;
+    var base = (typeof P.swDirSpread === 'number' && isFinite(P.swDirSpread)) ? P.swDirSpread : 15;
+    var day = (typeof P.swDirSpreadDay === 'number' && isFinite(P.swDirSpreadDay)) ? P.swDirSpreadDay : base;
+    return base + (day - base) * spread01();
   }
   function quantHalf() { return Math.round(rawHalf() / WAVE_Q) * WAVE_Q; }
 
@@ -658,9 +670,11 @@
 
       u.uNormalGain.value = SW.P.normalGain;
       u.uGlitterDetail.value = SW.P.glitterDetail;
-      u.uGlitterRough.value = SW.P.glitterRough;
       u.uGlitterJitter.value = SW.P.glitterJitter;
-
+      // ── AM-028：镜面粗糙度逐时化（白天摊宽亮带 / 夜段保持锐利）──────────────────
+      //   同 AM-025 的 `rawHalf()` 一样借用 `TimeState.envSunSpread`（0=夜 / 1=昼）。
+      //   夜段 s=0 ⇒ 逐位等于 `P.glitterRough`（0.065）⇒ 月柱锐度与 `#13` **一点不动**。
+      u.uGlitterRough.value = mixBySpread(SW.P.glitterRough, SW.P.glitterRoughDay);
       // ── AM-025：波表方向逐时化 —— **只在跨档时重编**（rebuild ≈50~200ms，绝不能每帧）──
       //   时间先于本函数推进（契约 §2.10 的渲染循环顺序：time.update → ... → water.update）
       //   ⇒ 这里读到的 envSunSpread 是当帧的新值。
@@ -673,8 +687,10 @@
       var envOn = !!(SW.P.envEnabled && ev && ev.ready && ev.equirect);
       if (envOn) { u.uEnvEq.value = ev.equirect; }
       u.uEnvReady.value = envOn ? 1 : 0;
-      u.uEnvGain.value = (typeof SW.P.envWaterGain === 'number' && isFinite(SW.P.envWaterGain))
-        ? SW.P.envWaterGain : 1;
+      // ── AM-028：水面 env 反射强度逐时化（白天远端反光的**主杠杆**）──────────────
+      //   实测（18:30 直渲）：0.75 → 1.10 把远端三段均值由 139.6 抬到 148.9。
+      //   夜段 s=0 ⇒ 逐位等于 `P.envWaterGain`（0.75）⇒ `#13` 不受影响（刻意如此）。
+      u.uEnvGain.value = mixBySpread(SW.P.envWaterGain, SW.P.envWaterGainDay);
     },
 
     setRefract: function (bool) {
@@ -722,6 +738,9 @@
         // —— AM-025：波表方向档（已编进 shader 的档位 / 当前时刻应收的精确值）——
         waveHalf: curHalf,
         waveHalfNow: +rawHalf().toFixed(2),
+        // —— AM-028：两个逐时标量的当前值（远端反光的证据读数）——
+        glitterRoughNow: +mixBySpread(SW.P.glitterRough, SW.P.glitterRoughDay).toFixed(4),
+        envWaterGainNow: +mixBySpread(SW.P.envWaterGain, SW.P.envWaterGainDay).toFixed(3),
         // —— AM-024 D2b：距离权重是否生效（1/0）+ 当前光源仰角下的最近处权重（与 GLSL 同式）——
         glitterNear: u ? u.uGlitterNear.value : 0,
         glitterNearMin: u ? +d2bMinAt(u.uSunDir.value.y).toFixed(4) : 0,

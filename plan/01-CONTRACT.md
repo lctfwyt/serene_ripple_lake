@@ -409,6 +409,9 @@ var P = {
   //   envHemiScale / envAmbScale  加 env 后环境光**重复计**，把 hemi / ambient 按此比例扣回
   envEnabled: true, envIntensity: 0.9, envResolution: 128,
   envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+  // AM-028 新增：**白天档**水面 env 反射强度（远端反光主杠杆）。
+  //   逐时 = lerp(envWaterGain, envWaterGainDay, TimeState.envSunSpread)；夜段 s=0 ⇒ 保持 0.75（护 #13）。
+  envWaterGainDay: 1.35,
   // AM-024 D2a 新增：日光亮瓣弥散度的全局倍率。s_eff = clamp01(TimeState.envSunSpread × 本值)。
   //   0 = 关掉 D2a（全时段紧致亮瓣）· 1 = 设计值 · >1 = 放大弥散。
   //   ⚠ 它**不在 envDist() 签名里**（同倍率两端相乘会约掉）⇒ 30-scene 单独监听、一变强制重烘。
@@ -463,6 +466,11 @@ var P = {
 
   // 反光路径（glitter path）—— AM-002 新增；AM-006 收窄白光范围
   glitterDetail: 0.16, glitterRough: 0.065, glitterJitter: 0.15,
+  // AM-028 新增：**白天档**镜面粗糙度（GGX alpha）。语义：`glitterRough` 收窄为「夜段档」。
+  //   抬它 = 把高光瓣摊宽 = 亮带「横向铺开」不再是细条（实测 18:30：0.065→0.20 让横向
+  //   peak/median 由 1.50 → 1.33）。逐时 = lerp(glitterRough, glitterRoughDay, envSunSpread)；
+  //   夜段 s=0 ⇒ **逐位 0.065** ⇒ 月柱锐度与 #13 结构上不受影响。
+  glitterRoughDay: 0.20,
 
   // 细节波表方向 —— AM-022 新增（§2-D）。改完必须 `SW.water.rebuildWaves()` 重编着色器才生效
   //   （不在每帧路径上；debug 面板「水面波纹」组已内置防抖 + 自动调用）。
@@ -741,3 +749,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-25 | AM-023：`20-time.js` 的 `gGain` 22.50/2.00→0.55 + 夜段四键并轨 + 白天四键归零；断言 #11 下限 0.8→0.5（判据面，非契约面） | UP13 |
 | 09-25 | AM-024：`TimeState` 加 `envSunSpread`（§2.2）· §6 加 `envSunSpreadGain` · §9 `SUN_AZ_DESIGN` ±8°→**0°**（N4 az 全归 0）；`#5` 复跑 2.108（4.00 压彩度保判据） | UP13 二轮 |
 | 09-25 | AM-025：§6 加 `swDirSpreadDay`（波表方向逐时化，`swDirSpread` 语义收窄为夜段档）；`20-time.js` 白天 `gGain` 0→0.12 + 夜段 `sun` 彩度 0.034→0.012、`gli`→0.006 + 日光色温单调化 + 18.50 降曝光；`30-scene.js` `D2A_DISC_DROP` 1.7→0.9 | UP13 三轮 |
+| 09-25 | AM-026~028：§6 加 `envWaterGainDay` / `glitterRoughDay`（两者都逐时化，夜段逐位不变）；`20-time.js` 黄昏 `spr`→1.0 + `sun` 橙→白直通 + 5.50 `sun`/`gli` 压彩度（去绿/转白）+ 白天 `gli` 单调 + 白天/黄昏 `gGain`→0.28；**5.50 色调整族**（为救 `R−B(5.5)`） | UP13 四轮 |

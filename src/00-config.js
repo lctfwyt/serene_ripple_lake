@@ -67,6 +67,12 @@
     //                 （hemi × 0.50、ambient × 0.40 → 净环境光量基本持平，但方向性与色相更物理）
   envEnabled: true, envIntensity: 0.9, envResolution: 128,
   envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+  // AM-028 新增：**白天档**的水面 env 反射强度（远端反光的主杠杆）。
+  //   雨桐「白天远端要能看到明显反光」「黄昏还是细条大曝光」——实测（18:30，直渲口径）
+  //   `0.75 → 1.10` 把**远端三段均值亮度由 139.6 抬到 148.9**（远端−近端 47→53）；
+  //   逐时插值 = lerp(envWaterGain, envWaterGainDay, envSunSpread) ⇒ 夜段 s=0 **保持 0.75**。
+  //   ⚠ 夜段不动是刻意的：一抬夜间反射，`#13`（柱 peak/median）的中位会跟着涨、比值反而掉。
+  envWaterGainDay: 1.35,
   // AM-024 D2a：日光亮瓣弥散度的**全局倍率**（本包新增字段，契约 §6 已同步）。
   //   `s_eff = clamp01(TimeState.envSunSpread × 本值)`；`30-scene.js` 用它算
   //   `disc = 2.5 − 1.7·s` / `glow = 0.20 + 0.35·s`。
@@ -163,7 +169,13 @@
     //     碎白光从「撒满整片水面」收束到镜面柱附近。再小会退回「光滑塑料带」。
     //   glitterRough 0.045 → 0.065：单颗高光从针尖变成小圆斑，
     //     收窄后柱不至于断成断续的点，读起来是「一条连续的月光带」。
+    //   **AM-028 起 `glitterRough` 语义收窄为「夜段档」** —— 白天由 `glitterRoughDay` 接管。
     glitterDetail: 0.16, glitterRough: 0.065, glitterJitter: 0.15,
+    // AM-028 新增：**白天档**的镜面粗糙度（GGX alpha）。抬它 = 把高光瓣摊宽 = 亮带「横向铺开」、
+    //   不再是"细条"（实测 18:30：0.065→0.20 让横向 peak/median 由 1.50 降到 1.33，即铺开）。
+    //   逐时插值 = lerp(glitterRough, glitterRoughDay, TimeState.envSunSpread)：夜段 s=0 ⇒
+    //   **逐位保持 0.065** ⇒ 月柱锐度与 `#13` 完全不受影响。
+    glitterRoughDay: 0.20,
     // glitterDetail: 0.10, glitterRough: 0.3, glitterJitter: 0.15,
 
     // 细节波表方向（AM-022 §2-D · 雨桐拍板「A2/A3 取中间 = ±15」）—— 本包的主改动
