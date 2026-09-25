@@ -723,4 +723,5 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-25 | AM-015：BGM 曲目列表（bgmFiles + setBgmTrack + `#sw-bgm` chip）；两首改名明镜/微风；BGM_TRACKS 唯一真值源 | UP11 |
 | 09-25 | AM-020：湖底贴图参数 7→12 + refreshBedTexture()；湖底贴图自检大改（90-debug 越界已追认） | 主控 |
 | 09-25 | AM-021：bedTexGrain→0.08；§9 新增「观感与 #6 负相关」「屏幕采样率」边界 | 主控 |
-| 09-25 | AM-022（🔶 待验收）：swDirSpread/swZigAmp/swZigFreq + rebuildWaves()；13 键 fogD 全降；5.50 冷青灰；20.50 配色 | 主控 |
+| 09-25 | AM-022：swDirSpread/swZigAmp/swZigFreq + rebuildWaves()；13 键 fogD 全降；5.50 冷青灰；20.50 配色（越权已追认） | 主控 |
+| 09-25 | AM-023：`20-time.js` 的 `gGain` 22.50/2.00→0.55 + 夜段四键并轨 + 白天四键归零；断言 #11 下限 0.8→0.5（判据面，非契约面） | UP13 |
