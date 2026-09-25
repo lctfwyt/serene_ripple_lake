@@ -714,3 +714,28 @@ Date:   Fri Sep 25 16:56:29 2026 +0800
 | **D2a 横向弥散** | `30-scene.js` | env 亮瓣 `ENV_SUN_DISC` 白天降 / `ENV_SUN_GLOW` 白天抬；🔴 `envDist()` 必须纳入新字段 |
 | **D2b 纵向截止** | `60-water.js` | 反光项乘距离权重 `w(d)`，近处压低、远处保留，全天生效 |
 | **A bloom 收窄** | `65-post.js` + `00-config.js` | 🔶 挂起：等降雾 + 定向 + gGain 0.55 落地后的实况图再定 |
+
+### 7 · 提交原文（`03-COLLAB-PROTOCOL §7.1-④`，模式 A 独占）
+
+```
+commit 1f3256cbb7235e41825f8126b041ed59c438aa62
+Author: lctfwyt <lctfwyt@outlook.com>
+Date:   Fri Sep 25 18:43:17 2026 +0800
+
+    feat(up13): 月光克制 gGain 0.55 + 夜段一致 + 白天去月光（AM-023）
+
+    （正文见 git log；要点：§1 gGain 0.55 · N1 四键并轨（收窄理由与 #5 4.636 实测）· D1 白天归零
+     · #11 判据 0.8→0.5 · frozen-hashes 重录 · 读数两入口 15/15）
+
+ plan/02-AMENDMENTS.md      | 68 +++++++++++++++++++++++++++++++++++
+ plan/04-BOARD.md           | 16 +++++----
+ plan/102-UP13-glare.md     | 89 +++++++++++++++++++++++++++++++++++++++++++++
+ plan/_STATUS.md            |  9 +++--
+ plan/pw/frozen-hashes.json |  5 ++-
+ plan/wp5-assert.js         |  8 +++--
+ src/20-time.js             | 90 ++++++++++++++++++++++++++++++++++------------
+ 7 files changed, 250 insertions(+), 35 deletions(-)
+```
+
+> ⚠ 白名单核查：只 add 了上面 7 个文件，**逐条列名、未用 `-A`**；`dist/` 被 `.gitignore` 忽略不在提交内。
+> 临时件 `_cs.mjs` / `_rb.mjs` / `_bak-20time.js` 已删（`git status` 干净）。
