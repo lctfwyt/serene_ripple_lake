@@ -19,15 +19,21 @@
 //   ② `bed-clip`  —— 湖底清晰带局部裁切（y 轴 66%~94%，见下 BED_CLIP 推导）
 //   ③ `full`      —— 整幅视口（含水面碎光）—— 只在①有钉相位的前提下才允许
 //
-// 哨兵（验收 #3 的硬要求）：注入**恰好 1 个设备像素**的品红点 → 同一条断言必须变红。
-//   · 为什么用品红：Playwright 单像素比较带 `threshold: 0.2` 感知容差，
+// 哨兵（验收 #3 的硬要求）：注入**一小块**品红像素 → 同一条断言必须变红。
+//   · 为什么用品红：Playwright 比较带 `threshold: 0.2` 感知容差，
 //     近湖水色的"坏像素"会被容差吃掉 → 哨兵假绿。
+//   · 🔴 为什么是 **3×3 块**而不是 1 个像素（2026-09-25 主控实测，AM-018）：
+//     `toHaveScreenshot` 走 pixelmatch 且默认 `includeAA:false` —— **判为反锯齿的差异像素
+//     不计入 diff**，而该判定**依赖基线内容**。实测同一枚坏像素、同一帧：
+//     **旧基线检出、新基线漏检**（重录基线会悄悄把哨兵弄哑）。3×3 块因有足够同色邻居，
+//     必然不被判 AA ⇒ 与基线内容无关。详见 `../lib/page-lib.mjs` 的 `breakPixelsSnippet`。
+//     ⚠ 这条是**校验链自身的缺陷修复**，走变更单 **AM-018**；判据阈值一个没动。
 //   · 为什么「控制组」也要跑：否则无法区分"因为坏了才红"和"本来就一直红"。
 //   · ⚠ `--update-snapshots` 那次运行里哨兵会**自己跳过**：更新模式下断言不比较、直接改写基线，
 //     坏的画面会把干净基线覆盖掉 → 之后所有运行都对着坏基线比。见下方 test.skip 的判据。
 
 import { test, expect } from '@playwright/test';
-import { HELPERS, EXTRA, pinSnippet, CLEAN_SNIPPET, breakOnePixelSnippet } from '../lib/page-lib.mjs';
+import { HELPERS, EXTRA, pinSnippet, CLEAN_SNIPPET, breakPixelsSnippet } from '../lib/page-lib.mjs';
 import { ENTRY, PIN_HOUR, PIN_UTIME } from '../lib/const.mjs';
 
 // 湖底清晰带局部裁切，由 断言 #6 的采样区反推（readPixels 原点在**底部**，CSS 原点在顶部）：
@@ -90,8 +96,8 @@ test('哨兵 A · 故意改坏 1 个像素 ⇒ UI 面板回归必须变红', asy
   await quick(panel).toHaveScreenshot('ui-panel.png', { animations: 'disabled' });
   console.log('  ℹ 控制组（未注入坏像素）→ 绿 ✔');
 
-  // —— 实验组：注入恰好 1 个设备像素的品红点，压在面板 bbox 内（面板 left:22 top:20）
-  const brk = await page.evaluate(breakOnePixelSnippet(30, 26));
+  // —— 实验组：注入 3×3 CSS px 品红块，压在面板 bbox 内（面板 left:22 top:20）
+  const brk = await page.evaluate(breakPixelsSnippet(30, 26));
   console.log(`  ℹ 注入坏像素 @(${brk.x},${brk.y}) 实测 bbox=[${brk.box.join(', ')}]`);
 
   let threw = null;
@@ -113,7 +119,7 @@ test('哨兵 B · 故意改坏 1 个像素 ⇒ 湖底裁切回归必须变红', 
   await quick(page).toHaveScreenshot('bed-clip.png', { clip: BED_CLIP, animations: 'disabled' });
   console.log('  ℹ 控制组（未注入坏像素）→ 绿 ✔');
 
-  const brk = await page.evaluate(breakOnePixelSnippet(BED_CENTER.x, BED_CENTER.y));
+  const brk = await page.evaluate(breakPixelsSnippet(BED_CENTER.x, BED_CENTER.y));
   console.log(`  ℹ 注入坏像素 @(${brk.x},${brk.y}) 实测 bbox=[${brk.box.join(', ')}]`);
 
   let threw = null;
@@ -139,7 +145,7 @@ test('哨兵 C · 撤掉坏像素 ⇒ 必须回到绿（防"永远红"）', asyn
   const panel = page.locator('#ui > div').first();
   const quick = expect.configure({ timeout: 4000 });
 
-  await page.evaluate(breakOnePixelSnippet(30, 26));
+  await page.evaluate(breakPixelsSnippet(30, 26));
   let threw1 = null;
   try { await quick(panel).toHaveScreenshot('ui-panel.png', { animations: 'disabled' }); } catch (e) { threw1 = e; }
   expect(threw1, '带坏像素 → 红').not.toBeNull();

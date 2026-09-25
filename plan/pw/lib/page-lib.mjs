@@ -301,19 +301,30 @@ export const CLEAN_SNIPPET = `(function(){
   return { dbgHidden: !!d, pxCleared: !p };
 })()`;
 
-// 故意改坏**一个像素**（哨兵用）。1×1 CSS px @ dpr=1 = 恰好 1 个设备像素。
-// 选品红（255,0,255）而不是近水色：Playwright 单像素比较有 threshold(=0.2) 容差，
+// 故意改坏**一小块像素**（哨兵用）。size×size CSS px @ dpr=1 = 恰好 size² 个设备像素。
+// 选品红（255,0,255）而不是近水色：Playwright 比较有 threshold(=0.2) 容差，
 // 颜色太接近湖水的"坏像素"会被容差吃掉 → 哨兵假绿。
-export function breakOnePixelSnippet(x, y) {
-  return `(function(x, y){
+//
+// 🔴 为什么默认是 **3×3 而不是 1×1**（2026-09-25 主控实测，AM-018）：
+//   Playwright 的 `toHaveScreenshot` 走**内置 pixelmatch**，其默认 `includeAA:false`
+//   → 判定为「反锯齿」的差异像素**不计入 diff**。判定是**内容相关**的：它看该像素在两张图
+//   里的邻域极值 + `hasManySiblings`。后果 —— 一个**孤立**坏像素会被邻域"淹没"而漏检，
+//   且**换一张基线就可能翻面**（同一枚坏像素、同一帧实测：旧基线检出、新基线漏检）。
+//   → 于是「改坏 1 像素必红」是**对特定基线成立的经验事实，不是不变量**；
+//     而 3×3 块内部像素有 ≥3 个同色邻居 ⇒ pixelmatch 的 AA 启发式必然返回 false，
+//     与基线内容**无关**。实测（sim 复算，maxDelta=35215×0.2²=1408.6）：
+//       1×1 → 旧基线 1 px / 新基线 **0 px**；2×2 → 4 / 2；**3×3 → 6 / 6**；4×4 → 12 / 12。
+export function breakPixelsSnippet(x, y, size) {
+  const n = size || 3;
+  return `(function(x, y, n){
     var d = document.getElementById('pw-px');
     if (d) { d.remove(); }
     d = document.createElement('div');
     d.id = 'pw-px';
-    d.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;width:1px;height:1px;' +
+    d.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;width:' + n + 'px;height:' + n + 'px;' +
       'background:#ff00ff;z-index:2147483647;pointer-events:none;';
     document.body.appendChild(d);
-    return { id: d.id, x: x, y: y,
+    return { id: d.id, x: x, y: y, size: n,
              box: (function(){ var b = d.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })() };
-  })(${JSON.stringify(x)}, ${JSON.stringify(y)})`;
+  })(${JSON.stringify(x)}, ${JSON.stringify(y)}, ${n})`;
 }

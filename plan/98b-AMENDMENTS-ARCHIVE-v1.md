@@ -2026,3 +2026,95 @@ UP11 是"2866 raw px → 8 px 超阈"，本包更极端："99% raw px → 0 px �
 | 改断言阈值 | 铁律。红了报主控 |
 | 给 `90-debug.js` 加 env 滑杆 | 不占本包额度；雨桐要调 env 强度由主控另开 |
 | 动 `40-lakebed.js` 的材质 | 会让 `#14/#15` 失去对象（UP4 地盘） |
+
+---
+
+# AM-018 · pw 像素哨兵：单像素注入改 3×3 块（✅ 已应用 2026-09-25）
+
+> **类型：校验链缺陷修复（主控直裁）** —— **不是**功能包的变更单。
+> **影响面**：`plan/pw/lib/page-lib.mjs` · `plan/pw/tests/30-pixel.spec.mjs`（dev-only，**一个字都不进交付物**）。
+> **判据阈值：一字未动。** 发现于 UP3 主控复核（复现与读数见 `99-UP3-hdri.md §7.9-②`）。
+
+## 1 · 现象
+
+主控按裁决重录 UP3 三张像素基线后，`npm run pw` 由 **14 passed** 变成 **13 passed / 1 failed** ——
+唯一失败者是 **哨兵 B**（"故意改坏 1 个像素 ⇒ 湖底裁切回归必须变红"）。
+
+哨兵 B 的逻辑：控制组（未注入）必须**绿** → 注入 1 枚品红像素 → **同一条断言必须红**。
+实测：控制组绿 ✔ · 注入成功（`bbox=[640,576,1,1]`）✔ · 但注入后 `toHaveScreenshot` **没有红**（`threw=null`）。
+
+## 2 · 排除法：不是注入失败，也不是基线错
+
+临时复现脚本证明三件事**同时**成立：
+
+| 检查 | 结果 |
+|---|---|
+| 品红像素真的进了截图 | ✅ `brk.png` 里恰有 1 个 `(255,0,255)` @ clip-local `(192,101)` |
+| 它与基线确有**超阈**差异 | ✅ 最大通道差 **158/255 = 0.62** > `threshold 0.2` |
+| 控制组（未注入）与基线一致 | ✅ 绿 |
+
+→ 注入、截图、基线三者都没问题。**问题在比较器。**
+
+## 3 · 机理：pixelmatch 的反锯齿启发式，且**内容相关**
+
+Playwright 的 `toHaveScreenshot` 走**内置 pixelmatch**（`playwright-core/lib/coreBundle.js` 内联），默认参数：
+
+```js
+var defaultOptions = { threshold: 0.1, includeAA: false, alpha: 0.1, ... };
+const maxDelta = 35215 * options.threshold * options.threshold;   // 0.2² ⇒ 1408.6
+```
+
+判定链：`|delta| > maxDelta` 的像素，若 `includeAA === false` 且
+`antialiased(img1,…) || antialiased(img2,…)` 为真 → **判为反锯齿、不计入 diff**。
+而 `antialiased()` 依据的是**该像素在两张图里的邻域极值 + `hasManySiblings()`**
+—— 即 **依赖基线在该处的实际像素值**。
+
+用忠实实现的 pixelmatch 复算（`maxDelta=1408.6`）：
+
+| 基线 | `includeAA=false`（Playwright 实际口径） | `includeAA=true` |
+|---|---|---|
+| 旧（UP3 之前） | **1 px** 计入（δ=6624.8） | 1 px |
+| 新（UP3 之后） | **0 px —— 被 AA 启发式吃掉** | 1 px（δ=7112.3） |
+
+**A/B 对照（真实 Playwright，非仿真）**：同一枚坏像素、同一帧、同一进程，**只换基线文件** ——
+
+| 基线 | 哨兵 B 结果 |
+|---|---|
+| 旧（UP3 前，`HEAD` 版） | **passed** —— 日志 `1 pixels (ratio 0.01 of all image pixels) are different` |
+| 新（UP3 后，重录版） | **failed** —— `threw = null`（注入未被计入） |
+
+## 4 · 结论（本条变更的真正价值）
+
+> **`toHaveScreenshot` 的「1 像素灵敏度」不是不变量，而是对特定基线成立的经验事实。**
+> 同一个孤立坏像素，**换一张基线就可能从"检出"翻成"漏检"**。
+> ⇒ **重录像素基线会悄悄改变哨兵（乃至整个像素门）的灵敏度。**
+
+这把 `03-COLLAB-PROTOCOL §8.2` 记的盲区加深了一层：
+原有盲区是"差异够不到 `threshold 0.2`"（UP11：2866 raw px → 8 px 超阈）；
+现在还有第二层 —— **过了阈值的孤立像素仍可能被 AA 启发式丢掉**。
+UP3 那"98~100% 像素变、0 像素超阈"的极端读数，正是两层叠加的结果。
+
+## 5 · 落地
+
+- `breakOnePixelSnippet(x, y)` → **`breakPixelsSnippet(x, y, size)`**，默认 **3×3**；
+  3×3 块内部像素有 ≥3 个同色邻居 ⇒ `antialiased()` 必然返回 false ⇒ **与基线内容无关**。
+- 尺寸扫描（sim 复算，两条基线各算一次）：
+
+  | 块尺寸 | 旧基线 | 新基线 |
+  |---|---|---|
+  | 1×1 | 1 px | **0 px** ❌ |
+  | 2×2 | 4 px | 2 px ⚠ |
+  | **3×3** | **6 px** | **6 px** ✅ |
+  | 4×4 | 12 px | 12 px |
+
+- 3 个哨兵（A / B / C）全部改用默认 3×3；**判据、阈值、基线一字未动**。
+- 复跑：`npm run pw` → **14 passed**。
+
+## 6 · 明确不做
+
+| 不做 | 理由 |
+|---|---|
+| 改 `threshold` / `maxDiffPixels` | 会连带改动三条既有基线的判据语义 → 属**功能变更**，不在"修哨兵"的范围 |
+| 绕过 pixelmatch 自建比较器 | 重造轮子；且 `toHaveScreenshot` 的 `actual/diff/expected.png` 是调试资产，值得保留 |
+| 因哨兵变红就回退基线重录 | **反了** —— 基线重录是对的（旧基线是 UP3 **之前**的画面，属陈旧）；该修的是哨兵 |
+| 给像素门提高灵敏度（子阈值全局变化也要红） | 会与"容忍有意的渲染演进"冲突；这是**产品取向**，须另开一条基线讨论 |
