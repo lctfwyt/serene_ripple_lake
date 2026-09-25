@@ -1,5 +1,10 @@
-// src/30-scene.js —— 所有者：WP1 → UP3（AM-017 起环境光照段归 UP3）
+// src/30-scene.js —— 所有者：WP1 → UP3（AM-017 起环境光照段归 UP3）→ UP13 第二轮（AM-024 起 D2a 日光弥散）
 // 签名逐字对齐 01-CONTRACT.md §2.3。其它 WP：只读。
+//
+// AM-024 D2a（本文件动作）：太阳亮瓣由 `TimeState.envSunSpread` 单标量驱动 ——
+//   `disc = 2.5 − 1.7·s` · `glow = 0.20 + 0.35·s`（角宽指数不动）。
+//   `s = 0` ⇒ 逐位回到 AM-024 之前的亮瓣；`s = 1` ⇒ 白天弥散（不再是"假月亮"）。
+//   `envDist()` 已纳入 `envSunSpread`；`P.envSunSpreadGain` 变化单独监听（它在 dist 里会被约掉）。
 //
 // WP2 会用到的钩子（契约 §2.3 之外的**附加**便利属性，不影响冻结签名）：
 //   SW.scene.rtCamera  —— 赋一个镜像相机，WP1 的 render() 就会自动把场景渲进 SW.scene.sceneRT
@@ -121,17 +126,43 @@
   //   （这恰是程序化方案的天然优势）。**不要去 vendor/ 里补 API。**
   var ENV_EPS = 0.02;          // 惰性重建阈值（签名距离）。防每帧重烘 PMREM
   var AMB_BASE = 0.12;         // AmbientLight 基准强度；env 生效时按 P.envAmbScale 压减
-  var ENV_SUN_DISC = 2.5;      // 太阳瓣紧致分量峰值
+  var ENV_SUN_DISC = 2.5;      // 太阳瓣紧致分量峰值（**夜段基准值**，白天由 D2a 下调）
   // 太阳瓣的**角宽**必须够大：水面反射按粗糙度取 mip（128×64 的 mip1 一个纹素 ≈ 5.6°），
   // 半宽 ≲2° 的针尖瓣在 mip1 上会被抹成 0 —— 实测「峰值没起来、中位反而升」→ 反光柱判据反而变差。
   // 取 pow(d,300)（半宽 ≈ 3.9°）：在 mip0~1 上活得住，又不至于宽到像"假光斑"。
   // 太阳的**物理**镜面高光仍由 60-water.js 的 GGX 路径（两层法线）承担，env 只补环境色。
   var ENV_SUN_DEXP = 300;      // 紧致分量指数
   var ENV_SUN_GLOW = 0.20;     // 太阳瓣宽泛分量峰值（绕日暖晕 → 给漫反射 IBL 方向性）
-  var ENV_SUN_GEXP = 20;       // 宽泛分量指数
+  var ENV_SUN_GEXP = 20;       // 宽泛分量指数（半宽 ≈ 15°）
   var ENV_SUN_AMP = 1.6;       // 太阳瓣总幅度 = amp × max(sunIntensity, 0.25)
   var ENV_GROUND_MIN = 0.16;   // 下半球（"地面/水体半球"）最暗处的相对亮度
   var ENV_REBUILD_MAX = 40;    // 单次会话重建上限（护栏，防阈值失效时空转）
+
+  // ═══ D2a（AM-024）· 日光亮瓣弥散 ═══════════════════════════════════════════
+  // 由 `TimeState.envSunSpread`（0 = 夜紧致 / 1 = 白天弥散，AM-024 新增的冻结字段）驱动：
+  //     disc = ENV_SUN_DISC − 1.7·s      紧致分量**降**
+  //     glow = ENV_SUN_GLOW + 0.35·s     宽泛分量**抬**
+  // ⇒ 白天不再是一颗攒在光源方向的「假月亮」（那正是雨桐「白天也能看到月光」的 env 侧成因），
+  //   而是一片更宽、更弱的横向亮光铺在水面上；夜里 s=0 ⇒ 逐位回到 AM-024 之前的亮瓣。
+  //
+  // 为什么只给**一个标量**而不是 disc/glow 两个独立字段：
+  //   ① 两者是同一个物理量（弥散度）的两端 —— 分开给会造出「disc 低而 glow 也低」的无效组合；
+  //   ② `envDist()` 只需比一个数就能判定重烘（多了两路冗余触发）；
+  //   ③ `P.envSunSpreadGain`（00-config）能全局开关 / 放大 D2a，不必动 13 键表。
+  //
+  // ⚠ 角宽指数（DEXP/GEXP）**刻意不动**：只改两个峰值 ⇒ envDist 对 s 是**线性**的，
+  //   改 s 必然触发重烘（若同时改指数，s 的微小变化会被指数的非线性吞掉一部分）。
+  var D2A_DISC_DROP = 1.7;
+  var D2A_GLOW_RISE = 0.35;
+  // s_eff = clamp01(TimeState.envSunSpread × P.envSunSpreadGain)
+  //   `numOr` / `clamp01` 是文件下方声明的函数（函数声明提升 ⇒ 这里调用安全）。
+  function sunSpread01(s) {
+    return clamp01(numOr(s && s.envSunSpread, 0) * numOr(SW.P && SW.P.envSunSpreadGain, 1));
+  }
+  function envLobe(s) {
+    var sp = sunSpread01(s);
+    return { sp: sp, disc: ENV_SUN_DISC - D2A_DISC_DROP * sp, glow: ENV_SUN_GLOW + D2A_GLOW_RISE * sp };
+  }
 
   function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
   function sstep(e0, e1, x) { var t = clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); }
@@ -140,6 +171,9 @@
   // TimeState → 环境签名距离：只统计**会改变环境外观**的字段。
   //   sunAz / sunElev 是 rad，系数 0.25 → 约 0.08 rad(≈4.6°) 的位移就够触发重建。
   //   ⚠ 同类字段间**不互相抵消**（取绝对值累加）—— 否则"天空变亮 + 太阳变暗"会被误判成没变。
+  //   AM-024 硬约束 2：**必须纳入 `envSunSpread`** —— 亮瓣形状是 env 外观的一部分，
+  //     漏了它就会出现「改了 s 但 env 不重烘」的静默失效（与 `applyTimeState` 每帧回写同族坑）。
+  //     系数 0.5：s 从 0 走到 1 贡献 0.5 的距离（阈值 0.02 ⇒ 分辨率 0.04），足够灵敏。
   function envDist(a, b) {
     if (!a || !b) { return Infinity; }
     var d = 0, i;
@@ -151,6 +185,7 @@
     d += 0.6 * Math.abs(numOr(a.sunIntensity, 0) - numOr(b.sunIntensity, 0));
     d += 0.25 * (Math.abs(numOr(a.sunAz, 0) - numOr(b.sunAz, 0)) +
                  Math.abs(numOr(a.sunElev, 0) - numOr(b.sunElev, 0)));
+    d += 0.5 * Math.abs(sunSpread01(a) - sunSpread01(b));
     return d;
   }
 
@@ -169,6 +204,8 @@
     var lx = ce * Math.sin(s.sunAz), ly = se, lz = ce * Math.cos(s.sunAz);
     var T = s.skyTop, B = s.skyBottom, C = s.sunColor;
     var amp = Math.max(0.25, numOr(s.sunIntensity, 0.7)) * ENV_SUN_AMP;
+    // AM-024 D2a：两个分量的峰值由 envSunSpread 决定（角宽指数不动）
+    var lb = envLobe(s);
     var data = new Uint16Array(W * H * 4);
     var k = 0, ix, iy, i;
     for (iy = 0; iy < H; iy++) {
@@ -191,7 +228,8 @@
         }
         var dp = dx * lx + y * ly + dz * lz;
         if (dp > 0) {
-          var lobe = Math.pow(dp, ENV_SUN_DEXP) * ENV_SUN_DISC + Math.pow(dp, ENV_SUN_GEXP) * ENV_SUN_GLOW;
+          // AM-024 D2a：disc/glow 随 envSunSpread 变（s=0 时 = 原 2.5 / 0.20，逐位等价）
+          var lobe = Math.pow(dp, ENV_SUN_DEXP) * lb.disc + Math.pow(dp, ENV_SUN_GEXP) * lb.glow;
           if (lobe > 1e-5) { var sc = lobe * amp; cr += C[0] * sc; cg += C[1] * sc; cb += C[2] * sc; }
         }
         data[k++] = toHalf(cr); data[k++] = toHalf(cg); data[k++] = toHalf(cb); data[k++] = toHalf(1);
@@ -236,9 +274,10 @@
     sceneRT: null, rtCamera: null,
     lastState: null, appliedState: null,
     // UP3 / AM-017（附加属性，非冻结签名）：程序化环境贴图的运行时状态
-    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '' },
+    // AM-024 D2a：`spread` 追加为只读读数 —— 显示当前生效的 s_eff（0=夜紧致 / 1=白天弥散）
+    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0 },
     _envPmrem: null, _envRT: null, _envEq: null, _envOldRT: null, _envOldEq: null,
-    _envLast: null, _envEnabledLast: null, _envMatPending: true, _envMatCount: 0,
+    _envLast: null, _envEnabledLast: null, _envSpreadGainLast: null, _envMatPending: true, _envMatCount: 0,
 
     init: function (canvas) {
       var w = canvas.clientWidth || window.innerWidth;
@@ -344,6 +383,15 @@
         this._envEnabledLast = envOn;
         this._envLast = null;
       }
+      // AM-024 D2a：`envSunSpreadGain` 是运行时倍率 —— 在 envDist() 里**会被约掉**
+      //   （两端同乘一个增益），所以必须单独监听：一变就作废 `_envLast` 强制重烘。
+      //   漏掉这一步的后果是「改 P 没反应」，属 AM-024 硬约束 2 点名的同族静默失效。
+      var spGain = numOr(SW.P.envSunSpreadGain, 1);
+      if (spGain !== this._envSpreadGainLast) {
+        this._envSpreadGainLast = spGain;
+        this._envLast = null;
+      }
+      this.env.spread = sunSpread01(s);   // 只读读数（复核 / 断言 / 出图脚本用）
       var envLive = false;
       if (envOn) {
         if (envDist(s, this._envLast) > ENV_EPS || !this.env.ready) {

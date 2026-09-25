@@ -11,6 +11,10 @@
 //                不再有调试代码。② 删掉 55 行「用 JS 重算 GLSL 的 D/Vis/Fs」的 `glitterSpec()`，
 //                `probe().glitterSpec` 改为**直读 `uGlitterGain`**（字段名与 0~1 量程不变）。
 //                **不改画面行为、不改任何 uniform 名、不改 SW.water 方法签名、不动 swDetail()（归 UP4）。**
+//   AM-024 D2b — 反光项乘**距离权重** `w(d)`（近处压低、远处保留）⇒「亮光不延伸到相机前」。
+//                **只乘标量**：不动 `N` 的构造、不动 `D·Vis·Fs`（AM-024 硬约束 3）⇒ `#3` 折射不漂。
+//                `uGlitterNear`（默认 1）只作对比出图 / 降级的运行时混合，交付态恒 1。
+//                常量与两端推导（画面下沿 4.83 m / #13 采样带下沿 7.02 m）见下方 D2B 常量区。
 //
 // 三条铁律（WP2 §3）：水面绝不进 sceneRT · depth 纹理 NEAREST · RT 与主 pass 同相机投影。
 // 前两条由 WP1 在 30-scene.js 里保证；第三条这里直接用**同一个 camera 对象**当 rtCamera，
@@ -46,6 +50,38 @@
   var LAM_MIN = 0.32, LAM_MAX = 1.6;  // 波长区间（世界单位）：只保留 0.32~1.6u 的中细波纹，
                                       // 不跟 FBO 大波纹抢尺度，也不会拖出长条带。
   var WARP_AMP = 0.28;                // 域扭曲幅度：把规则等高线掰弯，是"塑料桌布感"的解药
+
+  // ── AM-024 D2b：反光项的**距离权重**（"亮光不延伸到相机前"）───────────────────
+  // 机理：反光路径在水平面上是「光源方向的镜面点」附近的一条带，镜面点到相机的水平距离
+  //   `dm = (相机高 − 水位)/tan(仰角) = 4.35/tan(elev)`。画面下沿对应的世界距离是
+  //   `4.35/tan(俯角 + fov/2) = 4.35/tan(42°) = **4.83 m**`（§9 机位常量推导）。
+  // 于是「近 / 远」在屏幕上是**纵向**的：越靠画面下沿越近。
+  //   · D2B_NEAR 取 4.6（略早于下沿 4.83）→ 底边就已经在压制区里；
+  //   · D2B_FULL 取 7.2 —— 必须 ≥ **#13 采样带的下沿 7.02**
+  //     （`colProfile(0.30,0.70)` → 俯角 31.8° → 4.35/tan31.8° = 7.02 m）
+  //     ⇒ 判据带内的权重 ≥ 0.98，**#13 读数不动**（AM-024 的读数预期）。
+  // 逐时参数（`wMin` 由光源仰角导出，在 GLSL 里算，不需要新 uniform）：
+  //   · 夜/晨昏（elev ≤ 30°）wMin = **0.10** —— 镜面点在 8.18 m 开外，近场那一片是纯"假反光"；
+  //   · 白天（elev ≥ 46°）wMin = **0.55** —— 镜面点已落到画面下沿**之外**
+  //     （正午 64° → 2.12 m < 4.83 m），近场是反光路径**合理**的下降段，压狠了反而是错的。
+  var D2B_NEAR = 4.6, D2B_FULL = 7.2;      // 权重区间（世界单位，相机 → 片元的 xz 距离）
+  var D2B_MIN_LO = 0.10, D2B_MIN_HI = 0.55; // 最近处权重（低光 / 高光）
+  var D2B_ELEV_LO = 30, D2B_ELEV_HI = 46;   // 上式的仰角过渡区间（度）
+
+  // 与 GLSL 的 `swGlitterW()` 同式的 JS 版（只用于 probe 读数 —— 画面仍由 shader 算）。
+  //   `y` = 光源方向单位向量的竖直分量（= sin(elev)）。
+  function d2bMinAt(y) {
+    var e = Math.asin(Math.max(-1, Math.min(1, y))) * 180 / Math.PI;
+    var t = Math.max(0, Math.min(1, (e - D2B_ELEV_LO) / (D2B_ELEV_HI - D2B_ELEV_LO)));
+    t = t * t * (3 - 2 * t);
+    return D2B_MIN_LO + (D2B_MIN_HI - D2B_MIN_LO) * t;
+  }
+  // 某世界距离处的权重（同上，仅供 probe / 出图脚本核对）
+  function d2bWeightAt(d, y) {
+    var t = Math.max(0, Math.min(1, (d - D2B_NEAR) / (D2B_FULL - D2B_NEAR)));
+    t = t * t * (3 - 2 * t);
+    return d2bMinAt(y) + (1 - d2bMinAt(y)) * t;
+  }
 
   var mesh = null, mat = null, u = null;
   var camera = null;
@@ -201,6 +237,9 @@
     'uniform float uGlitterRough;',
     'uniform float uGlitterJitter;',
     'uniform float uGlitterGain;',
+    // ★ AM-024 D2b：距离权重的运行时混合（1 = 生效 / 0 = 关闭）。只给对比出图与降级用，
+    //   正常交付态恒为 1。见 `SW.water.setGlitterNear()`。
+    'uniform float uGlitterNear;',
     'uniform float uWaterRough;',
     'uniform float uWaterMetal;',
     // ★ UP8：uProbe 仅在 ?debug=1 时定义 WP_PROBE → 交付形态下这个 uniform 连声明都不进程序，
@@ -227,6 +266,19 @@
     '  float u = atan(d.z, d.x) * 0.15915494 + 0.5;',
     '  float v = asin(clamp(d.y, -1.0, 1.0)) * 0.31830989 + 0.5;',
     '  return vec2(u, v);',
+    '}',
+
+    // ── AM-024 D2b：反光项的距离权重 ──────────────────────────────────────────
+    // 近处压低、远处保留 ⇒ 「亮光不延伸到相机前」。**只乘标量** ——
+    //   不动 N、不动 D·Vis·Fs 的构造（后两者一动，#3 的折射差分画面会连带漂移）。
+    // 逐时参数：近端下限 wMin 由**光源仰角**导出（`uSunDir.y`），无需新 uniform。
+    //   低阳（≤30°）：镜面点在 8.18 m 开外 ⇒ 近场是纯假反光 ⇒ 压到 0.10
+    //   高阳（≥46°）：镜面点已落到画面下沿之外 ⇒ 近场是路径的合理下降段 ⇒ 只压到 0.55
+    'float swGlitterW(float d) {',
+    '  float e = degrees(asin(clamp(uSunDir.y, -1.0, 1.0)));',
+    '  float wMin = mix(' + D2B_MIN_LO.toFixed(2) + ', ' + D2B_MIN_HI.toFixed(2) + ',',
+    '                   smoothstep(' + D2B_ELEV_LO.toFixed(1) + ', ' + D2B_ELEV_HI.toFixed(1) + ', e));',
+    '  return mix(wMin, 1.0, smoothstep(' + D2B_NEAR.toFixed(1) + ', ' + D2B_FULL.toFixed(1) + ', d));',
     '}',
 
     // ── 高频细节法线的梯度（AM-002 §7.2 第 2/4 条）────────────────────────
@@ -326,7 +378,10 @@
     '    float gl2 = NoV * sqrt(a2 + (1.0 - a2) * NoL * NoL);',
     '    Vis = 0.5 / max(gv + gl2, 1e-4);',
     '    Fs = F0 + (1.0 - F0) * pow(1.0 - VoH, 5.0);',
-    '    col += uGlitterColor * uGlitterGain * uSunRadiance * (D * Vis * Fs);',
+    // AM-024 D2b：整项乘**标量**距离权重（dcam 在 ② 段已算好）。`uGlitterNear` 默认 1；
+    //   置 0 时 `mix` 退化为 1.0 ⇒ 逐位回到 AM-024 之前的画面（对比出图用）。
+    '    col += uGlitterColor * uGlitterGain * uSunRadiance * (D * Vis * Fs)',
+    '         * mix(1.0, swGlitterW(dcam), uGlitterNear);',
     '  }',
 
     // ⑦ 私有探针（uProbe）：把中间量直接写进颜色，供断言读回。
@@ -484,6 +539,8 @@
       uniforms.uGlitterRough = { value: P.glitterRough };
       uniforms.uGlitterJitter = { value: P.glitterJitter };
       uniforms.uGlitterGain = { value: GLITTER_GAIN_FALLBACK };
+      // AM-024 D2b：距离权重混合 —— 交付态恒 1（生效）。0 只在对比出图 / 降级时用。
+      uniforms.uGlitterNear = { value: 1 };
       uniforms.uWaterRough = { value: 0.12 };
       uniforms.uWaterMetal = { value: 0.0 };
       uniforms.uProbe = { value: 0 };
@@ -576,6 +633,15 @@
       if (u) { u.uRefract.value = bool ? 1 : 0; }
     },
 
+    // AM-024 D2b：反光项距离权重的运行时混合 v ∈ [0,1]（1 = 生效 / 0 = 关闭）。
+    //   刻意**只给对比出图与降级**用 —— 正常交付态由 init 写死 1，没有任何 UI 会改它。
+    //   与 `setRefract` 同族（也是"关掉某一项做差分"的手法），签名不在契约 §2.6 冻结面上。
+    setGlitterNear: function (v) {
+      var k = (typeof v === 'number' && isFinite(v)) ? (v < 0 ? 0 : (v > 1 ? 1 : v)) : (v ? 1 : 0);
+      if (u) { u.uGlitterNear.value = k; }
+      return k;
+    },
+
     // AM-022 §2-D：按当前 SW.P 的 swDirSpread / swZigAmp / swZigFreq **重建细节波表**。
     //   · 代价：three 会丢弃旧程序重编一次（首帧 ~50~200ms 卡顿）⇒ 只给 debug 面板用，
     //     且调用方要防抖（见 90-debug.js 的「水面波纹（松手生效）」组）。
@@ -605,6 +671,12 @@
         detailGain: SW.P.glitterDetail,
         alphaEff: Math.sqrt(ar * ar + SW.P.glitterDetail * SW.P.glitterDetail * DETAIL_ALPHA_W),
         sunDir: u ? u.uSunDir.value.toArray() : [0, 1, 0],
+        // —— AM-024 D2b：距离权重是否生效（1/0）+ 当前光源仰角下的最近处权重（与 GLSL 同式）——
+        glitterNear: u ? u.uGlitterNear.value : 0,
+        glitterNearMin: u ? +d2bMinAt(u.uSunDir.value.y).toFixed(4) : 0,
+        // 画面下沿（4.83 m）与 #13 采样带下沿（7.02 m）的权重 —— 判据面自检用（见 60-water 常量区推导）
+        glitterWBottom: u ? +d2bWeightAt(4.83, u.uSunDir.value.y).toFixed(4) : 0,
+        glitterWJ13Edge: u ? +d2bWeightAt(7.02, u.uSunDir.value.y).toFixed(4) : 0,
         // —— UP3 / AM-017：环境反射是否在跑（降级判据 #10 读它）——
         envReady: !!(u && u.uEnvReady.value > 0.5),
         envGain: u ? u.uEnvGain.value : 0,

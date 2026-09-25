@@ -111,6 +111,7 @@ SW.time = {
 | `starAlpha` | number | 0~1，星星可见度（**AM-001 后无画面贡献**，保留字段） |
 | `glitterGain` | number | **AM-002 新增**。反光路径强度，0~1.2。夜晚最强、正午最弱 |
 | `glitterColor` | [r,g,b] | **AM-002 新增**。反光路径色（线性）。月光=冷白、黄昏=琥珀金 |
+| `envSunSpread` | number | **AM-024 新增**。env 太阳亮瓣**弥散度** 0~1（0 = 夜紧致 / 1 = 白天弥散）。只被 `30-scene.js` 的亮瓣形状消费（`disc = 2.5 − 1.7·s` / `glow = 0.20 + 0.35·s`，角宽指数不动）。**必须在 `envDist()` 签名里**，否则改 s 时 env 不重烘、改动静默失效。逐键：夜段四键 0 · 白天四键 1 · 晨昏 0.5 · 入夜台阶 0.25/0.10/0.05 |
 
 ### 2.3 `30-scene.js` → `SW.scene`（所有者：WP1）
 
@@ -129,8 +130,9 @@ SW.scene = {
 （与 `sceneRT` / `rtCamera` 同级，不属于 §2.3 冻结面）：
 
 ```js
-SW.scene.env            // 只读消费：{ ready, equirect, rt, rebuilds, res, err }
+SW.scene.env            // 只读消费：{ ready, equirect, rt, rebuilds, res, err, spread }
                         //   `60-water.js` 只读 ready / equirect，**不得重建**
+                        //   `spread` 为 AM-024 D2a 追加：当前生效的 s_eff（0=夜紧致 / 1=白天弥散）
 SW.scene.buildEnv(s)    // 用 TimeState 重建 equirect + PMREM；返回 boolean（是否生效）
 SW.scene.dropEnv()      // 退回旧光照（envEnabled=false / 建失败）——不销毁 PMREM
 ```
@@ -187,7 +189,10 @@ SW.water = {
   mesh, material, uniforms,
   update(dt),
   setRefract(bool),       // 供断言用：关掉折射做像素差分
-  probe()                 // → { refract, normalGain, tris, envReady, envGain }
+  setGlitterNear(v),      // AM-024 D2b：反光项距离权重的运行时混合 v∈[0,1]（1=生效/0=关闭）
+                          //   **交付态恒 1**，只给对比出图 / 降级用；与 setRefract 同族的差分手法
+  probe()                 // → { refract, normalGain, tris, envReady, envGain,
+                          //     glitterNear, glitterNearMin, glitterWBottom, glitterWJ13Edge }
 };
 ```
 
@@ -404,6 +409,10 @@ var P = {
   //   envHemiScale / envAmbScale  加 env 后环境光**重复计**，把 hemi / ambient 按此比例扣回
   envEnabled: true, envIntensity: 0.9, envResolution: 128,
   envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+  // AM-024 D2a 新增：日光亮瓣弥散度的全局倍率。s_eff = clamp01(TimeState.envSunSpread × 本值)。
+  //   0 = 关掉 D2a（全时段紧致亮瓣）· 1 = 设计值 · >1 = 放大弥散。
+  //   ⚠ 它**不在 envDist() 签名里**（同倍率两端相乘会约掉）⇒ 30-scene 单独监听、一变强制重烘。
+  envSunSpreadGain: 1,
 
   // 湖底贴图（程序化 tiling）—— AM-019 新增（UP4-lite）
   //   来源**不是**外部扫描件：① `file://` 下外部图片进不了 WebGL 纹理（AM-005 §3 实测 SecurityError）；
@@ -532,7 +541,7 @@ var P = {
 | `FOG_ROLE` | `'远景淡出'` | WP3 | WP2 | 雾的作用从「遮地平线」变为「让远处水面淡出」。**不因看不到地平线而调稀** |
 | `TIME_STATE_FIELDS` | 见 §2.2 | WP3 | WP1 | 字段不因 AM-001 增删；AM-002 追加 `glitterGain` / `glitterColor` |
 | `SUN_AZ_SECTOR` | **`min(22°, hHalf − 6°)`，下限保底 `7°`** | WP3 | WP2 · WP5 | ~~相机朝向 ± 75°（AM-002）~~ **AM-003 改写**：扇区**随宽高比变化**。`hHalf = atan(tan(CAM_FOV/2) × aspect)`。±25° 只在 16:9 成立，竖屏安全区仅 **12.73°**（实测）。**夹取必须在 `getState()` 内部做**，否则 probe 与实际光源位置不一致 |
-| `SUN_AZ_DESIGN` | **±8°**（`sunAz = π + offset`） | WP3 | WP5 | **AM-003**：四个 keyframe 的设计偏移量（晨 −8° / 午 0° / 昏 +8° / 夜 0°）。落在夹取区以内，夹取只在窄窗口兜底 |
+| `SUN_AZ_DESIGN` | **0°**（`sunAz = π`） | WP3 | WP5 | ~~±8°（晨 −8 / 午 0 / 昏 +8 / 夜 0）~~ **AM-024 N4 归零**：日光与月光一律钉在画面正中（雨桐 19:2x「日光现在会移动，你得让它不移动，就像夜晚时段在正中间一样」）。8 键的 `az` 全改 0 ⇒ 白天横向亮光**完全由 D2a 的 env 亮瓣弥散**表达，不再靠离轴方位。代价：黄昏「侧逆光」消失（已确认）。夹取机制（`SUN_AZ_SECTOR`）保留 —— `az=0` 只是设计值归零，夹取仍每帧生效 |
 | `GLITTER_ELEV_BAND` | **[22°, 30°]** | WP3 | WP5 | **AM-003**：晨雾 / 黄昏 / 星夜三个低光时段的 `sunElev` 必须落在此区间（实测 shape 5.2~7.6，柱最强） |
 | `GLITTER_ELEV_MAX` | **32°** | WP3 | WP5 | **AM-003**：硬上限。实测 34° → shape 1.01、38° → 0.63，`glitterSpec(22.5) > 0.5` 的悬崖在 ~40°，取 32° 留 **8° 余量** |
 | `SUN_ELEV_MIN` | **`> 0`（永不为负）** | WP3 | WP5 | **AM-003 硬约束**：光源仰角恒为正。`glitterSpec()` 第一道门就是 `Ly <= 0.02 → 0`；夜间靠**月亮**（正仰角）而非 hemi 接管。**取代 AM-001 §4.3 第 5 条** |
@@ -725,3 +734,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-25 | AM-021：bedTexGrain→0.08；§9 新增「观感与 #6 负相关」「屏幕采样率」边界 | 主控 |
 | 09-25 | AM-022：swDirSpread/swZigAmp/swZigFreq + rebuildWaves()；13 键 fogD 全降；5.50 冷青灰；20.50 配色 | 主控 |
 | 09-25 | AM-023：`20-time.js` 的 `gGain` 22.50/2.00→0.55 + 夜段四键并轨 + 白天四键归零；断言 #11 下限 0.8→0.5（判据面，非契约面） | UP13 |
+| 09-25 | AM-024：`TimeState` 加 `envSunSpread`（§2.2）· §6 加 `envSunSpreadGain` · §9 `SUN_AZ_DESIGN` ±8°→**0°**（N4 az 全归 0）；`#5` 复跑 2.108（4.00 压彩度保判据） | UP13 二轮 |

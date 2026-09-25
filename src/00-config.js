@@ -67,6 +67,14 @@
     //                 （hemi × 0.50、ambient × 0.40 → 净环境光量基本持平，但方向性与色相更物理）
   envEnabled: true, envIntensity: 0.9, envResolution: 128,
   envWaterGain: 0.75, envHemiScale: 0.50, envAmbScale: 0.40,
+  // AM-024 D2a：日光亮瓣弥散度的**全局倍率**（本包新增字段，契约 §6 已同步）。
+  //   `s_eff = clamp01(TimeState.envSunSpread × 本值)`；`30-scene.js` 用它算
+  //   `disc = 2.5 − 1.7·s` / `glow = 0.20 + 0.35·s`。
+  //   0 = 关掉 D2a（全时段回到紧致亮瓣 = AM-024 之前的形态）· 1 = 设计值 · >1 = 放大弥散。
+  //   逐键的 `envSunSpread` 在 `20-time.js`（夜段四键 0 · 白天四键 1 · 晨昏 0.5 · 入夜台阶 0.25/0.10/0.05）。
+  //   ⚠ 本值**不在 `envDist()` 签名里**（同一倍率乘两端会约掉）⇒ `30-scene.js` 单独监听它，
+  //     一变就作废 `_envLast` 强制重烘。否则会出现「改了 P 没反应」的静默失效（AM-024 硬约束 2 同族坑）。
+  envSunSpreadGain: 1,
 
   // 湖底贴图（程序化 tiling）—— AM-019 新增（UP4-lite）
   //   来源**不是**外部扫描件：① file:// 下外部图片进不了 WebGL 纹理（AM-005 §3 实测 SecurityError）；
