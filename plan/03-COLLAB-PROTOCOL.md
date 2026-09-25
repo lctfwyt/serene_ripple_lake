@@ -103,27 +103,46 @@
 
 ## 8. 本机环境坑（会反复咬人，先记下）
 
-### 8.1 `npm run pw` / `pw:update` 第二次起必被 safe-delete 守卫拦
+### 8.1 pw 的 safe-delete 守卫 —— **已从源头消除**（2026-09-25 主控）
 
-pw 每跑一次在 `test-results/` 落 **~6300 个条目**，超过本机 safe-delete 守卫的 **5000** 阈值：
+> ⚠️ 本节此前写的是「每跑 ~6300 条目 / 撞 5000 阈值 / 用 `--output=_pwN` 绕」。
+> **那套结论已作废** —— 它不是"条目太多"，是"垃圾太多"。作废原因见下方「历史」。
 
+**根因**：`use.trace = 'retain-on-failure'` 会对**每个用例都先录** trace、通过后再丢弃；
+丢弃没清干净，`traces/screencast/*.jpeg`（逐帧录像）全留在产物目录里。
+
+实测（2026-09-25）：
+
+| | 改前 | 改后 |
+|---|---|---|
+| 单跑残留条目 | **1378** | **14** |
+| 体积 | **75 MB** | **125 KB** |
+| `screencast/*.jpeg` | **1375 帧** | **0** |
+
+**修法**（`plan/pw/playwright.config.mjs`，一行）：
+
+```js
+trace: { mode: 'retain-on-failure', screenshots: false },   // 关 screencast，保 trace.zip
 ```
-[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":6308,"threshold":5000,...}
-```
 
-两个反直觉点：① **守卫数的是「条目数」（含目录），不是文件数** —— 目录里实际只剩 1387 个文件时它照样报 5376；
+关掉的只是**逐帧录像**；`trace.zip`（DOM 快照 / 网络 / console）照旧，失败仍可查。
+改后 `pw` 全链 **14 passed**，`ui-panel` / `bed-clip` / `full.png` 快照与 `dist-baseline.txt` **逐字节未动**。
+剩下的 14 个条目正是**该留的** —— 30-pixel 三个哨兵用例（故意改坏像素）的 `actual/diff/expected.png`。
+
+**所以现在直接 `npm run pw` 就行，不需要任何 `--output` 绕法。**
+
+**阈值注记**：守卫阈值默认 5000，**雨桐可调**（2026-09-25 已调至 **9999**，实测放行）。
+单跑只剩 14 条目后，阈值已不是瓶颈 —— **不建议再往上调**：那是拿「全局删档安全网」去补贴某个目录，
+而个人目录（Desktop / Downloads / Documents）共享同一阈值。若哪天又撞，**先查是谁把目录撑肥了**。
+
+**历史（留作排查别的批量删除时参考）**：撞守卫时错误形如
+`[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":6308,"threshold":5000,...}`。
+两个反直觉点：① 守卫数的是「**条目数**」（含目录，**不是文件数**）—— 目录里实际只剩 1387 个文件时它照样报 5376；
 ② **一旦撞过，同一轮对话内对同一路径会一直报同一个数**（清干净也不管用）。
-
-**正解**：把产物目录指到**本轮没被撞过的新名字**上 ——
-
-```bash
-npx playwright test --config=plan/pw/playwright.config.mjs --output=test-results/_pw2
-# 重录基线：同上，追加 --update-snapshots
-```
-
-快照落点由 `playwright.config.mjs` 的 `snapshotPathTemplate` 决定，**与 `outputDir` 无关**，
-所以这样跑出来的基线照样写进 `plan/pw/tests/__snapshots__/`。收尾记得删掉 `_pwN/`。
-（UP9 当年靠「把 `test-results` 改名」绕过，是同一问题的土办法。）
+在那时，绕法是 `--output=test-results/_pwN`（快照落点由 `snapshotPathTemplate` 决定、**与 `outputDir` 无关**，
+所以基线照样写进 `plan/pw/tests/__snapshots__/`；UP9 当年靠「把 `test-results` 改名」绕过）。
+「第二次起必被拦」的真实机制是：**守卫拦的是「下一次运行启动时清理上一次残留」这个动作** ——
+残留 75 MB 在那儿，下一次运行一启动就要删它，于是撞。
 
 ### 8.2 `full.png` 像素基线对半透明 UI 变更**几乎不设防**
 

@@ -18,7 +18,7 @@
 - ✅ **UP11 BGM 选择器（AM-015）完工 + 主控复核通过**（09-25 04:4x，全文 `96-UP11-bgm-picker.md §7`，复核 §7.8）：两首 BGM 改名**明镜 / 微风**（`git mv`，sha256 逐位未变）+ 右上「**BGM：** + 并排 chip」（三轮形态迭代终点，原生下拉已整体回滚）+ 进页面随机一首（`rng` 独立流）；`?bgm=<n>` 钉选。顺带修掉 `tryFileBgm()` 元素音量初值的**既有缺陷**（曾有 0.94 dB 电平台阶）。**主控亲手重跑：`assert` 15/15 双入口（`#13` 2.147 / 2.136）· `audio:baseline` 全绿 · `pw` 全链 14 passed · `#ui > div.first()` 仍是时段面板**
 - 🔧 **UP11 遗留已清两件**：`full.png` 重录（**只有它变**，499654 → 501891 B；`ui-panel`/`bed-clip` 逐字节未动）· `dist-baseline.txt` 重落；仅余 `audio-baseline.py` 只验首曲常量（次曲无自动漂移检查）
 - 🔴 **复核两条发现**（详见 96 §7.8）：① **口径** —— 包报「`full.png` 差异 2866 px」是**原始逐像素**数，过 Playwright `threshold 0.2` 后**只剩 8 px**（半透明 chip 叠浅水色被容差吃掉）→ **该断言对半透明 UI 变更几乎不设防，不可当 UI 门禁**；② **盲区** —— pw `boot()` 全程不发手势 ⇒ `#sw-bgm` 的 `.on` **选中态零覆盖**，而真机必有
-- 🧩 **环境坑（会反复咬人）**：pw 每跑落 ~6300 条目 > safe-delete 守卫 5000 ⇒ **`npm run pw` / `pw:update` 第二次起必被拦**（守卫数「条目含目录」、且同回合内粘住）。**正解**：`npx playwright test --config=plan/pw/playwright.config.mjs --output=test-results/_pwN`（快照落点由 `snapshotPathTemplate` 决定，与 outputDir 无关）
+- ✅ **环境坑已从源头消除**（09-25 10:5x）：pw 每跑残留 **1378→14 条目 / 75 MB→125 KB**。根因不是"条目太多"而是 `trace:'retain-on-failure'` 的 **screencast 逐帧录像**（1375 帧 JPEG）没被清干净 → 修法 `trace:{mode:'retain-on-failure', screenshots:false}`（一行，保 trace.zip）。改后 `pw` **14 passed**、快照与 `dist-baseline.txt` 逐字节未动。**此后直接 `npm run pw`，不需要 `--output` 绕法**；守卫阈值雨桐已调 5000→**9999**（现非瓶颈，不建议再调高）。详见 `03-COLLAB-PROTOCOL.md §8.1`
 - 待办：雨桐本人三项验收 —— §7 六项审美点头（静帧 `plan/shots-wp5/`）· 移动端真机帧率 · **新增 UI 的真机手感/观感目检**（刻度尺惯性、咔嗒声、海鸟、**BGM 选曲 chip**）
 
 ---
@@ -107,7 +107,7 @@
 | 🟡 UP11 遗留一件：`audio-baseline.py` 只自动校验**首曲**常量，次曲（微风）`{trim,trueDur}` 无漂移检查 | 下次动音频常量时人工复核（96 §7.6-1）。其余两件（`full.png` / `dist-baseline.txt`）主控已清 |
 | 🟢 历史文档里的旧 BGM 文件名（`70-REPO-BASELINE` / `40-WP4` / `50-WP5` / `80-UP1` / `91-UP5` / `92-UP6` / `98*` / `98b*`）**已裁：刻意不回改** —— 那是「当时实测到什么」的记录，回改会让文档与 git 史实互相矛盾 | ✅ 旧名→新名**索引唯一化在契约 §6**；活文档已全换新名（96 §7.6-3） |
 | 🟡 pw 像素基线两条**结构性弱点**：① `full.png` 过 `threshold 0.2` 后对半透明 UI 变更几乎不设防（2866 px → 8 px）② pw `boot()` 不发手势 ⇒ `#sw-bgm` 的 `.on` **选中态零覆盖**，真机必有 | 若要把 UI 变更纳入门禁，另开一条「**定位到元素再截图**」的基线（仿 `ui-panel.png`）。96 §7.8 B/C |
-| 🧩 pw 产物目录 >5000 条目即撞 safe-delete 守卫 ⇒ `npm run pw` / `pw:update` 第二次起被拦（UP9 当年靠改名绕过） | ✅ **已写入 `03-COLLAB-PROTOCOL.md §8`**（含绕法与两条反直觉点；96 §7.8 D） |
+| 🧩 pw 产物目录撞 safe-delete 守卫（UP9 当年靠改名、UP11 靠 `--output=_pwN` 绕过） | ✅ **已从源头消除**（09-25）：根因是 trace **screencast 逐帧录像**（1375 帧/75 MB）未清干净，改 `trace.screenshots=false` ⇒ 残留 **1378→14 条目**。`03-COLLAB-PROTOCOL §8.1` 已改写（含"阈值可由雨桐调、现 9999、不建议再调高"）。**不需要绕法了** |
 | 🧩 **git 提交纪律原先散落且写漏并行情形**：`00-INDEX §7`（每包完成即提一次）与 `90-WAVE4 §6`⑥（提交前 `git status` 只剩自己的文件）—— 后者分包不会读到，且**并行波次下不可满足**（UP9∥UP10 因此都提不成、由主控代提，复核需靠 `reflog` 反推） | ✅ **已收拢进 `03-COLLAB-PROTOCOL.md §7.1`**：判 A 独占（自己提）/ B 并行（不提交、交主控）；**禁 `git add -A`**（并行会带上别包半成品）；不许 amend / 动 tag；`plan/pw/**` 不自己重录 |
 | 移动端真机帧率 | 仅雨桐可做（README 已知限制） |
 | §7 六项审美 | 仅雨桐点头，静帧在 plan/shots-wp5/ |

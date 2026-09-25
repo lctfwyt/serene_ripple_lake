@@ -266,6 +266,12 @@ pw 的 `boot()`（`30-pixel.spec.mjs:51-62`）从 `page.goto` 到截图**全程�
 
 ### D. 一处**环境坑**（不是本包的错，但会反复咬人 —— 建议写进协作文档）
 
+> 🟡 **本节已过期（2026-09-25 10:5x 主控修掉）—— 不改写，留作当时的实测记录。**
+> 真根因是 trace 的 **screencast 逐帧录像**（1375 帧 / 75 MB）没被清干净，不是"条目太多"；
+> 修法 `trace: {mode:'retain-on-failure', screenshots:false}` ⇒ 单跑残留 **1378→14 条目**。
+> 现行口径见 **`03-COLLAB-PROTOCOL.md §8.1`**（`--output=_pwN` 绕法**已不需要**）。
+> 下方"两个反直觉点"仍然成立，排查其它批量删除时照样有用。
+
 pw 每跑一次在 `test-results/` 落 **~6300 个条目**，超过本机 safe-delete 守卫的 **5000** 阈值
 → **`npm run pw` / `npm run pw:update` 从第二次起必被拦**：
 

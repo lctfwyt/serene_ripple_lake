@@ -144,7 +144,9 @@ npm run assert:dist  → node plan/wp5-assert.js file:///…/dist/index.html?deb
 | 12 | dist 与基线 | `npm run build` → `npm run pw:dist:snapshot` → `npm run pw:dist`（体积应只小幅变化） |
 
 > ⚠ `pw` 的 `full.png` **预期会变**（画面亮度/反射变了）—— 那是真变更，**报主控重录，别自己重录**。
-> ⚠ 跑 `pw` 若被 safe-delete 守卫拦，见 `03-COLLAB-PROTOCOL.md §8.1`（用 `--output=test-results/_pwN`）。
+> ⚠ `pw` 的 safe-delete 守卫坑**已从源头消除**（2026-09-25 主控：`trace.screenshots=false`，
+> 单跑残留 1378→**14** 条目 / 75 MB→**125 KB**）→ **直接 `npm run pw` 即可，不需要 `--output` 绕法**。
+> 原理与历史见 `03-COLLAB-PROTOCOL.md §8.1`。
 
 ---
 

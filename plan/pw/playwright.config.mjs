@@ -62,7 +62,15 @@ export default defineConfig({
     colorScheme: 'dark',
     screenshot: 'off',
     video: 'off',
-    trace: 'retain-on-failure',
+    // 🔴 trace 只留「失败可查」那一半，**显式关掉 screencast**。
+    //   起因（2026-09-25 主控实测）：`retain-on-failure` 会对**每个用例都先录**、
+    //   通过后再丢弃 —— 但丢弃没清干净，`traces/screencast/*.jpeg` 全留下：
+    //   **单跑 1375 帧 / 75 MB**，占 `test-results/` 条目数的 99%（1378 中的 1375）。
+    //   后果有两层：① 每跑 75 MB 纯垃圾；② 它是 safe-delete 守卫（阈值 5000）被撞的
+    //   唯一来源 —— 守卫拦的其实是"下一次运行启动时清理上一次残留"这个动作，
+    //   这才是「`npm run pw` 第二次起必被拦」的真实机制（见 03-COLLAB-PROTOCOL §8.1）。
+    //   关掉 screencast 后仍保留 trace.zip（DOM 快照 / 网络 / console），失败照样能查。
+    trace: { mode: 'retain-on-failure', screenshots: false },
   },
 
   // ================================================================ 项目分档
