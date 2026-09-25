@@ -364,6 +364,12 @@ var P = {
   // AM-015（UP11）：BGM 单曲 → 曲目列表（进页面随机一首、前端可选）。
   //   曲名：**明镜**（bgm-mingjing.mp3）· **微风**（bgm-weifeng.mp3）—— 文件名与曲名同源
   //   （2026-09-25 由 `bgm-stillwater.mp3` / `bgm-cand1.mp3` 改名，那两名是生成期临时名）。
+  //   🔖 **全库唯一的「旧名 → 新名」索引就是本行**（主控 09-25 裁决）：
+  //     旧名**只**保留在历史记录类文档里（`70-REPO-BASELINE` / `40-WP4` / `50-WP5` /
+  //     `80-UP1` / `91-UP5` / `92-UP6` / `98*` / `98b*`）—— 那些行记的是「当时实测到什么」，
+  //     回改成新名会让文档与当时的 git 史实互相矛盾（证据降级成传闻）。**不要去"修"它们。**
+  //     反之「活文档」（本契约 · `02-AMENDMENTS` · `README` · `src/**` ·
+  //     `plan/audio-baseline.py` · `vite.config.mjs` · `plan/pw/dist-baseline.txt`）必须用新名。
   //   ⚠ 这里**只有文件名**；每首的母带 `trim` 与真实内容时长 `trueDur` 在
   //     `src/10-audio.js` 的 `BGM_TRACKS` 表里（按资产实测，`npm run audio:baseline` 复核）。
   //     换曲必须两个一起换，否则循环出点会落到错误位置 → 每圈接缝塌尾静音。

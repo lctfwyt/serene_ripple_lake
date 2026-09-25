@@ -72,3 +72,40 @@
 2. `_STATUS.md` 追加一行（§2 格式）
 3. 有跨包影响 → 先开变更单，再收尾；**没有变更单就没有跨包改动**
 4. 板上指向自己且未处理的 ⬜ 消息 → 全部处理并标 ✅（或开 AM）
+
+## 8. 本机环境坑（会反复咬人，先记下）
+
+### 8.1 `npm run pw` / `pw:update` 第二次起必被 safe-delete 守卫拦
+
+pw 每跑一次在 `test-results/` 落 **~6300 个条目**，超过本机 safe-delete 守卫的 **5000** 阈值：
+
+```
+[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":6308,"threshold":5000,...}
+```
+
+两个反直觉点：① **守卫数的是「条目数」（含目录），不是文件数** —— 目录里实际只剩 1387 个文件时它照样报 5376；
+② **一旦撞过，同一轮对话内对同一路径会一直报同一个数**（清干净也不管用）。
+
+**正解**：把产物目录指到**本轮没被撞过的新名字**上 ——
+
+```bash
+npx playwright test --config=plan/pw/playwright.config.mjs --output=test-results/_pw2
+# 重录基线：同上，追加 --update-snapshots
+```
+
+快照落点由 `playwright.config.mjs` 的 `snapshotPathTemplate` 决定，**与 `outputDir` 无关**，
+所以这样跑出来的基线照样写进 `plan/pw/tests/__snapshots__/`。收尾记得删掉 `_pwN/`。
+（UP9 当年靠「把 `test-results` 改名」绕过，是同一问题的土办法。）
+
+### 8.2 `full.png` 像素基线对半透明 UI 变更**几乎不设防**
+
+Playwright `toHaveScreenshot` 默认 **`threshold: 0.2`**（逐通道感知容差）——
+`#sw-bgm` 的 chip 底 `rgba(255,255,255,.20)` 叠在浅水色上，逐通道差够不到 0.2，
+**2866 px 的原始差异过容差后只剩 8 px**。→ **别把「8 px」读成「没改」，也别把 `full.png` 当 UI 变更的门禁。**
+真要守 UI，用 `ui-panel.png` 那种「**定位到元素**再截图」的口径，或给新控件单开一条基线。
+
+### 8.3 pw `boot()` 全程不发手势 ⇒ 需要手势才激活的 UI **零覆盖**
+
+`30-pixel.spec.mjs` 的 `boot()` 从 `page.goto` 到截图**不发任何手势**，而 `SW.audio.init()`
+只在首次手势后调用（`99-main.js` ④）→ pw 环境下 `#sw-bgm` 的 chip **永远不进 `.on` 选中态**。
+影响：无随机 → 无 flake（好），但「哪枚被选中」这件事**没有任何基线覆盖**（真机必有高亮）。

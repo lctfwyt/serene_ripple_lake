@@ -14,9 +14,11 @@
 - 🎨 **grain 主控终裁 = 0**：管线保留，想要胶片感自行设 0.005~0.02
 - 🔢 **编号纪律已裁（两处同源错）**：①`90-WAVE5 §2` 原把波次 7 预分配为 AM-012/013，但这两号早被 UP5 音频与截帧开关占用 → UP10 手感增量**顺延 AM-014**（确认其判断），波次 7 顺延 **AM-015（UP11）/ AM-016（WP6）**；②该波次文档初版把 UP9∥UP10 标成「波次 5」（已被 UP2 占用）→ 已统一为 `00-INDEX` 全局号（波次 6/7）。**纪律：编号前先查现况**
 - ⚖️ **`slap1~4` 授权**：站方 sounds-mp3 自述「not intended for commercial use」→ 雨桐 09-25 裁「**这轮不动，以后有空再改**」；README ⚠️ 附注保留（将来要么换源重录、要么拿书面授权）
-- 🟢 **波次 7**：**UP11 BGM 选择器（AM-015）已完工**（见下行）；**WP6 参数固化（AM-016）待开**，口径见 `90-WAVE5.md`，开场白由主控另行发放
-- ✅ **UP11 BGM 选择器（AM-015）完工**（09-25 04:5x，全文 `96-UP11-bgm-picker.md §7`）：两首 BGM 改名**明镜 / 微风** + 右上「**BGM：** + 并排 chip」（三轮形态迭代终点，原生下拉已整体回滚）+ 进页面随机一首（`rng` 独立流）；`?bgm=<n>` 钉选。**双入口 118/118 · `assert` 15/15 双入口 · `audio:baseline` 全绿 · `env-narrow` 零违规**；顺带修掉 `tryFileBgm()` 元素音量初值的**既有缺陷**（曾有 0.94 dB 电平台阶）
-- ⏳ **UP11 遗留 → 主控**：① pw 像素基线 `full.png` 待重录（差异 2866 px **全在 `#sw-bgm` bbox 内**、零外溢；`ui-panel.png`/`bed-clip.png` 未受影响）② `plan/pw/dist-baseline.txt` sha256 清单含旧文件名 ③ `audio-baseline.py` 只自动校验首曲常量，**次曲（微风）无漂移检查**
+- 🟢 **波次 7**：**UP11 BGM 选择器（AM-015）已完工并经主控复核通过**（见下）；**WP6 参数固化（AM-016）待开**，口径见 `90-WAVE5.md`，开场白由主控另行发放
+- ✅ **UP11 BGM 选择器（AM-015）完工 + 主控复核通过**（09-25 04:4x，全文 `96-UP11-bgm-picker.md §7`，复核 §7.8）：两首 BGM 改名**明镜 / 微风**（`git mv`，sha256 逐位未变）+ 右上「**BGM：** + 并排 chip」（三轮形态迭代终点，原生下拉已整体回滚）+ 进页面随机一首（`rng` 独立流）；`?bgm=<n>` 钉选。顺带修掉 `tryFileBgm()` 元素音量初值的**既有缺陷**（曾有 0.94 dB 电平台阶）。**主控亲手重跑：`assert` 15/15 双入口（`#13` 2.147 / 2.136）· `audio:baseline` 全绿 · `pw` 全链 14 passed · `#ui > div.first()` 仍是时段面板**
+- 🔧 **UP11 遗留已清两件**：`full.png` 重录（**只有它变**，499654 → 501891 B；`ui-panel`/`bed-clip` 逐字节未动）· `dist-baseline.txt` 重落；仅余 `audio-baseline.py` 只验首曲常量（次曲无自动漂移检查）
+- 🔴 **复核两条发现**（详见 96 §7.8）：① **口径** —— 包报「`full.png` 差异 2866 px」是**原始逐像素**数，过 Playwright `threshold 0.2` 后**只剩 8 px**（半透明 chip 叠浅水色被容差吃掉）→ **该断言对半透明 UI 变更几乎不设防，不可当 UI 门禁**；② **盲区** —— pw `boot()` 全程不发手势 ⇒ `#sw-bgm` 的 `.on` **选中态零覆盖**，而真机必有
+- 🧩 **环境坑（会反复咬人）**：pw 每跑落 ~6300 条目 > safe-delete 守卫 5000 ⇒ **`npm run pw` / `pw:update` 第二次起必被拦**（守卫数「条目含目录」、且同回合内粘住）。**正解**：`npx playwright test --config=plan/pw/playwright.config.mjs --output=test-results/_pwN`（快照落点由 `snapshotPathTemplate` 决定，与 outputDir 无关）
 - 待办：雨桐本人三项验收 —— §7 六项审美点头（静帧 `plan/shots-wp5/`）· 移动端真机帧率 · **新增 UI 的真机手感/观感目检**（刻度尺惯性、咔嗒声、海鸟、**BGM 选曲 chip**）
 
 ---
@@ -102,8 +104,10 @@
 | 🟡 `slap1~4.wav` 授权存疑（站方 sounds-mp3 自述「not intended for commercial use」） | **雨桐 09-25 裁：这轮不动，以后有空再改**；README ⚠️ 附注保留 —— 换源重录 or 拿书面授权 |
 | 🟡 UP9 越界备注（无害，已追认）：`README.md` 资产表补溯源 · `plan/audio-baseline.py` 修「短资产（tick ~0.12 s）短于 pyloudnorm 0.4 s 积分块 → 崩溃」 | 归档即可，无需动作 |
 | 🟢 新增 UI 真机目检（刻度尺惯性手感 · 咔嗒声 · 海鸟是否好听且不吵 · **BGM 选曲 chip 观感**） | 仅雨桐可做 |
-| 🔴 UP11 遗留三件（pw `full.png` 重录 · `plan/pw/dist-baseline.txt` 更新旧文件名 · `audio-baseline.py` 扩到次曲） | 主控（全文 96 §7.6） |
-| 🟡 历史文档里的旧 BGM 文件名（`70-REPO-BASELINE` / `91-UP5` / `92-UP6` / `98*` 归档）**刻意未改** —— 那是当时的仓库状态记录 | 需全库一致时另开一条 |
+| 🟡 UP11 遗留一件：`audio-baseline.py` 只自动校验**首曲**常量，次曲（微风）`{trim,trueDur}` 无漂移检查 | 下次动音频常量时人工复核（96 §7.6-1）。其余两件（`full.png` / `dist-baseline.txt`）主控已清 |
+| 🟢 历史文档里的旧 BGM 文件名（`70-REPO-BASELINE` / `40-WP4` / `50-WP5` / `80-UP1` / `91-UP5` / `92-UP6` / `98*` / `98b*`）**已裁：刻意不回改** —— 那是「当时实测到什么」的记录，回改会让文档与 git 史实互相矛盾 | ✅ 旧名→新名**索引唯一化在契约 §6**；活文档已全换新名（96 §7.6-3） |
+| 🟡 pw 像素基线两条**结构性弱点**：① `full.png` 过 `threshold 0.2` 后对半透明 UI 变更几乎不设防（2866 px → 8 px）② pw `boot()` 不发手势 ⇒ `#sw-bgm` 的 `.on` **选中态零覆盖**，真机必有 | 若要把 UI 变更纳入门禁，另开一条「**定位到元素再截图**」的基线（仿 `ui-panel.png`）。96 §7.8 B/C |
+| 🧩 pw 产物目录 >5000 条目即撞 safe-delete 守卫 ⇒ `npm run pw` / `pw:update` 第二次起被拦（UP9 当年靠改名绕过） | ✅ **已写入 `03-COLLAB-PROTOCOL.md §8`**（含绕法与两条反直觉点；96 §7.8 D） |
 | 移动端真机帧率 | 仅雨桐可做（README 已知限制） |
 | §7 六项审美 | 仅雨桐点头，静帧在 plan/shots-wp5/ |
 | UP3/UP4 开包 | 先 `npm run pw:update` 重录基线 + 按 roadmap §2 重标阈值（UP2 已做完一轮） |
