@@ -51,13 +51,93 @@
 
 **契约偏离（2 处，主控收尾补 `01-CONTRACT`）**：① `#brand` 写进 `index.html` 而非 JS 追加 `#ui`（理由：与 `#hint` 同类，且换来零 JS 同步）② `#brand` 不在 `#ui` 子树 ⇒ 自加 `pointer-events:none`。
 
-**状态**：⬜ 未开工（本 AM 与包文档 `106` 同批落）。
+**状态**：⬜ 施工中（2026-09-29 23:5x 起飞）。
+
+---
+
+### AM-034 · UP15 splash 音效 —— **文件写权限授权**（2026-09-29 23:5x · ⬜ 未决）
+
+**背景**：雨桐要求「splash 音效开一个包，**具体细节我来沟通**」。故本 AM **只授权文件写权限**，**变更内容待规格锁定后补**。
+
+**影响面（跨包写权限授权 —— 下列文件他包权限为「只读」）**
+
+| 文件 | 契约所有者 | 动作 |
+|---|---|---|
+| `src/10-audio.js` | WP4 → UP9（AM-010）→ UP11（AM-015） | 划水声改造（连续「流水」层 / 离散「拍击」层，二选一或并存） |
+| `assets/audio/**` | WP4 | **仅在选「新增采样」方案时**新增文件（复用 `slap1~4` / 程序化合成则零新增） |
+
+**待规格锁定后补的内容（§3 沟通清单）：触发语义 · 素材来源 · 参数与听感 · 验收方式。**
+
+**已确认的硬约束（不随规格变）**：`SW.audio` 签名（§2.1）与 `probe()` 字段名/语义不动 · 冻结件零改动 · `file://` 只走 `<audio>` 元素 · AudioContext 仍由首次手势创建。
+
+**断言变更（**预判**，两条取决于所选方案）**
+
+| 项 | 变化 |
+|---|---|
+| `plan/pw/tests/50-brand.spec.mjs` 判据 6 | ⚠ **仅当选「新增采样」**：`wantAudio` 名单须 +N（该文件属 UP14，跨包）—— 由本 AM 授权施工方一并改 |
+| `plan/pw/dist-baseline.txt` | 新增音频文件时随之变化 ⇒ **主控重落** |
+
+**状态**：⬜ 未决 —— **等雨桐答 `108 §3`**，答题后补正文再开工。
+
+---
+
+### AM-035 · UP16 Netlify 上云 —— 部署配置与文档（2026-09-29 23:5x · ⬜ 未决）
+
+**变更**：新增 `netlify.toml`（构建/发布 + 5 条缓存头 + manifest MIME）与 `.nvmrc`；`package.json` 加 1 条 `deploy` script；`README.md` 加「部署」一节。**零渲染代码。**
+
+**影响面（跨包写权限授权）**
+
+| 文件 | 契约所有者 | 动作 |
+|---|---|---|
+| `package.json` | 共享 | 加 1 条 script（其余不动） |
+| `README.md` | WP5 | 追加「部署」一节 |
+| `netlify.toml` · `.nvmrc` | —（新文件） | 新建（无需授权） |
+
+**逐包动作**：只有 **UP16 一个包**（`109-UP16-deploy.md`，波次 17，独占）。
+**前置**：UP14 合并（`package.json` / `README.md` 与它重叠 ⇒ 必须串行）。
+
+**断言变更**：**无** —— 零渲染改动 ⇒ `assert` / `assert:dist` 必须仍 15/15 · `pw` 全绿 · 冻结件零改动。
+
+**⚠ 与 AM-036 的配套**：本 AM 写的 `/sw.js` · `/manifest.webmanifest` 两条缓存头，其**响应对象由 AM-036 产出**；文件未生成前该规则自动无效（Netlify 不报错）。
+
+**状态**：⬜ 未开工。
+
+---
+
+### AM-036 · UP17 PWA 可安装 —— manifest / Service Worker / 图标（2026-09-29 23:5x · ⬜ 未决）
+
+**变更**：`app/public/` 下新增 `manifest.webmanifest` · `sw.js` · `icons/*`；`app/index.html` 的 `<head>` 加 3~6 行；`app/main.js` 末尾追加 SW 注册块；`README.md` 追加 PWA 小节。
+
+**影响面（跨包写权限授权）**
+
+| 文件 | 契约所有者 | 动作 |
+|---|---|---|
+| `app/index.html` · `app/main.js` | UP1a | 加 `<head>` 元信息 / 追加注册块（**不新增 `import`**） |
+| `README.md` | WP5 | 追加「PWA / 安装」小节 |
+| `app/public/**` | —（新目录） | 新建（`vite.config.mjs` 的 `root:'app'` ⇒ 默认 publicDir，**预期不改 vite 配置**） |
+
+**范围裁定（**刻意不对称**，非漏改）**：**只改 `app/index.html`（构建入口），不改根 `index.html`（免构建入口）**。理由：PWA 在 `file://` 下不生效；根入口若引用 `manifest.webmanifest` 会因仓库根无此文件而每次产生 `requestfailed`（污染 `10-assert` 的 `netErrors` 报告）；且根入口属冻结清单，本包无必要再破例。
+
+**逐包动作**：只有 **UP17 一个包**（`110-UP17-pwa.md`，波次 18，独占）。
+**前置**：AM-035 合并 + **图标由雨桐提供**（`110 §3`）。
+
+**断言变更**
+
+| 项 | 变化 |
+|---|---|
+| `plan/pw/tests/50-brand.spec.mjs` | **零改动**（本包不碰 `index.html` / `src/**`；根入口 `<script src>` 序列不动） |
+| `plan/pw/dist-baseline.txt` | **必变**（dist 新增 manifest / sw / icons 若干文件）⇒ **主控重落** |
+| 冻结件 `wp5-assert.js` / `wp5-env.js` | **零改动** |
+| 现有 15+16 判据 | **零改动**（PWA 元信息对像素不可见；`10-assert` 走根入口，本包不动根入口） |
+
+**状态**：⬜ 未开工 —— **阻塞在图标**（除图标外 5 项可先行）。
 
 ---
 
 > 全库最新**已应用** = **AM-032**（UP13-fix3 光带与月亮柱同频 · `105 §11` · 2026-09-29 23:0x）；
 > 其上一条为 AM-031（UP13-fix2 光带消费层硬门控 · `104 §10`）。第五轮明细 `102 §9`。
-> 最新**未决** = **AM-033**（UP14 品牌改名 · `106`）。
+> 最新**未决** = **AM-034 / AM-035 / AM-036**（UP15 splash · UP16 Netlify · UP17 PWA）。
+> **施工中** = AM-033（UP14 品牌改名，`106`）。
 
 **挂账（不是变更单，明细见 `_STATUS.md §4`）**
 
@@ -105,7 +185,10 @@
 | AM-030 | 09-29 | UP13-fix1：**env 重建闸门** —— 删「终身 40 次配额」+ 改「停稳 6 帧才烘 / 成功才提交」+ 新增只读读数 `env.deferred` | UP13 | ✅（`103`，主控直修） |
 | AM-031 | 09-29 | UP13-fix2：光带**消费层硬门控** —— `bandGate() = 0` 时水面改采无光带贴图 `env.equirectBase`（照月亮柱 `×(1−g)` 的手法） | UP13 | ✅ 已应用（`104`） |
 | AM-032 | 09-29 | UP13-fix3：光带**与月亮柱同频** —— 生产端恒烘两张满档贴图 + 消费端 `mix(base, band, bandGate())`（治「夜→昼 必须松手才出现」） | UP13 | ✅ 已应用（`105 §11`） |
-| AM-033 | 09-29 | **UP14 品牌改名**：`静水 · still water` → `静湖微澜 · Serene Ripple Lake` + 首屏「轻触水面」上方加一行中英网页名（同起同落）。**跨包写权限授权**：`index.html`(WP1) · `app/index.html` · `src/85-fallback.js`(WP5) · `README.md`(WP5) · `package.json` | UP14 | ⬜ 未决（`106` · 波次 15） |
+| AM-033 | 09-29 | **UP14 品牌改名**：`静水 · still water` → `静湖微澜 · Serene Ripple Lake` + 首屏「轻触水面」上方加一行中英网页名（同起同落）。**跨包写权限授权**：`index.html`(WP1) · `app/index.html` · `src/85-fallback.js`(WP5) · `README.md`(WP5) · `package.json` | UP14 | 🔶 施工中（`106` · 波次 15） |
+| AM-034 | 09-29 | **UP15 splash 音效**：文件写权限授权（`src/10-audio.js` · `assets/audio/**`）。**变更内容待雨桐答题**（`108 §3` 沟通清单） | UP15 | ⬜ 未决（`108` · 波次 16） |
+| AM-035 | 09-29 | **UP16 Netlify 上云**：`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节。**零渲染代码** | UP16 | ⬜ 未决（`109` · 波次 17） |
+| AM-036 | 09-29 | **UP17 PWA 可安装**：`app/public/`（manifest · sw · icons）+ `app/index.html` head + `app/main.js` 注册块。**只改构建入口、不动根入口** | UP17 | ⬜ 未决（`110` · 波次 18） |
 
 > **编号纪律**：变更单号**不提前预留**，由主控开包当刻分配 —— 三次撞号教训（AM-012/013 被 UP5/截帧占用、AM-010 被 UP9 占用、AM-011 被 UP10 占用）。
 

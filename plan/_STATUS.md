@@ -18,7 +18,9 @@
 - ✅ UP13-fix3（**AM-032**）已修：**光带与月亮柱同频** —— 生产端**恒烘两张满档**（`equirectBase` 纯圆斑 / `equirect` 纯光环 `g=1`，与当帧 `g` 无关）+ 消费端每帧 `mix(base, band, bandGate())` ⇒ 当帧出/消。桩掉 `buildEnv` 后 **夜→昼 也当帧出现**（AM-031 结构上做不到的那侧）· `probe().envTex` 扩**三态** + 新增 `probe().envMix`（`105 §11`）
 - ✅ **主控收口（09-29 22:5x）**：契约 §2.3 `env.equirectBase` + §2.6 `probe().envTex` **已补** · `dist/` 按 AM-031 重建（788167 → **788290 B**）、`dist-baseline.txt` 已重落 · `npm run pw` **16 passed / 0 failed**
 - ✅ **主控收口（09-29 23:3x）**：`00-INDEX §3` 波次 14 翻 ✅ · 契约 §10 变更日志 AM-032 状态翻正 · **独立复核**（双端逐位对测，见 `105 §12`）· `dist/` 按 AM-032 重建（788290 → **788584 B**）+ `dist-baseline.txt` 重落 · `pw:dist` 复检绿 · `npm run pw` **17 passed / 0 failed** · `assert:dist` **15/15**
-- ⬜ 待主控：**仅剩** `90-debug.js` 过期注释（`:328` 滑杆注释写「15 = 定稿」，现 **36**）—— 已裁「随下个碰 `90-debug.js` 的包一并修」
+- ⬜ 待主控（**UP14 收尾**）：重录像素基线 **2 张**（`full.png` + `bed-clip.png`，`--update-snapshots=all` ⇒ **重录后须整份复跑 `30-pixel` 验哨兵**）· `npm run build` + 重落 `dist-baseline` · 标题行观感挂雨桐。**⚠ 与「先把视觉定死」的次序约束**：先拿雨桐的观感结论，再重录，否则反复重录
+- ✅ **主控派包（09-29 23:5x）**：开 **波次 16/17/18** 三包 —— UP15 splash（`108`·AM-034，**规格待雨桐**）· UP16 Netlify（`109`·AM-035）· UP17 PWA（`110`·AM-036，**阻塞在图标**）。契约新增 **§7.1 跨包写权限授权登记** + **§7.2 契约偏离登记**（补登 UP14 两处偏离）· 音频授权口径更新（`107 §3.1` / `70 §6`）
+- ⬜ 待主控：`90-debug.js` 过期注释（`:328` 滑杆注释写「15 = 定稿」，现 **36**）—— 已裁「随下个碰 `90-debug.js` 的包一并修」
 - ✅ **UP14（AM-033）已交 09-29 23:5x**：网页名 `静水 · still water` → **`静湖微澜 · Serene Ripple Lake`**（两条入口 `<title>` + `README:1` + `package.json` 描述 + 兜底页文案）；首屏加一行中英网页名 `#brand`，显隐**派生自 `#hint.on`**（相邻兄弟选择器 ⇒ `99-main.js` / `85-fallback.js` 一行未改）。新增 `plan/pw/tests/50-brand.spec.mjs`（**8 用例**）· 两入口 `assert` **15/15** · `pw:frozen` ✅ · `pw` **20 passed / 1 failed**（**仅 `bed-clip.png`**，`#brand` 落在其裁切区内；`ui-panel.png` 绿，因不在 `#ui` 子树）
 - 已知边界：`#13` 运行间方差 ~3% · **`R−B(5.5)` 本轮同脚本 −5.30（改前 −5.53，带 [−8,+4]，余量变大）** · pw 像素门是哨兵非门禁（protocol §8）
 - ⬜ 未验收（观感 / 真机类）：§9 光带六项审美 · 移动端帧率 · 新 UI 目检（刻度尺 / 咔嗒 / 海鸟 / BGM chip）

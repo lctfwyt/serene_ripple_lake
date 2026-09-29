@@ -537,8 +537,11 @@ var P = {
 
 | 文件 | 所有者 | 其它 WP 的权限 |
 |---|---|---|
-| `index.html` | **WP1** | 只读 |
+| `index.html` | **WP1** | 只读（**UP14/AM-033 授权**：改 `<title>` + 加 `#brand` DOM/CSS，`5c35c6b`） |
 | `vendor/three.min.js` | **WP1** | 只读 |
+| `app/index.html` | **UP1a**（构建入口镜像） | 只读（**UP14/AM-033**：`<title>`+`#brand`，`5c35c6b`；**UP17/AM-036**：加 PWA `<head>` 元信息，未开工） |
+| `app/main.js` | **UP1a** | 只读（**UP17/AM-036**：末尾追加 SW 注册块，**不得新增 `import`** —— R3 顺序约束） |
+| `app/public/**` | —（**UP17/AM-036** 新建） | 新建（Vite `publicDir` ⇒ 原样拷进 `dist/` 根） |
 | `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`；**UP3/AM-017 改 env 段**；**UP4-lite/AM-019 改湖底贴图段**） |
 | `src/30-scene.js` | **WP1 → UP2 → UP3**（AM-017，波次 8 起移交） | 只读（`applyTimeState` 在 WP1 内实现，WP3 只提供 `TimeState`；**环境光照段属 UP3**） |
 | `src/40-lakebed.js` | **WP1 → UP4-lite**（AM-019，波次 9 起移交） | 只读（UP3/AM-017 连材质都没碰，只从 `30-scene.js` 用 `traverse` 设 `envMapIntensity`；**UP4-lite/AM-019 加湖底 tiling 贴图 —— 但 `InstancedMesh` 两层 LOD 与 `pebble*` 参数一个字节未动**；**AM-020 同包修复轮：贴图观感整容 + 新增 `refreshBedTexture()` 运行时重建面 —— 鹅卵石与 LOD 仍一字未动**） |
@@ -549,11 +552,33 @@ var P = {
 | `src/70-input.js` | **WP2** | 只读 |
 | `src/20-time.js` | **WP3** | 只读 |
 | `src/80-ui.js` | **WP3 → UP10**（AM-011）**→ UP11**（AM-015） | 只读 |
-| `src/10-audio.js` | **WP4 → UP9**（AM-010）**→ UP11**（AM-015） | 只读 |
-| `assets/audio/*` | **WP4**（UP11 改名两首 BGM：`bgm-stillwater.mp3` → `bgm-mingjing.mp3`、`bgm-cand1.mp3` → `bgm-weifeng.mp3`） | 只读 |
-| `src/85-fallback.js` | **WP5** | 只读 |
-| `README.md` | **WP5** | 只读 |
+| `src/10-audio.js` | **WP4 → UP9**（AM-010）**→ UP11**（AM-015） | 只读（**UP15/AM-034 授权**：划水声改造，未开工） |
+| `assets/audio/*` | **WP4**（UP11 改名两首 BGM：`bgm-stillwater.mp3` → `bgm-mingjing.mp3`、`bgm-cand1.mp3` → `bgm-weifeng.mp3`） | 只读（**UP15/AM-034 授权**：仅在选「新增采样」时新增文件，未开工） |
+| `src/85-fallback.js` | **WP5** | 只读（**UP14/AM-033 授权**：品牌串，`5c35c6b`） |
+| `README.md` | **WP5** | 只读（**UP14/AM-033** 标题 · **UP16/AM-035** 部署节 · **UP17/AM-036** PWA 小节） |
+| `netlify.toml` · `.nvmrc` | —（**UP16/AM-035** 新建） | 新建（部署配置） |
 | `plan/*.md` | 记录用 | 只在 `_STATUS.md` 追加 |
+
+### 7.1 跨包写权限授权登记（**一票否决的唯一解除方式**）
+
+> 本表**不替代所有权**：所有权仍在原包。本表只登记「**某包在某 AM 下被临时授权写它不属于的文件**」。
+> **未登记的写入 = 越权** —— `03-COLLAB-PROTOCOL §7.4` 的「本包改动文件」**不含**越权项。
+
+| AM | 包 | 被授权写的「他包文件」 | 契约所有者 | 动作 | 状态 |
+|---|---|---|---|---|---|
+| AM-033 | UP14 | `index.html` · `app/index.html` | WP1 · UP1a | 改 `<title>` + 加 `#brand` DOM/CSS | ✅ 已应用（`5c35c6b`） |
+| AM-033 | UP14 | `src/85-fallback.js` · `README.md` | WP5 | 品牌串 / 标题 | ✅ 已应用（`5c35c6b`） |
+| AM-033 | UP14 | `package.json` | 共享 | 描述串 | ✅ 已应用（`5c35c6b`） |
+| AM-034 | UP15 | `src/10-audio.js` · `assets/audio/**` | WP4→UP11 · WP4 | splash 音效改造 | ⬜ 未开工（`108`） |
+| AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ⬜ 未开工（`109`） |
+| AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` | UP1a · UP1a · WP5 | PWA `<head>` / SW 注册块 / PWA 小节 | ⬜ 未开工（`110`） |
+
+### 7.2 契约偏离登记（由主控裁决后登记；**不是**「先做后报」的免罪符）
+
+| # | 偏离 | 原条款 | 实际做法 | 裁决理由 |
+|---|---|---|---|---|
+| 1 | `#brand` 写进 `index.html` 而**非** JS 追加到 `#ui` | §2「所有 UI 由 JS 创建并 append 到 `#ui`，不改 `index.html` 结构」 | `#brand` 是 `index.html` 的 DOM（与 `#hint` 并列） | 它是**首屏引导文案**而非 UI 面板（与 `#hint` 同类）；换来一条 CSS 相邻兄弟选择器的**零 JS 同步**。该条款的立法意图是「防并行包抢 `#ui`」，UP14 独占 ⇒ 意图不冲突（`106 §2`） |
+| 2 | `#brand` **不在** `#ui` 子树 | §2「`#ui > *` 接管指针事件」 | 自加 `pointer-events:none` | 见上；`#ui > *` 管不到它，必须自己写（否则会吃掉水面手势） |
 
 > **WP1 的 `applyTimeState` 已经实现**：它按 `TimeState` 字段逐个赋给 `sun` / `hemi` / `fog` / `renderer.toneMappingExposure`。
 > 所以 **WP3 不需要碰 `30-scene.js`** —— 这正是把光照从并行冲突里拆出去的关键。
@@ -796,3 +821,7 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-29 | AM-030：`30-scene.js` 删 env「终身 40 次重建配额」→ 改「停稳 `ENV_SETTLE_FRAMES = 6` 帧才烘 + **成功才提交** `_envLast`」；§2.3 只读面加 `env.deferred`（`env.rebuilds` 降为诊断计数） | UP13-fix1 |
 | 09-29 | AM-031：§2.3 加 `env.equirectBase`（无光带版）· §2.6 加 `probe().envTex`（二态）；`60-water.js` 每帧按 `bandGate()` 选图 ⇒ 夜段光带**结构性为 0**、不依赖重烘 | UP13-fix2 |
 | 09-29 | AM-032：§2.3 两张改为「**满档常驻**」（`equirect` = 纯光环 `g=1` / `equirectBase` = 纯圆斑，与当帧 `g` 无关）· §2.6 加 `uEnvEqBase` / `uEnvMix` / `probe().envMix`，`envTex` 扩为**三态**；消费端 `mix(base, band, bandGate())` ⇒ 光带与月亮柱**同频** | UP13-fix3 |
+| 09-29 | AM-033：产品名 → `静湖微澜 · Serene Ripple Lake`（**非契约面**：`<title>` / README / package.json 描述 / 兜底页串）；**新增 §7.1 跨包写权限授权登记 + §7.2 契约偏离登记**（登记 UP14 的 2 处偏离） | UP14 |
+| 09-29 | AM-034：登记 §7.1 —— UP15 获权写 `src/10-audio.js` / `assets/audio/**`（**splash 音效规格待雨桐**，未开工） | UP15 |
+| 09-29 | AM-035：登记 §7.1 —— UP16 获权写 `package.json` / `README.md`（Netlify 部署配置，**新增 `netlify.toml` / `.nvmrc`**，未开工） | UP16 |
+| 09-29 | AM-036：登记 §7.1 —— UP17 获权写 `app/index.html` / `app/main.js` / `README.md`；**新增 `app/public/**`**（PWA manifest + SW + 图标）。**范围裁定：只改构建入口 `app/index.html`，不动免构建入口根 `index.html`**（PWA 在 `file://` 不生效；根入口引用 manifest 会产生 `requestfailed` 污染 `netErrors`） | UP17 |
