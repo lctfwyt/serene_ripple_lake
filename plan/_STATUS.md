@@ -23,7 +23,8 @@
 - ✅ **音频授权口径更新（09-30 00:1x）**：**MiniMax 废案**（接口对新用户下线，2026-09-24 复测）⇒ 活跃文档改口径 —— BGM = **Suno**（`70 §6` / `107 §3.1`）· bird = **sound dino** ✅ · tick = **Mixkit** ✅ · **slap = sounds-mp3「存疑」**（换源候选 sound dino，波次 16 定）。包文档更名 `108-UP15-slap.md`
 - ✅ **UP15 规格落定（09-30 00:4x · 只写计划、未实施）**：雨桐给新源 `lake-water-breaks-on-a-rocky-shore.mp3`（99.253 s / 44.1 kHz / 2 397 457 B / sha256[:16] **`3c0470de30191980`**，置于 `audio-build/src/`）⇒ 主控写 `108 §4` 生产规格：**自动选材**（0.25 s 包络局部峰 ≥P85 → 5 ms 精化起跳 → 6 选 4）+ **裁剪淡变**（前 100 ms / 尾降到 8% 峰 / 淡入 6 ms·淡出 150 ms）+ **四档加工链**（`raw`/`soft`/`heavy`/`deep`；低架 + 72 Hz 闷响层 + tanh 饱和 + 降调 0.87×）+ 输出 **48 kHz·单声道·PCM_16·峰值 0.6200** + 试听页 + 新建 `plan/audio-slap-cut.py`。**`108` 重排：旧 §3 沟通清单 → §9 待定档** · `AM-034` 正文同步（候选由 sound dino 改为「雨桐给的素材」）· 全仓 `108 §3` 交叉引用已改 `§9`
 - ⚠ **UP15 实测两条硬事实（写进 `108 §3.2/§3.4`）**：① **「低沉厚重」挑不出来** —— 源整段 40–250 Hz 占比仅 **0.0588 %**（最高 1 s 段 2.73 %），只能靠加工链造；② **换源改时长安全** —— 已核 `wp5-assert.js` / `50-brand.spec.mjs` **无 `slapDur` 时长硬编码**（旧件 1.4500 s，本文件 09-29 版误记 0.55 s，已订正）
-- 🔶 **UP15 试听段已派（09-30 00:4x）**：新源出处 = **`sound dino`**（雨桐确认，与 `bird1~6` 同源，*free for personal and commercial work, no attribution*）⇒ **授权门已清**。施工方只做 **`plan/audio-slap-cut.py --audition`** → `108 §4.6` 试听页（**不落 `assets/audio/`、不改 `src/`**）；⬜ 待雨桐试听定档（`108 §9`）后落地
+- 🔶 **UP15 试听段已派（09-30 00:4x）**：新源出处 = **`sound dino`**（雨桐确认，与 `bird1~6` 同源，*free for personal and commercial work, no attribution*）⇒ **授权门已清**。施工方只做 **`plan/audio-slap-cut.py --audition`** → `108 §4.6` 试听页（**不落 `assets/audio/`、不改 `src/`**）；**试听件已交（09-30 01:0x · `5276d57`）**，⬜ 待雨桐试听定档（`108 §9`）后落地
+- ✅ **协议新增 §3 条（09-30 01:1x）**：「**多轮打磨包：一个包 = 一行 AM**」—— 与雨桐多轮往返期间**一律不动 `02-AMENDMENTS.md`**（过程写包文档完工记录 `§11.x`、`_STATUS` 原地改那一行），**收口时把 `§2` 本包那行一次改到底**。AM 是变更登记、不是过程日志。**UP15 为首个适用包**（雨桐将与其多轮对话把 slap 全搞定）
 - ✅ **旧 `slap1~4.wav` 新勘事实（09-30 实测，写入 `108 §1.1`）**：48 000 Hz · 单声道 · PCM_16 · **各 1.4500 s / 139 244 B / 峰值 0.6200** · sha256[:16] `1dbd53a9…` / `77286615…` / `0f1e2d44…` / `578bee67…` · `SLAP_TRIM` 注释「已统一到 0.62 峰值」**实测吻合**
 - ⬜ 待主控：`90-debug.js` 过期注释（`:328` 滑杆注释写「15 = 定稿」，现 **36**）—— 已裁「随下个碰 `90-debug.js` 的包一并修」
 - ✅ **UP14（AM-033）已交 09-29 23:5x**：网页名 `静水 · still water` → **`静湖微澜 · Serene Ripple Lake`**（两条入口 `<title>` + `README:1` + `package.json` 描述 + 兜底页文案）；首屏加一行中英网页名 `#brand`，显隐**派生自 `#hint.on`**（相邻兄弟选择器 ⇒ `99-main.js` / `85-fallback.js` 一行未改）。新增 `plan/pw/tests/50-brand.spec.mjs`（**8 用例**）· 两入口 `assert` **15/15** · `pw:frozen` ✅ · 首次红 **`bed-clip.png`**（`30-pixel` **串行** ⇒ `full.png` 被跳过未测；**09-30 收口重录确认 `full.png` 亦变 ⇒ 实为 2 张**，非当时记的「仅 1 张」）
@@ -118,7 +119,7 @@
 | AM-031 | UP13-fix2：光带**消费层**硬门控 —— 夜段水面改采无光带 `env.equirectBase` + `probe().envTex` 读数 | ✅（`104`） |
 | AM-032 | UP13-fix3：光带**与月亮柱同频** —— 生产端恒烘两张满档 + 消费端 `mix(base,band,bandGate())`；`probe().envTex` 扩三态 + 新增 `probe().envMix` | ✅ 已应用（`105 §11`） |
 | AM-033 | UP14 品牌改名 + 首屏标题行（`#brand` 显隐派生自 `#hint.on`） | ✅ 已应用（`106` · 主控收尾 09-30） |
-| AM-034 | UP15 slap 拍击采样换源（写权限：`SLAP_LUFS_TRIM` + `slap1~4.wav` 同名替换 + 新建 `plan/audio-slap-cut.py`）。**原源 sounds-mp3 已裁不可商用；新源 = 雨桐给的环境声（出处 `sound dino` ✅）**；**规格 = `108 §4`** | 🔶 **施工中（试听段）** · **⬜ 待雨桐试听定档** `108 §9` 后落地 |
+| AM-034 | UP15 slap 拍击采样换源（写权限：`SLAP_LUFS_TRIM` + `slap1~4.wav` 同名替换 + 新建 `plan/audio-slap-cut.py`）。**原源 sounds-mp3 已裁不可商用；新源 = 雨桐给的环境声（出处 `sound dino` ✅）**；**规格 = `108 §4`** | 🔶 **施工中（试听件已交 09-30 01:0x · `5276d57`）** · **⬜ 待雨桐多轮对话定档**（`108 §9` / `§11.6`）后落地；**记账：往返期间不动 `02-AMENDMENTS`，收口落一行**（协议 §3） |
 | AM-035 | UP16 Netlify 上云（`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节） | ⬜ 未决（`109`） |
 | AM-036 | UP17 PWA 可安装（`manifest` + `sw.js` + `icons`） | ⬜ 未决（`110` · **阻塞在图标**） |
 
