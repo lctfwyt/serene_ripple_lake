@@ -172,6 +172,10 @@ UP15 / AM-034 加，默认 `0.20 / 0.30 / 0.80`，`?debug=1`「音频（实时�
   `navigator.serviceWorker.controller !== null` 即注册成功；DevTools → Network 勾 **Offline** 再刷新验离线。
 - **图标派生**：见 `plan/110-UP17-pwa.md §3.6`（ImageMagick 六条命令 + 四个实测坑）。
   `favicon.ico` 走**透明底**（雨桐 09-30 定）；`icon-maskable-512` / `apple-touch-icon` **必须满底**（平台规范）。
+  **底色现状（09-30 定）**：`icon-maskable-512` + `apple-touch-icon` = **米白 `#F5F0E6`**，iPhone/Android **一套**
+  （同一 master 派生链、同一 410 档构图，只差 180 / 512）；`icon-192` / `icon-512` / `favicon` 仍**透明无底**（电脑端）。
+  `manifest` 的 `background_color` / `theme_color` 仍 `#0b1418`（Android 启动画面与状态栏底色，保持深色才与深色湖面无缝）。
+  **换色三步**：改两个 PNG → bump `sw.js` 的 `VERSION`（图标走 cache-first）→ 重建 `dist`。明细 `110 §11.2`。
 
 ---
 
