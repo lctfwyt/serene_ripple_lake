@@ -16,10 +16,13 @@
 //   SW.scene.sceneRT    —— 已分配好，**不要重建**。颜色附件是 linear（未做 tonemap / 未编码），
 //                          DepthTexture 用 NearestFilter（用 LINEAR 会变全白）。
 //   SW.scene.env        —— **UP3 / AM-017 新增**（只读消费）：程序化环境贴图的运行时状态。
-//                          { ready, equirect, rt, rebuilds, res, err, spread, gate, deferred }
-//                          `60-water.js` 只读 `ready` 与 `equirect` 两个字段，**不得重建**。
+//                          { ready, equirect, equirectBase, rt, rebuilds, res, err, spread, gate, deferred }
+//                          `60-water.js` 只读 `ready` / `equirect` / `equirectBase`，**不得重建**。
 //                          ⚠ **AM-029**：`equirect` 是**水面专用**的那一张（带光带）；
 //                            石头 IBL 走 `rt.texture` 的 PMREM（disc 版）—— 两者刻意不是同一张。
+//                          🔴 **AM-031**：`equirectBase` = **无光带**版（就是 PMREM 的 disc 源那张 `eq`）。
+//                            自 AM-031 起 `60-water.js` **每帧按 bandGate() 选图** —— `g = 0`（夜段）
+//                            采 `equirectBase` ⇒ 光带**结构性为 0**，不再依赖"夜里重烘过一张"。
 (function (SW, window, document) {
   'use strict';
   var THREE = window.THREE;
@@ -329,7 +332,9 @@
     // AM-029：`gate` 追加为只读读数 —— 当前昼夜门控 g（0 = 纯圆斑 / 1 = 纯光环）
     //   ⚠ `equirect` 自 AM-029 起是**水面专用**的那一张（带光带）；石头 IBL 走 `rt.texture`（PMREM，disc 版）
     // AM-030：`deferred` 追加为只读读数 —— 因静默期（debounce）被推迟的累计次数（诊断用）
-    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0, gate: 0, deferred: 0 },
+    // AM-031：`equirectBase` 追加 —— **无光带**版（= PMREM 的 disc 源 `eq`）。夜段（`g = 0`）
+    //   `60-water.js` 改采它 ⇒ 光带**结构性为 0**，与"有没有重烘"无关。
+    env: { ready: false, equirect: null, equirectBase: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0, gate: 0, deferred: 0 },
     _envPmrem: null, _envRT: null, _envEq: null, _envEqW: null,
     _envOldRT: null, _envOldEq: null, _envOldEqW: null,
     _envLast: null, _envSeen: null, _envStill: 0, _envEnabledLast: null, _envSpreadGainLast: null, _envMatPending: true, _envMatCount: 0,
@@ -521,6 +526,9 @@
         this._envRT = rt; this._envEq = eq; this._envEqW = eqWater;
         this.scene.environment = rt.texture;     // 石头 IBL：**disc 版**（不带光带）—— 与现状逐位一致
         this.env.equirect = eqWater;             // 水面反射：**光带版**（夜段 === disc 版）
+        // ★ AM-031（L1）：把**本来就存在**的无光带那张（`eq`）暴露出去 —— 不新建任何贴图。
+        //   消费端（`60-water.js` L4）夜段改采它 ⇒ 光带与"生产端有没有重烘"彻底解耦。
+        this.env.equirectBase = eq;
         this.env.rt = rt;
         this.env.ready = true;
         this.env.res = W + 'x' + H;

@@ -211,6 +211,10 @@
   //      变宽一档；月柱位置由 `elev` 决定，与波表方向无关。
   var WAVE_Q = 3;              // 档位量化（度）
   var curHalf = null;          // 当前**已编进 shader** 的档位（量化值）
+  // AM-031（L5）：水面当帧采的是哪张 env 贴图 —— `'base'`（无光带） / `'band'`（带光带） / `'none'`。
+  //   `update()` 每帧写入、`probe()` 只读读出。判据 2（stale 免疫）就靠它证明
+  //   「夜段归零**不依赖重烘**」—— 光看画面像素分不出"没光带"与"光带很淡"。
+  var curEnvTex = 'none';
   function c01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
   // AM-028：取当帧的「白昼弥散度」0~1（= `TimeState.envSunSpread`）。
@@ -416,6 +420,9 @@
     //   uSkyTop / uSkyBottom **保留**并作为 fallback：env 未就绪（含建失败）时画面绝不黑。
     //   水面**不**采样 PMREM 出来的 CubeUV RT：r160 的 CUBEUV_* 定义是给内建材质注入的，
     //   自定义 ShaderMaterial 拿不到 → 改走「同一张 equirect + mip」，视觉等价、零编译风险。
+    //   🔴 **AM-031（L6）**：这里拿到的 `uEnvEq` 已经是**消费层选过的那一张** ——
+    //      `update()` 每帧按 `bandGate()` 选（`g = 0` ⇒ 无光带的 `env.equirectBase`）。
+    //      与月亮柱 `×(1−g)` 同族：每个消费者自己掐一次，不依赖缓存刷新。**本段 GLSL 一字未动。**
     '  vec3 refl = reflBase;',
     '  if (uEnvReady > 0.5) {',
     '    float envBias = clamp(uWaterRough * 8.0, 0.0, 4.0);',
@@ -721,8 +728,19 @@
       //   只消费 SW.scene.env。重建会换新贴图 → 必须每帧重指（同 uHeight 的道理）。
       var ev = SW.scene.env;
       var envOn = !!(SW.P.envEnabled && ev && ev.ready && ev.equirect);
-      if (envOn) { u.uEnvEq.value = ev.equirect; }
+      // ── AM-031（L4）：**消费层硬门控** —— 每帧按当帧 `bandGate()` 选图 ────────────
+      //   `g > 0` ⇒ `equirect`（带光带版，白天照旧）；`g = 0` ⇒ `equirectBase`（**无光带**版）。
+      //   为什么必须在消费端再掐一次：选图原先**只在 `30-scene.js` 烘图那一刻做一次**（生产端），
+      //   贴图一旦 stale，水面就一直采着带光带那张 —— 而消费端原本**没有任何否决权**
+      //   ⇒ 症状（白天拖到夜、光带留着不走）只要生产端漏一条路径就复发。
+      //   手法与月亮柱的 `uSunRadiance × (1−g)`（上方 ③ env 段之前）**同族**：
+      //   每个消费者自己掐一次，时间一到立刻生效、**不依赖任何缓存刷新**。
+      //   稳态零影响：夜段 `equirect === equirectBase`（30-scene 复用同一对象）⇒ 选的还是那一张
+      //   ⇒ **像素逐位不变**；白天仍选 `equirect` ⇒ 同样逐位不变。
+      var gSel = bandGate();
+      if (envOn) { u.uEnvEq.value = (gSel > 0) ? ev.equirect : (ev.equirectBase || ev.equirect); }
       u.uEnvReady.value = envOn ? 1 : 0;
+      curEnvTex = envOn ? ((gSel > 0) ? 'band' : 'base') : 'none';   // L5 的只读读数来源
       // ── AM-028：水面 env 反射强度逐时化（白天远端反光的**主杠杆**）──────────────
       //   实测（18:30 直渲）：0.75 → 1.10 把远端三段均值由 139.6 抬到 148.9。
       //   夜段 s=0 ⇒ 逐位等于 `P.envWaterGain`（0.75）⇒ `#13` 不受影响（刻意如此）。
@@ -791,6 +809,9 @@
         // —— UP3 / AM-017：环境反射是否在跑（降级判据 #10 读它）——
         envReady: !!(u && u.uEnvReady.value > 0.5),
         envGain: u ? u.uEnvGain.value : 0,
+        // —— AM-031（L5）：当帧采的是哪张 env 贴图（`'base'` / `'band'` / `'none'`）——
+        //   判据 1/2/3 的读数入口。`envReady=true` 时：夜段必须 `'base'`、昼段必须 `'band'`。
+        envTex: curEnvTex,
         overBudget: tris > TRIS_BUDGET
       };
     }
