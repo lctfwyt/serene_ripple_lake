@@ -8,7 +8,7 @@ Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无�
 - 首次交互后音频启动（浏览器自动播放策略）· 右上角可开关声音 · **进页面随机放一首 BGM**，
   右上角「**BGM：**」那一行的 chip 可随时切听（明镜 / 微风）
 - `[` / `]` 切时段（±0.5h）· 拖底部 24h 刻度尺锁定时段（可甩动、有咔嗒声）· 双击画面空白回到真实时间
-- `?hour=18.5` 直达指定时段 　`?debug=1` 只读调试面板（含 fps / 预算 / 读数）＋ **参数滑杆 8 个**（bloom 强度/阈值/半径 · vignette · grain · glit 细节/粗糙/抖动，拖动实时生效、刷新即还原默认；默认形态不创建任何 DOM）
+- `?hour=18.5` 直达指定时段 　`?debug=1` 只读调试面板（含 fps / 预算 / 读数）＋ **参数滑杆 24 个，分四组**（音频 3 · 后期 8 · 湖底 10 · 波纹 3），拖动实时生效、刷新即还原默认（默认形态不创建任何 DOM）
 
 ## 一天光影
 默认跟随**系统真实时钟**，13 个 keyframe 在四态（晨雾 / 正午 / 黄昏 / 星夜）之间连续插值。
@@ -55,29 +55,32 @@ npm run build   # 产出 dist/ —— 单文件 HTML + 随行音频
 
 | 入口 | 形态 | 用途 |
 |---|---|---|
-| `index.html` | 13 个经典 `<script>` + `vendor/three.min.js` | **交付形态**：`file://` 双击即开，零安装 |
+| `index.html` | 15 个经典 `<script>`（13 个 `src/` + `vendor/three.min.js` + `three-post.min.js`） | **交付形态**：`file://` 双击即开，零安装 |
 | `app/` → `dist/` | 单文件 HTML（JS/CSS 已内联）**+ 必须随行 `dist/assets/audio/`** | 开发；以及需要 `three/examples/jsm` 时 |
 
 - 两条入口**渲染同一套画面**：`plan/wp5-assert.js` 各跑一遍都是 **15/15**（同一条判据、同一画布口径 1280×720）。
 - 🔴 **构建版不能只拷那个 HTML**：`P.bgmFiles` / `SLAP_FILES` 是**运行时字符串**，打包器不管它们 →
-  必须连 `dist/assets/audio/`（7.3 MB）一起拷，否则没声音。分发时整个 `dist/` 目录一起走。
+  必须连 `dist/assets/audio/`（14 文件 · 8.2 MB）一起拷，否则没声音。分发时整个 `dist/` 目录一起走。
 - ⚠ **改样式 / DOM 要改两处**：`index.html` 与 `app/index.html` 是**刻意分开的两份** ——
   前者是"逐字节冻结"的交付物，构建入口不许碰它，只能另抄一份。改的时候别只改一边。
 - ⚠ `package.json` **故意不写 `"type": "module"`**：`plan/wp5-assert.js` 是 CommonJS，
   加上这个字段它会立刻以 `require is not defined` 挂掉。所以配置文件叫 **`vite.config.mjs`**（不是 `.js`）。
 - 若 `npm run dev` 后 `localhost` 打不开，加 `--host 127.0.0.1`（Vite 8 默认只绑 IPv6 回环）。
 
-### 为什么构建版没有变小
+### 构建版的体积
 12 个模块全用 `var THREE = window.THREE` 取全局 → 构建入口必须 `window.THREE = THREE` →
-**命名空间逃逸**，打包器无法摇树。**体积 ≈ 与免构建版持平**（实测 829 KB / 14 请求 → 713 KB / 1 请求，
-差的 14% 只来自 minify 我方源码，**不是摇树**），
+**命名空间逃逸**，打包器**摇不掉 three**（实测：免构建 **16 请求 / 1073 KiB** → 构建 **1 请求 / 772 KiB**，
+省下的全是**我方源码的注释与空白**，`three.min.js` 669 KB 一个字节没少）。
 这是**已知代价**，换来的是"零风险"：不手写 51 成员 shim，就没有"漏一个成员 = 静默 `undefined`"的坑。
 
 ### 自检
 ```bash
 npm run assert        # 免构建入口 15 条断言
 npm run assert:dist   # 构建入口 15 条断言（同一脚本，URL 参数化）
-python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰值 / 常量漂移 / 接缝研究
+npm run pw            # Playwright 回归：像素基线 / 品牌 / 环境 / 降级
+npm run pw:frozen     # 冻结件校验 —— wp5-assert.js · wp5-env.js 未被改动
+npm run pw:dist       # dist 与 plan/pw/dist-baseline.txt 逐文件一致 + 引用泄漏检查
+python plan/audio-baseline.py --seam-ab   # 音频体检：LUFS / 真峰值 / 常量漂移 / 接缝研究
                                              # 需 numpy · soundfile · pyloudnorm · scipy
 ```
 另：`npm run dev` 后开 `http://localhost:5173/jsm-smoke.html` 可看 `three/examples/jsm` 是否可达
@@ -85,26 +88,24 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
 
 ## 部署（Netlify）
 
-`dist/` 是**纯静态、全相对路径、零外部请求**（`dist/index.html` 约 772 KB 内联 + `assets/audio/` 14 文件 8.08 MB
-⇒ 合计 **≈ 8.9 MB / 15 文件**），任意域名、任意子路径都能开。**不需要 SPA 回退**（只有 1 个 HTML、无前端路由）。
+`dist/` 是**纯静态、全相对路径、零外部请求**（`index.html` 790 KB 内联 + `assets/audio/` 14 文件 8.2 MB
+⇒ **15 文件 / 9.0 MB**），任意域名、任意子路径都能开。**不需要 SPA 回退**（只有 1 个 HTML、无前端路由）。
 
-`netlify.toml` 已写好构建命令 / 发布目录 / 5 条缓存头，下面三种方式任选。
+`netlify.toml` 已写好构建命令 / 发布目录 / 5 条缓存头，三种方式任选（A / B 都要先 `npm run build`）：
 
-| 方式 | 操作 | 说明 |
-|---|---|---|
-| **A · 拖文件夹**（最快） | `npm run build` → 打开 `app.netlify.com/drop` → 拖**整个 `dist/` 目录** | 🔴 **必须拖目录**：只拖 `index.html` 则 `assets/audio/` 不跟着走 ⇒ **BGM / 拍击 / 鸟鸣全静音**（代码按相对路径找它们）。⚠ **免登录站点 1 小时后自动删除**，上传后要点 **claim** 认领到免费账号 |
-| **B · CLI**（本仓库） | `npm run build` → `npm run deploy` | 走 `npx --yes netlify-cli`，不进依赖树；首次会提示登录并问「新建站点 / 关联已有站点」 |
-| **C · Git 集成**（可选） | Netlify 连仓库 → Build `npm run build` · Publish `dist` | 每次 push 自动部署。⚠ `dist/` 被 `.gitignore` 忽略（正确）⇒ **必须让 Netlify 自己构建**，仓库里没有 `dist` |
+| 方式 | 操作 |
+|---|---|
+| **A · 拖文件夹**（最快） | `app.netlify.com/drop` → 拖**整个 `dist/` 目录**。⚠ **免登录站点 1 小时后自动删除**，上传后要点 **claim** |
+| **B · CLI** | `npm run deploy`（走 `npx --yes netlify-cli`，不进依赖树；首次提示登录并问「新建 / 关联已有站点」） |
+| **C · Git 集成** | Netlify 连仓库 → Build `npm run build` · Publish `dist`（`dist/` 不入库 ⇒ **必须让它自己构建**） |
 
-- **先把 `dist/` 建出来**：`npm run build`（A/B 两条路都是上传本地产物，不读 `netlify.toml` 的构建段）。
-- **体积与额度**：8.9 MB / 次；Netlify 免费额度 100 GB 月带宽 ⇒ 约 **1.1 万次完整冷加载**（个人分享绰绰有余）。
-- **缓存策略**（`netlify.toml`）：`/index.html` · `/sw.js` · `/manifest.webmanifest` 一律 `max-age=0, must-revalidate`
-  （否则发了新版刷不出来）；`/assets/audio/*` 与 `/icons/*` 是 7 天 —— 文件名不含 content hash，不能用 `immutable`。
-  `/sw.js` 与 `/manifest.webmanifest` 那两条**现在自动无效**（文件还不存在，Netlify 不报错），UP17 产出后自动生效。
-- 🔴 **公开部署 = 向公众传播音频资产** ⇒ 上线前先核「资产与授权」一节与 `plan/70-REPO-BASELINE.md §6`
-  （BGM 两首的商用口径、以及仓库若公开时是否把 mp3 移出 git 历史 —— 该条仍挂雨桐）。
-- **「整包下载到本地」不需要额外脚本**：`npm run build` 后把**整个 `dist/` 目录**压成 zip 发给对方，
-  解压双击 `index.html` 即开（相对路径 + 免构建同款能力）。代价：8.9 MB 一份、改版要重发、无更新机制。
+- 🔴 **必须拖整个 `dist/` 目录**：只拖 `index.html` ⇒ `assets/audio/` 不跟着走 ⇒ **BGM / 拍击 / 鸟鸣全静音**。
+- **额度**：9.0 MB / 次冷加载；免费额度 100 GB 月带宽 ⇒ 约 **1.1 万次**（个人分享绰绰有余）。
+- **缓存**（`netlify.toml` 5 条）：入口 / `sw.js` / `manifest` 一律 `max-age=0, must-revalidate`（否则新版刷不出来）；
+  音频与图标 7 天（文件名无 hash，不能用 `immutable`）。`sw.js` / `manifest` 两条等 UP17 产出后才生效。
+- 🔴 **上线 = 向公众传播音频** ⇒ 先核下面「资产与授权」一节（BGM 商用口径、及仓库公开时是否把 mp3 移出 git 历史，该条仍挂雨桐）。
+- **「整包下载到本地」不需要额外脚本**：把整个 `dist/` 压成 zip 即可（解压双击 `index.html` 即开）。
+  代价：9 MB 一份、改版要重发、无更新机制 —— 要更新机制就等 UP17 的 Service Worker。
 
 ## 文件
 | 文件 | 职责 |
@@ -118,11 +119,13 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
 | `src/40-lakebed.js` | 湖底 + 鹅卵石（两层 LOD）+ 程序化 caustic 纹理 |
 | `src/50-ripple.js` | 波纹：波动方程 FBO ping-pong（512² Float） |
 | `src/60-water.js` | 水面：屏幕空间折射 + Beer-Lambert 吸收 + GGX 反光路径 |
+| `src/65-post.js` | 后期处理：Bloom + vignette + grain + 色调映射输出 |
 | `src/70-input.js` | 指针交互 → 波纹 + 声音 |
 | `src/80-ui.js` | 时段标签 / 24h 刻度尺 / 声音开关 / **BGM 选曲（`#sw-bgm`）** |
 | `src/85-fallback.js` | 三层降级：reduced-motion · WebGL 兜底 · 移动端 |
-| `src/90-debug.js` | `?debug=1` 面板 + `window.__probe/__seek/__clock/__hold` |
-| `assets/audio/` | BGM + 拍击采样 |
+| `src/90-debug.js` | `?debug=1` 面板 + 滑杆组 + `window.__probe/__seek/__clock/__hold` |
+| `src/99-main.js` | 启动装配：模块初始化顺序 + 首帧 |
+| `assets/audio/` | BGM · 拍击 · 海鸟 · 咔嗒（14 文件 8.2 MB，授权见下） |
 | `package.json` · `package-lock.json` | 依赖与脚本（**`package-lock.json` 必须入库**） |
 | `vite.config.mjs` | 构建配置：singlefile + 音频随行 + dev HMR 垫片（**见上方"开发 / 构建"**） |
 | `netlify.toml` · `.nvmrc` | 部署配置：构建命令 / 发布目录 / 5 条缓存头 · Node 锁 22（**见上方"部署"**） |
@@ -131,33 +134,21 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
 
 ## 资产与授权
 - **three.js r160** —— MIT
-- **BGM `bgm-mingjing.mp3`（曲名「明镜」）** —— 海绵音乐生成（146.8s / 128kbps）
-  ⚠️ **授权范围需自行确认** —— 用于公司 / 商用项目前先核对生成平台条款
-- **BGM `bgm-weifeng.mp3`（曲名「微风」）** —— 同批生成的另一首（172.8s / 3.8 MB）。
-  **两首都在运行路径上**：进页面随机放一首，右上角「BGM：」那一行的 chip 可随时切听。
-  换曲**不必再 `cp` 覆盖文件** —— 那是 UP11 之前的老办法；现在加了新曲只要
-  ① 按上表命名放 `assets/audio/`；② 在 `src/00-config.js` 的 `bgmFiles` 加一行；
-  ③ 在 `src/10-audio.js` 的 `BGM_TRACKS` 补一项（`label` + `trim` + `trueDur`）。
-  🔴 **新曲必须算常量**：`BGM_TRACKS` 里每首的 `trim`（响度配平）与 `trueDur`（真实内容时长）
-  都是**针对该曲实测**的，不填对不会静音，但母带目标与循环出点会失准。
-  跑 `python plan/audio-baseline.py --emit-js`，它会列出每项差多少、并给出可直接粘贴的新值。
+- **BGM `bgm-mingjing.mp3`（明镜 146.8s）/ `bgm-weifeng.mp3`（微风 172.8s）** —— **Suno 生成**
+  （早期文档写的「MiniMax」**已废案**：该接口对新用户下线）。进页面随机放一首，右上角「BGM：」chip 可随时切听。
+  ⚠ **商用前核 Suno 订阅条款**（付费账号订阅期内生成的有商用权），并留存「生成记录 + 授权书」。
+  换曲三步：① 命名放 `assets/audio/` ② `src/00-config.js` 的 `bgmFiles` 加一行 ③ `src/10-audio.js` 的
+  `BGM_TRACKS` 补一项。🔴 每首的 `trim`（响度配平）与 `trueDur`（真实时长）**必须实测** ——
+  跑 `python plan/audio-baseline.py --emit-js` 取数（不填对不会静音，但母带目标与循环出点会失准）。
 - **拍击采样 `slap1~4.wav`** —— ✅ **已换源（2026-09-30）**
-  旧件来源 `sounds-mp3` **不可商用**（站方 About 页原文「The Sounds-mp3.com site is not intended for
-  commercial use.」+ 素材自述「collected from open sources」⇒ 站方不持有版权、给不出授权；此前标的
-  「免费商用、免署名」系误记）。换源走过两代：源① `lake-water-breaks-on-a-rocky-shore.mp3` 因偏轻被换，
-  **定案源 = `small-splashes-of-water.mp3`**，**出处 = sound dino**（与上面的海鸟同源，
-  *free for personal and commercial work, no attribution*）⇒ **可商用、免署名**。
-  4 段均为 `48 kHz / 单声道 / PCM_16 / 1.4500 s / 峰值 0.6200`，响度已配平（`SLAP_LUFS_TRIM`）。
-  过程详见 `plan/108-UP15-slap.md`（波次 16）。
-- **海鸟 `bird1~6.wav`** —— SoundDino「岸边可以听到海鸥的叫声」
-  （`such-a-cry-of-seagulls-can-be-heard-on-the-shore.mp3`，5.89s / 22050 Hz）
-  授权原文（sounddino.com 分类页 + 首页 FAQ，2026-09-25 取证）：
-  「Free to download for **personal and commercial work**, **no attribution**, no licence chase.」
-  「Do I need to credit Sounddino? **No** — attribution is not required.」
-  「Can I use Sounddino in commercial or paid client work? **Yes**.」
-  「Nothing on Sounddino is registered with **Content ID**.」
+  旧源 `sounds-mp3` **不可商用**（站方原文「not intended for commercial use」+ 素材「collected from open sources」
+  ⇒ 站方不持版权、无权可授；此前标的「免费商用免署名」系误记）。**定案源 = `small-splashes-of-water.mp3`**，
+  **出处 sound dino**（与海鸟同源）⇒ **可商用、免署名**。4 段均 `48 kHz / 单声道 / PCM_16 / 1.4500 s / 峰值 0.6200`。
+  详见 `plan/108-UP15-slap.md`。
+- **海鸟 `bird1~6.wav`** —— SoundDino「岸边可以听到海鸥的叫声」（源 5.89s / 22050 Hz）
+  授权原文（2026-09-25 取证）：「Free to download for **personal and commercial work**, **no attribution**,
+  no licence chase.」「Can I use Sounddino in commercial or paid client work? **Yes**.」
   处理：只做**淡入淡出 + 拖尾 + 电平归一**（不滤波 / 不重采样 / 不加混响）。
-  切点落在两声之间的包络谷底，距下一声起振 ≥ 60 ms；段与段**允许重叠**（源只有 5.89 s）。
 - **咔嗒 `tick1.wav`（Mixkit #1125）/ `tick2.wav`（Mixkit #1120）** ——
   Mixkit **Sound Effects Free License**：免费商用、免署名、允许修改
 - 其余**全部程序化生成**，零外部依赖

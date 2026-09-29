@@ -580,9 +580,9 @@ var P = {
 | AM-033 | UP14 | `index.html` · `app/index.html` | WP1 · UP1a | 改 `<title>` + 加 `#brand` DOM/CSS | ✅ 已应用（`5c35c6b`） |
 | AM-033 | UP14 | `src/85-fallback.js` · `README.md` | WP5 | 品牌串 / 标题 | ✅ 已应用（`5c35c6b`） |
 | AM-033 | UP14 | `package.json` | 共享 | 描述串 | ✅ 已应用（`5c35c6b`） |
-| AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`** | WP4→UP11 · WP4 · 本包 | ① 试听段（工具）· ② 落地段（同名替换 + `SLAP_LUFS_TRIM`）· ③ **混音段**（`syncVolumes()` + 增益节点） | ✅ ①② 已完成（`108 §11`）· 🔶 ③ 施工中 |
+| AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`** | WP4→UP11 · WP4 · 本包 | ① 试听段（工具）· ② 落地段（同名替换 + `SLAP_LUFS_TRIM`）· ③ **混音段**（`syncVolumes()` + 增益节点） | ✅ **已收口（2026-09-30 02:1x）**（`108 §11` / `§11.8` / `§12`~`§14`） |
 | AM-034 | UP15 | `src/00-config.js` · `src/90-debug.js` | WP1 · WP1 | **第三段扩权**：音频段加 `flowVolume`/`slapVolume`；`?debug=1` 加「音频（实时）」滑杆组 | ✅ **已收口（2026-09-30 02:1x）**（`108 §12`~`§14`） |
-| AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ⬜ 未开工（`109`） |
+| AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ✅ **已应用（`ab36aa9` · 2026-09-30 02:5x）**（另有新建 `netlify.toml` / `.nvmrc`，无需授权）· ⬜ 判据 7 真机上线挂雨桐 |
 | AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` | UP1a · UP1a · WP5 | PWA `<head>` / SW 注册块 / PWA 小节 | ⬜ 未开工（`110`） |
 
 ### 7.2 契约偏离登记（由主控裁决后登记；**不是**「先做后报」的免罪符）
@@ -839,4 +839,5 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-30 | AM-034 **第三段（混音平衡）**：§6 加 **`flowVolume` / `slapVolume`**（两层**各自**电平 —— 此前只有共用的 `handVolume`，压它会连 slap 一起压）· §7 登记 `src/00-config.js` / `src/90-debug.js` **扩权**（`?debug=1` 加「音频（实时）」滑杆组）· §7 `src/10-audio.js` 行补 `flowGain`/`slapGain` 两个增益节点 + `file://` 元素路电平公式 · ⚠ **事实更正**：§7 `src/90-debug.js` 行原注「纯 dev-only、**不进交付物**」不成立 —— `app/main.js` 明确 import 它，实测 `dist/index.html` 含 `dbg-sliders`/`重置默认`/`湖底贴图` ⇒ **代码进包、面板默认不显示**，故其改动**必改 `dist` 字节** | UP15 |
 | 09-30 | AM-034 **收口（UP15 全段）**：§6 `flowVolume` / `slapVolume` **定档值落定 0.20 / 0.30**（原占位 1.00/1.00）· §7.1 该行翻 ✅ · 过程 = 试听 → 落地 → **换源二轮** → 混音（`108 §11`/`§11.8`/`§13`）；`dist` 重建 **790 636 B** + 重落基线 · 主控独立复核 **16/16** · 收口顺带订正 `10-audio.js` / `90-debug.js` / `audio-slap-cut.py` 三处**过期注释**（纯注释、零逻辑） | UP15 |
 | 09-29 | AM-035：登记 §7.1 —— UP16 获权写 `package.json` / `README.md`（Netlify 部署配置，**新增 `netlify.toml` / `.nvmrc`**，未开工） | UP16 |
+| 09-30 | AM-035 **已应用（`ab36aa9`）**：`netlify.toml`（构建 `npm run build` / 发布 `dist` / `NODE_VERSION=22` + **5 条缓存头**）· `.nvmrc`(22) · `package.json` 加 `deploy` 一行 · README 新增「部署」节。**零渲染改动** ⇒ 两入口 15/15 · `pw:frozen` ✅ · `pw:dist` 与基线逐文件一致 · **刻意不重建 `dist`** · ⬜ 判据 7 真机上线挂雨桐。**主控收尾**：README 过期项订正（BGM 生成主体 `海绵音乐` → **Suno**、`?debug=1` 滑杆 8 → **24**、音频 7.3 MB → **8.2 MB**、构建版体积数字重测、文件表补 `65-post`/`99-main`）+ 部署节精简 | UP16 / 主控 |
 | 09-29 | AM-036：登记 §7.1 —— UP17 获权写 `app/index.html` / `app/main.js` / `README.md`；**新增 `app/public/**`**（PWA manifest + SW + 图标）。**范围裁定：只改构建入口 `app/index.html`，不动免构建入口根 `index.html`**（PWA 在 `file://` 不生效；根入口引用 manifest 会产生 `requestfailed` 污染 `netErrors`） | UP17 |
