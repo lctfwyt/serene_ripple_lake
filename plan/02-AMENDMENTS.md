@@ -19,34 +19,41 @@
 
 ## 1. 当前未决变更单
 
-### AM-034 · UP15 slap 拍击采样换源 —— 文件写权限授权（2026-09-29 23:5x · ⬜ 未决）
+### AM-034 · UP15 slap 拍击采样换源 —— 文件写权限授权（2026-09-29 23:5x 开 · **2026-09-30 素材到位** · ⬜ 未决）
 
-**背景**：雨桐要求「slap 音效开一个包，**具体细节我来沟通**」⇒ 本包题材 = **离散「拍击」采样 `slap1~4.wav` 换源 / 复核**。本 AM **只授权文件写权限**，**变更内容待规格锁定后补**。
+**背景**：雨桐要求「slap 音效开一个包，**具体细节我来沟通**」⇒ 本包题材 = **离散「拍击」采样 `slap1~4.wav` 换源**。本 AM **授权文件写权限**；**变更内容 = `108 §4` 生产规格**。
 
-**🔴 来源裁决（2026-09-30 主控）**：`sounds-mp3` **不可商用** —— 站方 About 页原文「**The Sounds-mp3.com site is not intended for commercial use.**」，素材自述「**collected from open sources**」（站方**不持有版权、给不出授权**），全站**无独立 license/terms 页**。⇒ **§3-A「换不换」问题作废，直接换源**；候选 **`sound dino`**（与 `bird1~6` 同源，已确认 *free for personal and commercial work, no attribution*）。**此前标的「免费商用免署名」系误记**（UP9 取证时已挂「待裁」，本日裁掉）。
+**🔴 来源裁决（2026-09-30 主控）**：`sounds-mp3` **不可商用** —— 站方 About 页原文「**The Sounds-mp3.com site is not intended for commercial use.**」，素材自述「**collected from open sources**」（站方**不持有版权、给不出授权**），全站**无独立 license/terms 页**。⇒ **「换不换」作废，直接换源**。**此前标的「免费商用免署名」系误记**（UP9 取证时已挂「待裁」，本日裁掉）。
 
-**授权面**：「换掉 / 复核 `slap1~4.wav`」；**连续「流水」合成层不在授权内**。
+**✅ 新源（2026-09-30 雨桐提供）**：`lake-water-breaks-on-a-rocky-shore.mp3`
+（99.253 s · 44.1 kHz 立体声 · 2 397 457 B · sha256[:16] `3c0470de30191980`）。
+**不再走「候选 sound dino」** —— 由雨桐给的素材裁剪加工。⚠ **该文件出处/授权待雨桐确认**（`108 §3.3`）：
+换源的起因就是授权，若新源同样来路不明等于原地打转 ⇒ **条款入档前不得落地 `assets/audio/`**。
+
+**授权面**：「换掉 `slap1~4.wav`（**同名替换**）」+ 新建加工工具；**连续「流水」合成层不在授权内**。
 
 **影响面（跨包写权限授权 —— 下列文件他包权限为「只读」）**
 
 | 文件 | 契约所有者 | 动作 |
 |---|---|---|
-| `src/10-audio.js` | WP4 → UP9（AM-010）→ UP11（AM-015） | 拍击层常量：`SLAP_FILES` / `SLAP_TRIM` / `SLAP_RATE` / **`SLAP_LUFS_TRIM`（换采样后必须重算）** |
-| `assets/audio/slap1~4.wav` | WP4 | **同名替换**（推荐，判据 6 不撞）或改数量/改名（撞判据 6，见下） |
+| `src/10-audio.js` | WP4 → UP9（AM-010）→ UP11（AM-015） | 仅 **`SLAP_LUFS_TRIM`（换采样后必须重算）**；`SLAP_FILES` / `SLAP_TRIM` / `SLAP_RATE` / `SLAP_DELAY` **不动** |
+| `assets/audio/slap1~4.wav` | WP4 | **同名替换**（本包定死此方案 ⇒ 判据 6 不撞） |
+| `plan/audio-slap-cut.py`（**新建**） | 本包 | 选材 / 加工 / 试听工具（沿用 `audio-baseline.py` 的「脚本入库、产物忽略」原则） |
 
-**待规格锁定后补的内容（§3 沟通清单）：素材形态 · 替换策略 · 听感 · 验收方式**（**「换不换」已裁 = 换**）。
+**规格正文 = `108 §4`**（切片策略 / 四档加工链 / 输出规格 / 试听页 / 工具 CLI）；**待定档清单 = `108 §9`**。
 
-**已确认的硬约束（不随规格变）**：`SW.audio` 签名（§2.1）与 `probe()` 字段名/语义不动 · 冻结件零改动 · `file://` 只走 `<audio>` 元素 · AudioContext 仍由首次手势创建 · **连续「流水」合成层不碰**。
+**已确认的硬约束（不随规格变）**：`SW.audio` 签名（§2.1）与 `probe()` 字段名/语义不动 · 冻结件零改动 · `file://` 只走 `<audio>` 元素 · AudioContext 仍由首次手势创建 · **输出 48 000 Hz / 单声道 / PCM_16 / 峰值 0.6200** · **文件名与数量不变** · **连续「流水」合成层不碰**。
 
-**断言变更（预判，取决于替换策略）**
+**断言变更（预判）**
 
 | 项 | 变化 |
 |---|---|
-| `plan/pw/tests/50-brand.spec.mjs` 判据 6 | ⚠ **仅当选「改数量/改名」**：`wantAudio` 名单须同步（该文件属 UP14，跨包）—— 由本 AM 授权施工方一并改。**同名替换则零改动** |
+| `plan/pw/tests/50-brand.spec.mjs` 判据 6 | ✅ **零改动**（同名替换 ⇒ 文件名全集不变） |
 | `python plan/audio-baseline.py` | 换采样后 `SLAP_LUFS_TRIM` 漂移检测会报警 ⇒ 施工方 `--emit-js` 取新值写回源码 |
 | `plan/pw/dist-baseline.txt` | 采样字节变 ⇒ 随之变化 ⇒ **主控重落** |
+| `plan/pw/tests/__snapshots__/**` | **零影响**（音频不进像素） |
 
-**状态**：⬜ 未决 —— **§3-A 已裁（sounds-mp3 不可商用 ⇒ 换 `sound dino`）**；**等雨桐答 `108 §3` 的 B/C/D** 后补正文再开工。
+**状态**：⬜ 未决 —— **两道门未过，不派工**：① **雨桐试听定档**（`108 §9`）② **源文件授权入档**（`108 §3.3`）。
 
 ---
 
@@ -154,7 +161,7 @@
 | AM-031 | 09-29 | UP13-fix2：光带**消费层硬门控** —— `bandGate() = 0` 时水面改采无光带贴图 `env.equirectBase`（照月亮柱 `×(1−g)` 的手法） | UP13 | ✅ 已应用（`104`） |
 | AM-032 | 09-29 | UP13-fix3：光带**与月亮柱同频** —— 生产端恒烘两张满档贴图 + 消费端 `mix(base, band, bandGate())`（治「夜→昼 必须松手才出现」） | UP13 | ✅ 已应用（`105 §11`） |
 | AM-033 | 09-29 | **UP14 品牌改名**：`静水 · still water` → `静湖微澜 · Serene Ripple Lake` + 首屏「轻触水面」上方加一行中英网页名（同起同落）。**跨包写权限授权**：`index.html`(WP1) · `app/index.html` · `src/85-fallback.js`(WP5) · `README.md`(WP5) · `package.json` | UP14 | ✅ 已应用（`106` · 波次 15 · 主控收尾 09-30：重录像素基线 **2 张** + `dist` 重建 **789133 B**） |
-| AM-034 | 09-29 | **UP15 slap 拍击采样换源**：文件写权限授权（`src/10-audio.js` · `assets/audio/slap1~4.wav`）。**来源已裁：`sounds-mp3` 不可商用 → 换 `sound dino`**；**待雨桐给素材**（`108 §3` B/C/D） | UP15 | ⬜ 未决（`108` · 波次 16） |
+| AM-034 | 09-29 | **UP15 slap 拍击采样换源**：写权限授权（`src/10-audio.js` 仅 `SLAP_LUFS_TRIM` · `assets/audio/slap1~4.wav` 同名替换 · 新建 `plan/audio-slap-cut.py`）。原源 `sounds-mp3` **已裁不可商用**；**新源 = 雨桐给的环境声**（`108 §3.1`）；**规格 = `108 §4`** | UP15 | ⬜ 未决（**待雨桐试听定档** `108 §9` + **源授权入档** `108 §3.3`）|
 | AM-035 | 09-29 | **UP16 Netlify 上云**：`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节。**零渲染代码** | UP16 | ⬜ 未决（`109` · 波次 17） |
 | AM-036 | 09-29 | **UP17 PWA 可安装**：`app/public/`（manifest · sw · icons）+ `app/index.html` head + `app/main.js` 注册块。**只改构建入口、不动根入口** | UP17 | ⬜ 未决（`110` · 波次 18） |
 
