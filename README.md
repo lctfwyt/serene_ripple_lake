@@ -117,10 +117,11 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
   🔴 **新曲必须算常量**：`BGM_TRACKS` 里每首的 `trim`（响度配平）与 `trueDur`（真实内容时长）
   都是**针对该曲实测**的，不填对不会静音，但母带目标与循环出点会失准。
   跑 `python plan/audio-baseline.py --emit-js`，它会列出每项差多少、并给出可直接粘贴的新值。
-- **拍击采样 `slap1~4.wav`** —— sounds-mp3（免费商用、免署名）
-  ⚠️ **待裁（UP9 取证时发现，未改动原结论）**：sounds-mp3 站方 About 页自述
-  「site is **not intended for commercial use**」且素材「collected from open sources」——
-  即站方不持有版权、给不出商用授权。该行标注是否站得住需要主控裁（见 AM-010 §5）。
+- **拍击采样 `slap1~4.wav`** —— ⚠️ **不可商用（2026-09-30 主控裁决）**
+  站方 About 页原文：「**The Sounds-mp3.com site is not intended for commercial use.**」，素材自述
+  「collected from open sources」⇒ 站方**不持有版权、给不出商用授权**；全站无 license/terms 页。
+  **此前标的「免费商用、免署名」系误记**（UP9 取证时已挂「待裁」，见 AM-010 §5）；
+  公开部署前**必须换源**（候选 sound dino，见 `plan/108-UP15-slap.md`）。
 - **海鸟 `bird1~6.wav`** —— SoundDino「岸边可以听到海鸥的叫声」
   （`such-a-cry-of-seagulls-can-be-heard-on-the-shore.mp3`，5.89s / 22050 Hz）
   授权原文（sounddino.com 分类页 + 首页 FAQ，2026-09-25 取证）：
