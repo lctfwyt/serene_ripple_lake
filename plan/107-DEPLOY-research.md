@@ -50,17 +50,18 @@
 | 5 | HTTPS / 域名 | Netlify 自动签发 SSL | 要自定义域名才需要动 | 雨桐 |
 | 6 | 首屏流量 | 音频 `preload='auto'`（`10-audio.js:519/663/1121`） | 首次手势后开始拉 BGM ⇒ 首访有 8 MB 流量。**可选优化**：改 `metadata` + 只加载选中曲 | 待裁 |
 
-> **第 1 项（音频授权）是唯一的硬阻断。** —— **2026-09-30 更新**：BGM / 海鸟 / 咔嗒**已全部澄清 ✅**；
-> 唯一未解的是 **`slap1~4` 必须换源**（来源 `sounds-mp3` 已裁「不可商用」，见 §3.1）⇒ **归入波次 16（UP15）**。
-> ⚠ **2026-09-30 追加**：雨桐已给新源（`lake-water-breaks-on-a-rocky-shore.mp3`），但**该文件的出处/授权尚未入档**（`108 §3.3`）
-> —— 这是**新增的一道门**：换源的起因就是授权，若新源同样来路不明等于原地打转。其余都是加分项。
+> **音频授权 —— 2026-09-30 全部澄清 ✅。** BGM（Suno）· 海鸟（sound dino）· 咔嗒（Mixkit）已确认；
+> `slap1~4` 原源 `sounds-mp3` 不可商用（§3.1）⇒ **换源**，新源 `lake-water-breaks-on-a-rocky-shore.mp3`
+> **出处 = `sound dino`**（与 `bird1~6` 同源，*free for personal and commercial work, no attribution*）
+> ⇒ **授权门已清**。执行包 = 波次 16（`108-UP15-slap.md`），当前出试听候选待定档。
+> ⚠ 剩余**非授权**事项：仓库若公开，BGM 两首 mp3 是否移出历史仍待裁（§3.1-1）。
 
 ### 3.1 音频授权 —— 2026-09-29 23:5x 更新（雨桐口径）
 
 | 资产 | 状态 | 依据 / 待办 |
 |---|---|---|
 | **2 首 BGM** `bgm-mingjing.mp3` · `bgm-weifeng.mp3` | ✅ **可商用**（主体已澄清） | 来源：`suno-api.io/blog/ai-music-commercial-license`（2026-09-10 更新）。**2026-09-30 雨桐澄清：生成主体 = Suno**（本项目旧记录的「MiniMax 链路」**已废案** —— 该接口对新用户下线，`98-STATUS-ARCHIVE-v1` 2026-09-24 复测确认）。该文口径：**Suno Pro / Premier 付费账号订阅期内生成的曲目具有商用权**，官方不抽版税、取消订阅后仍保留。<br>⚠ **仅剩一条提醒**：该站系**第三方转售**（非 Suno 官方），真正能拿在手上的是它出具的**授权书**（个人满 200 / 公司满 500 可申请）—— 建议留存「生成记录 + 授权书 + 交付说明」三件（其文末也这么建议）。 |
-| **拍击采样** `slap1~4.wav`（= **UP15 的题材**） | ❌ **不可商用**（**2026-09-30 主控裁决**） | 来源 `sounds-mp3`。站方 About 页原文：**「The Sounds-mp3.com site is not intended for commercial use.」**；素材自述**「collected from open sources」** ⇒ **站方不持有版权、给不出授权**；全站无 license/terms 页。此前记的「免费商用免署名」**系误记**。<br>⇒ 🔴 **公开部署前必须换源** ⇒ 执行包 = **波次 16（`108-UP15-slap.md`）**。**2026-09-30 雨桐已给新源** `lake-water-breaks-on-a-rocky-shore.mp3`（99.253 s · 44.1 kHz · sha256[:16] `3c0470de30191980`）；⚠ **该文件出处/授权待确认**（`108 §3.3`）—— 换源的起因就是授权，若新源同样来路不明等于原地打转 |
+| **拍击采样** `slap1~4.wav`（= **UP15 的题材**） | ❌ **不可商用**（**2026-09-30 主控裁决**） | 来源 `sounds-mp3`。站方 About 页原文：**「The Sounds-mp3.com site is not intended for commercial use.」**；素材自述**「collected from open sources」** ⇒ **站方不持有版权、给不出授权**；全站无 license/terms 页。此前记的「免费商用免署名」**系误记**。<br>⇒ 🔴 **公开部署前必须换源** ⇒ 执行包 = **波次 16（`108-UP15-slap.md`）**。**2026-09-30 雨桐已给新源** `lake-water-breaks-on-a-rocky-shore.mp3`（99.253 s · 44.1 kHz · sha256[:16] `3c0470de30191980`）；**出处 = `sound dino`**（与 `bird1~6` 同源，*free for personal and commercial work, no attribution*）⇒ ✅ **授权已清**（可商用免署名） |
 | **海鸟** `bird1~6.wav` · **咔嗒** `tick1~2.wav` | ✅ **已确认** | **2026-09-30 雨桐确认**：鸟鸣 = **sound dino** · 咔嗒 = **Mixkit** ⇒ 无需动作 |
 
 ---

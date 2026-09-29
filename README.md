@@ -117,13 +117,12 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
   🔴 **新曲必须算常量**：`BGM_TRACKS` 里每首的 `trim`（响度配平）与 `trueDur`（真实内容时长）
   都是**针对该曲实测**的，不填对不会静音，但母带目标与循环出点会失准。
   跑 `python plan/audio-baseline.py --emit-js`，它会列出每项差多少、并给出可直接粘贴的新值。
-- **拍击采样 `slap1~4.wav`** —— ⚠️ **不可商用（2026-09-30 主控裁决）**
-  站方 About 页原文：「**The Sounds-mp3.com site is not intended for commercial use.**」，素材自述
-  「collected from open sources」⇒ 站方**不持有版权、给不出商用授权**；全站无 license/terms 页。
-  **此前标的「免费商用、免署名」系误记**（UP9 取证时已挂「待裁」，见 AM-010 §5）；
-  公开部署前**必须换源**（执行包 = `plan/108-UP15-slap.md`，波次 16）。**2026-09-30 雨桐已给新源**
-  （`lake-water-breaks-on-a-rocky-shore.mp3`）—— ⚠ **新源出处 / 授权待确认**：换源的起因就是授权，
-  若新源同样来路不明等于原地打转（`108 §3.3`）。
+- **拍击采样 `slap1~4.wav`** —— 🔄 **换源中（2026-09-30）**
+  旧件来源 `sounds-mp3` **不可商用**（站方 About 页原文「The Sounds-mp3.com site is not intended for
+  commercial use.」+ 素材自述「collected from open sources」⇒ 站方不持有版权、给不出授权；此前标的
+  「免费商用、免署名」系误记）。新源 = `lake-water-breaks-on-a-rocky-shore.mp3`，
+  **出处 = sound dino**（与上面的海鸟同源，*free for personal and commercial work, no attribution*）
+  ⇒ **可商用、免署名**。执行包 = `plan/108-UP15-slap.md`（波次 16），当前出试听候选待定档。
 - **海鸟 `bird1~6.wav`** —— SoundDino「岸边可以听到海鸥的叫声」
   （`such-a-cry-of-seagulls-can-be-heard-on-the-shore.mp3`，5.89s / 22050 Hz）
   授权原文（sounddino.com 分类页 + 首页 FAQ，2026-09-25 取证）：
