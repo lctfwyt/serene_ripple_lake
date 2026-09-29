@@ -164,7 +164,7 @@
         // index.html 的 #fallback 是一条纯 CSS 渐变（无文字）。补一行说明，
         // 否则用户只看到一片渐变色，不知道发生了什么。
         var tag = document.createElement('div');
-        tag.textContent = '静水 · still water';
+        tag.textContent = '静湖微澜 · Serene Ripple Lake';
         tag.setAttribute('style', [
           'position:absolute', 'left:0', 'right:0', 'bottom:9%',
           'text-align:center', 'color:rgba(255,255,255,.80)',

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>静水 · still water</title>
+<title>静湖微澜 · Serene Ripple Lake</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#0b1418;
     font-family:"PingFang SC","Microsoft YaHei","Source Han Sans SC",system-ui,sans-serif;}
@@ -14,6 +14,19 @@
     color:rgba(255,255,255,.72);font-size:13px;letter-spacing:.14em;
     opacity:0;transition:opacity .8s ease;}
   #hint.on{opacity:1;}
+  /* UP14 / AM-033：首屏品牌行（网页名，中英）。
+     显隐**完全派生自 `#hint` 的 `.on`** —— `#brand` 自己从不被 toggle，
+     所以 99-main.js（900ms 定时器 + 首次手势两处）与 85-fallback.js（:187）**一行都不用改**：
+     「与『轻触水面』同起同落」是 CSS 恒等式，不是需要维护的约定。
+     `pointer-events:none` 必须有 —— 它不属 `#ui` 子树，吃不到 `#ui > *` 那条规则，
+     否则会替水面吃掉手势。 */
+  #brand{position:absolute;left:50%;bottom:calc(8% + 30px);transform:translateX(-50%);
+    display:flex;align-items:baseline;gap:.62em;white-space:nowrap;
+    opacity:0;transition:opacity .8s ease;pointer-events:none;}
+  #hint.on + #brand{opacity:1;}
+  #brand .cn{font-size:13.5px;letter-spacing:.20em;color:rgba(255,255,255,.88);}
+  #brand .dot{font-size:10px;color:rgba(255,255,255,.42);}
+  #brand .en{font-size:11px;letter-spacing:.16em;color:rgba(255,255,255,.62);}
   /* WebGL 不可用时的静态兜底 —— 先写，别等出事再补 */
   #fallback{position:fixed;inset:0;display:none;
     background:linear-gradient(180deg,#8fb8c9 0%,#4a7d92 46%,#1d3b47 100%);}
@@ -25,6 +38,7 @@
 <canvas id="c"></canvas>
 <div id="ui"></div>
 <div id="hint">轻触水面</div>
+<div id="brand"><span class="cn">静湖微澜</span><span class="dot">·</span><span class="en">Serene Ripple Lake</span></div>
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/three-post.min.js"></script>  <!-- AM-009：后处理类（主控构建，暴露 THREEPOST） -->

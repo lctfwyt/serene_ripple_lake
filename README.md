@@ -1,4 +1,4 @@
-# 静水 · still water
+# 静湖微澜 · Serene Ripple Lake
 
 Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无外部依赖）。
 

@@ -158,3 +158,132 @@ DOM 里 **`#brand` 紧跟 `#hint` 之后**（同级、`body` 子元素），**�
 | **`dist/` 未重建** | 不在白名单 ⇒ `assert:dist` 跑旧构建 | 施工方在完工记录写明；主控重建（§7-2） |
 | **`#brand` 吃掉水面手势** | 它不在 `#ui` 子树 | `pointer-events:none`（§4.3）；判据 2 的 `pointerdown` 本身就是一次手势回归 |
 | `#hint` 在 DOM 里不是 `#brand` 的前一个兄弟 | 相邻兄弟选择器失效 ⇒ 两行不同步 | 判据 3 兜底（`#brand` 从不被 toggle，若失效则 opacity 恒 0，判据 2 立刻红） |
+
+---
+
+## 9. 完工记录（施工方 · 2026-09-29 23:5x · 独占工作区 模式 A）
+
+### 9.1 自证声明（§7.2-1）
+
+**本包无独立复核方，复核为同上下文自证。** 下面每一条都是机械可验证的读数（文件内容 / 页面计算样式 /
+像素差分数），**不含"复核通过"这类判断**。审美结论（§5 判据 9）一律挂雨桐。
+
+### 9.2 改动清单（逐条 = §7.4-①）
+
+| # | 文件 | 改动 |
+|---|---|---|
+| 1 | `index.html` | `:6` `<title>` → `静湖微澜 · Serene Ripple Lake`；`:17-29` 新增 `#brand` CSS 块；`:41` 新增 `#brand` DOM（紧跟 `#hint`） |
+| 2 | `app/index.html` | 同上三处（构建入口镜像，逐字一致 —— 判据 1b 机械核对） |
+| 3 | `src/85-fallback.js` | `:167` 兜底页品牌串 → 新名（1 行） |
+| 4 | `README.md` | `:1` H1 → `# 静湖微澜 · Serene Ripple Lake` |
+| 5 | `package.json` | `:5` `description` 内旧名 → 新名（其余文字未动；`name` 仍未 `still-water`，§3） |
+| 6 | 新建 `plan/pw/tests/50-brand.spec.mjs` | **8 用例**（下 §9.4），覆盖判据 1~7 |
+
+`git diff --stat`：`5 files changed, 33 insertions(+), 5 deletions(-)`。
+
+**`#brand` 实测几何**（Playwright 读 `getBoundingClientRect`，CSS px @1280×720 · dpr=1）：
+
+```
+box    = [530.9, 614.4, 749.1, 632.4]   ⇒ 整数 [531, 614] 起 · 218×18 px
+text   = "静湖微澜·Serene Ripple Lake"（三 span：.cn 13.5px/ls .20em · .dot 10px · .en 11px/ls .16em）
+开关   = #hint.on + #brand{opacity:1}   （相邻兄弟选择器 ⇒ 零 JS 同步）
+```
+
+### 9.3 判据读数
+
+| # | 判据 | 读数 | 结果 |
+|---|---|---|---|
+| 1 | 两入口 `<title>` 均为新名 | `index.html` / `app/index.html` 均 `静湖微澜 · Serene Ripple Lake` | ✅ |
+| 2 | 两行**同起同落** | 相位 A（首屏）：`#hint=1 · #brand=1`；相位 B（一次 `pointerdown` 后）：`#hint=0 · #brand=0`；**两相位不透明度差均为 0** | ✅ |
+| 3 | 同步是**结构性**的 | 两相位 + 初始态 `#brand.classList.length === 0`（`className` 恒 `''`）· `previousElementSibling.id === 'hint'` | ✅ |
+| 4 | 兜底页不显示 · 文案含新名 · console 干净 | `brandOpacity=0` · `fbText="此浏览器不支持 WebGL，已切换为静态画面静湖微澜 · Serene Ripple Lake"` · `swReady=false` · `#c display=none` · **JS 报错 0 条** | ✅ |
+| 5 | 改名残留 = 0 | 扫描 **89** 个文本文件、命中 **13** 处，**全部在 `plan/` 记录面**（产品面 0）；13 处的分布：`00-INDEX:76` · `02-AMENDMENTS:24/108` · `106`×6 · `10-WP1:100` · `98b`×2 · `50-brand.spec.mjs:43`（模式串自指）—— 逐条对上 §3 不改清单 / 改名记录允许集 | ✅ |
+| 6 | 不该变的一字未动 | `pw:frozen` **两冻结件 sha256 逐字一致**（`abf23d7d…` / `bd9dd0e8…`）· `vendor/three.min.js` 669 884 B / `170c6789…` · `assets/audio/` **14 件文件名全集未动** · `index.html` 15 条 `<script src>` 序列未动 | ✅ |
+| 7 | 正反两面 | 正面：5 个载体逐个命中（含两条入口的 DOM/开关规则/`pointer-events` 正则）· 反面：**12 个渲染路径 `src` 模块** 品牌串 / `brand` 标识 / 旧名 **三项均 0 命中** | ✅ |
+| 8 | 构建链未坏 | 免构建入口 `npm run assert` **15/15**（`#13` peak/median **2.683** · `#14` 接缝 **0.809** · `#15` 覆盖 **0.4548** · console 0 报错）· ⚠ `assert:dist` **跑的是旧构建**（`dist/` 不在本包白名单，未重建，见 §9.6） | ✅ / ⚠ |
+| 9 | 观感定档 | 截图由施工方给，**判定权在雨桐** | ⬜ 挂验收 |
+
+### 9.4 新增回归 `50-brand.spec.mjs`（8 用例）
+
+`判据 1` · `判据 1b`（两入口 DOM/CSS 逐字一致）· `判据 5` · `判据 6` · `判据 7` · `判据 7b` ·
+`判据 2/3` · `判据 4`。单跑 **8 passed**。
+
+**三处设计取舍（写进文件头注释，便于复核）**：
+
+1. **判据 4 不用 `--disable-webgl`，改 `page.addInitScript()` 覆写 `getContext`** ——
+   加 project 要动 `playwright.config.mjs`，**该文件不在本包白名单**；而覆写 `getContext` 与
+   `85-fallback.js:47 hasWebGL()` 读的是同一个 API、`addInitScript` 在页面脚本之前跑 ⇒ 等价。
+2. **判据 6/7 不读 git 状态** —— `git status` / `git diff HEAD` 的结果**随"提没提交"翻转**，
+   而本文件会被反复跑（施工 / 提交后 / 复核各一次）⇒ 靠 git 的断言第二次运行就自相矛盾。
+   故只钉**绝对量**（sha256 / 字节数 / 文件名全集）；「白名单外零改动」是一次性核查，证据在 §9.5。
+3. **判据 5 分「产品面 / 记录面」两段** —— 原文排除项漏了 `app/index.html` 这类**记录面之外**的镜像
+   文件；本实现改为：产品面命中**必须为 0**（更强），`plan/` 命中必须全落在**显式白名单**内
+   （多一处即红，能同时抓「漏改」与「新增旧名」）。
+
+**一处已知耦合（已在 `04-BOARD` UP15 箱点明）**：判据 6 里的
+「`assets/audio/` 文件名全集 = 14 件」是**硬编码**的 —— 将来若有包**新增/改名音频资产**
+（例如 UP15/AM-034 若选「新增 splash 采样」），本判据会立刻红。那是**预期行为**（它正是「不该变的没变」
+的守卫），由该包的变更单一并授权改本文件即可，**不要**把这条判据放宽成"只查子集"。
+
+### 9.5 越界核查（§7.4-2 正反两面）
+
+```
+$ git status --porcelain
+ M README.md              <- 白名单 ①
+ M app/index.html         <- 白名单 ①
+ M index.html             <- 白名单 ①
+ M package.json           <- 白名单 ①
+ M src/85-fallback.js     <- 白名单 ①
+?? plan/pw/tests/50-brand.spec.mjs   <- 白名单 ①（本包新建）
+```
+
+- **白名单外 diff 为空**（逐条查过）：`git diff --name-only -- vendor assets dist
+  plan/pw/tests/__snapshots__ plan/pw/dist-baseline.txt plan/wp5-assert.js plan/wp5-env.js
+  plan/pw/frozen-hashes.json package-lock.json vite.config.mjs` → **无输出**。
+- `git diff --name-only -- src/` → **只有 `src/85-fallback.js`**（渲染路径 12 个模块一个字节未动）。
+- 临时诊断件 `_branddelta.mjs` 已删（`_*.mjs` 本就被 `.gitignore §9` 忽略，且不入提交）。
+- ℹ `plan/108-UP15-splash.md` / `plan/109-UP16-deploy.md` 是**主控在本包施工期间（23:56）新落的派包文档**，
+  不是本包产物，本包未碰、也不会 `git add`。
+
+### 9.6 基线影响（**主控专属动作**，本包不碰 `__snapshots__/**`）
+
+`npm run pw` 全链 **25 用例 = 20 passed / 1 failed / 4 skipped**：
+
+| 基线 | 结果 | 原因 |
+|---|---|---|
+| `ui-panel.png` | ✅ 绿 | `#brand` **不在 `#ui` 子树**（`80-ui.js` 那条契约级创建顺序未受影响）⇒ **不必重录** |
+| `bed-clip.png` | ❌ **红** · pw 报 **447 px**（ratio 0.01） | `#brand` 的 box `y∈[614,632]` **落在裁切区 `y∈[475,677]` 内**（`x` 531–749 ⊂ 448–832） |
+| `full.png` | ⏸ **未跑**（serial 中止） | `30-pixel.spec.mjs` 是 `mode:'serial'`，② 一红就**中止** ③ 与哨兵 A/B/C |
+| 哨兵 A/B/C | ⏸ **未跑**（同上） | ⇒ **主控重录后必须整份复跑 `30-pixel`**，否则哨兵这一轮等于没验（protocol §8.2-2） |
+
+**归因证据（把"UP14 造成"与"先存缺陷"分开，跑了三轮）**：
+
+| 对照 | 读数 | 说明 |
+|---|---|---|
+| 真 HEAD（`git stash -u` 后 `npm run pw -- 30-pixel`） | **6/6 passed** | ⇒ 两条基线在 UP14 **之前都是绿的**，本包是唯一成因 |
+| 模拟 HEAD（运行时 `#brand.remove()`，零文件改动）vs `full.png` | **0 px 差（逐字节相同）** | ⇒ 画面其余部分**完全没动** |
+| UP14 之后 vs `full.png` | 782 px 超阈 · **差异 bbox = [531,617]–[747,629]**，**完全被 `#brand` 行罩住** | ⇒ 改动**只**落在品牌行，无二次回归 |
+| UP14 之后 vs `bed-clip.png` | pw 口径 **447 px**；同一脚本原始度量 737 px | 差值是 pixelmatch 的 AA 启发式（`includeAA:false`）不计入 |
+
+**给主控的两个操作要点**：
+
+1. **必须用 `--update-snapshots=all`**（不能 `npm run pw:update`）：`pw:update` 是 `changed` 模式，
+   只改写"红了"的基线 —— 而本轮 `bed-clip` / `full` 确实红了，能覆盖；但**重录后必须整份复跑**
+   确认哨兵能变红（protocol §8.2-3 的 `changed` 陷阱）。
+2. `dist/` 需 `npm run build` + 重落 `dist-baseline.txt`（本包未重建；`assert:dist` 本轮跑的是旧构建）。
+
+### 9.7 自纠：一处中间推断被自己证伪
+
+诊断途中我曾据「两个基线互比 → 全 77568 像素差 ≥1、54 px 超阈」推断
+「**`bed-clip.png` 是旧基线（09-25 14:02 录，与 09-29 的 `full.png` 不同源）⇒ UP14 之前就已经红**」。
+**该推断错误，已证伪**：真 HEAD 上 `30-pixel` 实跑 **6/6 全绿**。
+原因：我那个简易度量**没有实现 pixelmatch 的 `includeAA` 启发式**，把基线间的 ±1 抖动算成了"超阈"；
+pw 的口径会把这些丢进 AA 类而不计。⇒ 记录在此，避免后来者照那条错误结论去重录或改基线策略。
+
+（**教训归属**：不看 pw 的原始读法就自造度量去下"先存缺陷"的结论 —— 属于 §7.2 口径纪律里的
+「判据读数只能当筛子不能当裁判」。）
+
+### 9.8 提交
+
+模式 **A（独占）**：`feat(up14): 品牌改名 + 首屏标题行（AM-033）`，`git add` 逐条列名（禁 `-A`）。
+提交凭证见 `_STATUS.md` 与 `git log -1 --stat`。

@@ -2,7 +2,7 @@
   "name": "still-water",
   "version": "1.0.0",
   "private": true,
-  "description": "静水 · still water —— Three.js 治愈湖面。双入口：免构建 index.html（file:// 双击即开）+ Vite 构建版 dist/",
+  "description": "静湖微澜 · Serene Ripple Lake —— Three.js 治愈湖面。双入口：免构建 index.html（file:// 双击即开）+ Vite 构建版 dist/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
