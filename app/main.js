@@ -35,3 +35,14 @@ try {
   document.getElementById('fallback').classList.add('on');
   document.getElementById('c').style.display = 'none';
 }
+
+// UP17 / AM-036：PWA —— **仅构建形态注册**（dev 不注册，免得干扰 HMR；根入口也不经此处）。
+// import.meta.env.PROD 在 `vite build` 时被替换为 true ⇒ dev server 里这段是死代码。
+// 注册失败只 warn，绝不影响页面 —— 与 99-main.js 的 safe() 哲学一致。
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js').catch(function (e) {
+      console.warn('[still_water] SW 注册失败（非致命）', e);
+    });
+  });
+}

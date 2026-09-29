@@ -129,7 +129,7 @@
 | AM-033 | UP14 品牌改名 + 首屏标题行（`#brand` 显隐派生自 `#hint.on`） | ✅ 已应用（`106` · 主控收尾 09-30） |
 | AM-034 | UP15 slap 拍击采样换源（写权限：① 试听/落地段 —— `SLAP_LUFS_TRIM` + `slap1~4.wav` 同名替换 + 新建 `plan/audio-slap-cut.py`；② **第三段扩权** —— `src/00-config.js` + `src/90-debug.js`）。**原源 sounds-mp3 已裁不可商用**；**定案源 = `small-splashes-of-water.mp3`（出处 `sound dino` ✅ 可商用免署名）· `A1/A2/A3/A5` × `heavy`**；**规格 = `108 §4`** + **`§12`（混音平衡）** | ✅ **已收口（09-30 02:1x）** —— ①②③ 全完 + **一次计划外换源（§11.8）**；**混音定档 `flowVolume 0.20` / `slapVolume 0.30`** · `dist` 790 636 B · 独立复核 16/16 · 波次 16 翻 ✅（明细 `108 §11.8`/`§13`/`§14`） |
 | AM-035 | UP16 Netlify 上云（`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节） | ⬜ 未决（`109`） |
-| AM-036 | UP17 PWA 可安装（`manifest` + `sw.js` + `icons`） | 🔶 **已开工 09-30**（`110` · **图标已并入包内** `§3`，雨桐与施工方多轮定 · 多轮打磨包：往返不动 `02`，收口落一行） |
+| AM-036 | UP17 PWA 可安装（`manifest` + `sw.js` + `icons`） | 🔶 **已开工 09-30 → 施工方已交（`110 §11.1`）**：6 图标派生 + `manifest` / `sw.js` / `app/index.html` head / `app/main.js` 注册 / README 全落；PWA 自测 **14/14**（可安装 · 离线渲染 · 离线出声 · 更新能发）· 两入口 15/15 · `pw` 25 passed · `pw:frozen` ✅ · **未重建 `dist`**。⬜ 判据 11 图标观感 + **410/383 二选一**挂雨桐 · ⬜ 主控收口：重建 `dist` + 重落基线 + 波次 18 翻 ✅ |
 
 ---
 

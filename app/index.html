@@ -42,6 +42,21 @@
     background:linear-gradient(180deg,#8fb8c9 0%,#4a7d92 46%,#1d3b47 100%);}
   #fallback.on{display:block;}
 </style>
+<!--
+  UP17 / AM-036：PWA 元信息（**只在构建形态生效**）。
+  ⚠ 根 index.html 是「双击即开」那条入口，**刻意不加**这几行：ServiceWorker / manifest
+    在 file:// 下都不工作，加了只会因为仓库根没有这些文件而每次多一条 requestfailed。
+    本文件（构建入口）的产物 dist/ 里 manifest 与 icons/ 就在隔壁，正常命中。
+  路径全用**相对**（与 #fallback 渐变、assets/audio 同款）⇒ 子路径 / 任意域名部署都成立。
+-->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b1418">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/favicon.ico" sizes="any">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 <div id="fallback"></div>

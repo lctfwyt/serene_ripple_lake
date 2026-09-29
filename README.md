@@ -107,6 +107,20 @@ python plan/audio-baseline.py --seam-ab   # 音频体检：LUFS / 真峰值 / �
 - **「整包下载到本地」不需要额外脚本**：把整个 `dist/` 压成 zip 即可（解压双击 `index.html` 即开）。
   代价：9 MB 一份、改版要重发、无更新机制 —— 要更新机制就等 UP17 的 Service Worker。
 
+## 安装 · 离线（PWA）
+
+**只在构建产物（`dist/` → Netlify / localhost）里生效**；免构建入口是 `file://`，
+浏览器对 `file://` 不启用 Service Worker 与 manifest，**双击打开那条路永远没有 PWA**（刻意的，非漏改）。
+
+| 项 | 说明 |
+|---|---|
+| **安装** | Chrome / Edge 桌面：地址栏右侧「安装」图标；安卓 / iOS：「添加到主屏幕」—— 装完是**独立窗口**（`display: standalone`），不带地址栏 |
+| **离线** | 外壳（`index.html` 790 KB 内联 + manifest + 图标）安装时**预缓存** ⇒ 断网可开、水面照常渲染 |
+| **离线出声** | `assets/audio/` **8.2 MB 刻意不预缓存**（否则安装要下 8 MB）⇒ **首次真正播放时**才入缓存。**联网听过一次**之后，断网照样划水出声 |
+| **更新怎么发** | `app/public/sw.js` 的 `VERSION`（现 `srl-v1`）改动 ⇒ `activate` 清旧 cache 并 `skipWaiting()`；配套靠 `netlify.toml` 对 `/sw.js`、`/manifest.webmanifest` 的 `must-revalidate` 头（**两条必须同时成立**，否则浏览器拿到旧 SW，更新链断在第一步） |
+| **图标** | `app/public/icons/` 6 件（`icon-192` · `icon-512` · `icon-maskable-512` · `apple-touch-icon` · `favicon.ico` · `favicon.svg`），由源 SVG 栅格派生，见 `plan/110-UP17-pwa.md §3` |
+| **本地自测** | `npm run build` → `npx vite preview`（或任意静态服务器）→ 开 `http://localhost:…`：`navigator.serviceWorker.controller !== null` 即注册成功；DevTools → Network 勾 **Offline** 再刷新可验离线 |
+
 ## 文件
 | 文件 | 职责 |
 |---|---|
@@ -130,6 +144,7 @@ python plan/audio-baseline.py --seam-ab   # 音频体检：LUFS / 真峰值 / �
 | `vite.config.mjs` | 构建配置：singlefile + 音频随行 + dev HMR 垫片（**见上方"开发 / 构建"**） |
 | `netlify.toml` · `.nvmrc` | 部署配置：构建命令 / 发布目录 / 5 条缓存头 · Node 锁 22（**见上方"部署"**） |
 | `app/` | 构建入口：`index.html` / `main.js` / `three-global.js` / `jsm-smoke.*`（dev-only） |
+| `app/public/` | PWA 静态件：`manifest.webmanifest` · `sw.js` · `icons/` 6 件（Vite 默认 `publicDir`，原样拷进 `dist/`；**见上方"安装 · 离线"**） |
 | `dist/` | 构建产物（**不入库**，`npm run build` 重建） |
 
 ## 资产与授权
