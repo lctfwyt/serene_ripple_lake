@@ -130,11 +130,15 @@ SW.scene = {
 （与 `sceneRT` / `rtCamera` 同级，不属于 §2.3 冻结面）：
 
 ```js
-SW.scene.env            // 只读消费：{ ready, equirect, rt, rebuilds, res, err, spread, gate }
-                        //   `60-water.js` 只读 ready / equirect，**不得重建**
+SW.scene.env            // 只读消费：{ ready, equirect, equirectBase, rt, rebuilds, res, err, spread, gate, deferred }
+                        //   `60-water.js` 只读 ready / equirect / equirectBase，**不得重建**
                         //   `spread` 为 AM-024 D2a 追加：当前生效的 s_eff（0=夜紧致 / 1=白天弥散）
                         //   `gate` 为 AM-029 追加：当前昼夜门控 g = smoothstep(0.52,0.70,spr)
                         //     （0 = 圆斑/月亮档 · 1 = 等仰角光环/光带档）
+                        //   `deferred` 为 AM-030 追加：因静默期（停稳 6 帧才烘）被推迟的累计次数（诊断读数）
+                        //   🔴 **AM-031 追加 `equirectBase`** = **无光带**版（= PMREM 的 disc 源）。
+                        //     自 AM-031 起 `60-water.js` **每帧按 `bandGate()` 选图** —— `g = 0`（夜段）
+                        //     采 `equirectBase` ⇒ 光带**结构性为 0**，不再依赖"夜里重烘过一张"。
                         //   🔴 **AM-029 L5 · 同一张 env 有两个消费者（刻意不同源）** ——
                         //     `equirect` = **水面专用**（带光带版 → `60-water.js` 的 `uEnvEq`）；
                         //     `rt.texture` → `scene.environment` = **石头/湖底漫反射 IBL**（走 PMREM，
