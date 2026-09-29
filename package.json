@@ -15,6 +15,7 @@
     "pw:update": "playwright test --config=plan/pw/playwright.config.mjs --update-snapshots",
     "pw:compare": "node plan/pw/compare-readings.mjs",
     "pw:frozen": "node plan/pw/verify-frozen.mjs",
+    "pw:mix": "node plan/pw/verify-mix.mjs",
     "pw:dist": "node plan/pw/verify-dist.mjs check",
     "pw:dist:snapshot": "node plan/pw/verify-dist.mjs snapshot"
   },

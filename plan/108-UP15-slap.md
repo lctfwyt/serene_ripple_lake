@@ -683,7 +683,7 @@ var audioDefs = [
 
 | 项 | 动作 | 结果 |
 |---|---|---|
-| ① 独立复核 | **不复用施工方脚本**，另写 `audio-build/_verify-mix.mjs`（置于忽略目录，不入库）· 起 `127.0.0.1:8021` 真 http 入口 | **16/16 通过**（下表）|
+| ① 独立复核 | **不复用施工方脚本**，另写 `plan/pw/verify-mix.mjs`（**已入库** · `npm run pw:mix`，须先起静态服务，默认 `127.0.0.1:8021`，可用 `VERIFY_URL` 改）· 真 http 入口 | **16/16 通过**（下表）|
 | ② 代码检查 | `node --check` 三个 `src` · 逐行读拓扑与 `probe()` | 逻辑与 §12.4 规格**逐条对齐**；`probe()`/`SW.audio` 签名零改动（`slapAnPeak` 在 `slapVolume` 变 10× 时**逐位不变 ×1.0000**）|
 | ③ 过期注释 | `src/10-audio.js`（换源史/时长）· `src/90-debug.js`（`swDirSpread`「15 = 定稿」→ 现 36）两处**纯注释**订正 | ✅ 结清 §11.7 遗留 1 与 `02 §1` 挂账 2 |
 | ④ `74` 脚本 | `plan/audio-slap-cut.py`：试听页标题写死源① 文件名 → 改为按 `--src` 实参（`src.name`）；docstring 补两版源 | ✅ |
