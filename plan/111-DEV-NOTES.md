@@ -127,7 +127,7 @@ UP15 / AM-034 加，默认 `0.20 / 0.30 / 0.80`，`?debug=1`「音频（实时�
 | `app/public/` | PWA 静态件：`manifest.webmanifest` · `sw.js` · `icons/` 6 件（Vite 默认 `publicDir` ⇒ 原样拷进 `dist/`） |
 | `dist/` | 构建产物（**不入库**，`npm run build` 重建） |
 | `audio-build/` · `icon-build/` | 音频 / 图标的派生工作目录（**`.gitignore` 忽略**，不入库） |
-| `docs/` | README 用的实拍截图（`screenshot-night-moonlight.jpg` 星夜 · `screenshot-noon-glitter.jpg` 正午，均 1920×958） |
+| `docs/` | README 用的实拍截图：`screenshot-night-moonlight.png`（星夜 · 3072×1534 · 1.68 MB）· `screenshot-noon-glitter.png`（正午 · 3072×1534 · 2.14 MB）。⚠ 两张合计 **~3.8 MB 入 git** —— 嫌大可用 `magick docs/*.png -resize 1600x -quality 82 docs/%[basename].jpg` 转 jpg（约 120 KB/张）再改 README 引用 |
 
 ---
 
