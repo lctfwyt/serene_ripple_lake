@@ -387,5 +387,21 @@ $ git status --short
 
 ### 11.8 提交凭证（模式 A 独占 · 信息带 AM-032）
 
-见本文件末尾追加的 `git log -1 --stat`（提交后补）。
+```
+commit 755497f93b49ca295b3dd0391270bfa3730ac0b9
+feat(up13): 横向光带与月亮柱同频 —— 恒烘两张满档 + 消费端 mix(base,band,bandGate())（AM-032）
+
+ plan/02-AMENDMENTS.md             |   8 +--
+ plan/04-BOARD.md                  |   8 ++-
+ plan/105-UP13-fix3-band-mix.md    | 128 ++++++++++++++++++++++++++++++++--
+ plan/_STATUS.md                   |   2 +
+ plan/pw/tests/60-envgate.spec.mjs | 143 ++++++++++++++++++++++++++++++++++++--
+ src/30-scene.js                   |  52 +++++++++-----
+ src/60-water.js                   |  67 ++++++++++++------
+ 7 files changed, 354 insertions(+), 54 deletions(-)
+```
+
+> **非白名单文件的两处编辑（主动声明，非越权）**：`plan/04-BOARD.md`（§7 收尾四步 #4「板上 ⬜ 清零」）·
+> `plan/02-AMENDMENTS.md`（§3 生命周期「应用后翻 ✅」，与 AM-031 同款先例）。二者均**不属禁区表**，
+> 且 `00-INDEX.md §3` 波次 14 状态未动（= 主控地盘，已在板上留 ⬜ 提请）。
 
