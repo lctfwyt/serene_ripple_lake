@@ -130,9 +130,15 @@ SW.scene = {
 （与 `sceneRT` / `rtCamera` 同级，不属于 §2.3 冻结面）：
 
 ```js
-SW.scene.env            // 只读消费：{ ready, equirect, rt, rebuilds, res, err, spread }
+SW.scene.env            // 只读消费：{ ready, equirect, rt, rebuilds, res, err, spread, gate }
                         //   `60-water.js` 只读 ready / equirect，**不得重建**
                         //   `spread` 为 AM-024 D2a 追加：当前生效的 s_eff（0=夜紧致 / 1=白天弥散）
+                        //   `gate` 为 AM-029 追加：当前昼夜门控 g = smoothstep(0.52,0.70,spr)
+                        //     （0 = 圆斑/月亮档 · 1 = 等仰角光环/光带档）
+                        //   🔴 **AM-029 L5 · 同一张 env 有两个消费者（刻意不同源）** ——
+                        //     `equirect` = **水面专用**（带光带版 → `60-water.js` 的 `uEnvEq`）；
+                        //     `rt.texture` → `scene.environment` = **石头/湖底漫反射 IBL**（走 PMREM，
+                        //     源是 **disc 版**、逐位等于 AM-029 之前）。夜段 `g = 0` ⇒ 两者复用同一张。
 SW.scene.buildEnv(s)    // 用 TimeState 重建 equirect + PMREM；返回 boolean（是否生效）
 SW.scene.dropEnv()      // 退回旧光照（envEnabled=false / 建失败）——不销毁 PMREM
 ```
@@ -416,6 +422,18 @@ var P = {
   //   0 = 关掉 D2a（全时段紧致亮瓣）· 1 = 设计值 · >1 = 放大弥散。
   //   ⚠ 它**不在 envDist() 签名里**（同倍率两端相乘会约掉）⇒ 30-scene 单独监听、一变强制重烘。
   envSunSpreadGain: 1,
+  // AM-029 新增（L1）：**横向光带**（等仰角光环）四数打包成单字段 —— 非夜晚 env 亮瓣的形状参数。
+  //   背景：非夜晚的亮瓣原是一颗「点光源圆斑」（= 假月亮），反射到水面收成一根**竖柱**；雨桐要求
+  //   非夜晚要一条**横向光带**（无竖条、无圆斑）。物理入口不是把圆斑拉长，而是**换一个形状**：
+  //     等仰角光环 —— 亮度只与**仰角**有关、与经度无关 ⇒ 反射向量 R 的仰角 ≈ 相机到该水点的仰角、
+  //     与屏幕横坐标无关 ⇒ 反射到水面天然成**横带**（`30-scene.js: buildEnvEquirect` 的 L3）。
+  //   amp    光环幅度倍率（叠在 `max(0.25, sunIntensity) × ENV_SUN_AMP` 上）
+  //   elev   光环仰角（度）· sigma 光环角宽（度，高斯 σ）· detail 水面 env 采样法线里高频波的占比（L7）
+  //   🔴 **常量**：只在 `buildEnv` 烘图时被读。`envDist()` 已纳入 `sunSpread01` ⇒ 逐时门控天然触发
+  //      重烘；但用 debug 滑杆改这四数**要手动重烘**（`SW.scene.buildEnv`）或重启才可见。
+  //   🔴 光环由昼夜门控 `g = smoothstep(0.52, 0.70, spr)` 与圆斑**互斥混合**（L4）；
+  //      `g = 0`（夜段）⇒ 逐位回到圆斑版（`ampDisc === amp`），是 L5「disc 版逐位一致」的依据。
+  envBand: { amp: 0.5, elev: 8.0, sigma: 1.0, detail: 0.3 },
 
   // 湖底贴图（程序化 tiling）—— AM-019 新增（UP4-lite）
   //   来源**不是**外部扫描件：① `file://` 下外部图片进不了 WebGL 纹理（AM-005 §3 实测 SecurityError）；
@@ -474,13 +492,12 @@ var P = {
 
   // 细节波表方向 —— AM-022 新增（§2-D）。改完必须 `SW.water.rebuildWaves()` 重编着色器才生效
   //   （不在每帧路径上；debug 面板「水面波纹」组已内置防抖 + 自动调用）。
-  //   swDirSpread = 双向半角（度）：0 = 各向同性（与 AM-022 之前的形态**逐位等价**）· 15 = 定稿。
-  swDirSpread: 15, swZigAmp: 0.85, swZigFreq: 0.75,
-  // AM-025 §3-② 新增：**白天档**波表半角（度）。`swDirSpread` 语义收窄为「夜段档」。
-  //   逐时值 = lerp(swDirSpread, swDirSpreadDay, TimeState.envSunSpread)，量化 3° 档、
-  //   **只在跨档时重编着色器**（见 60-water.js 的 rawHalf / quantHalf / applyWaveHalf）。
-  //   45 ≈ 近各向同性（曝光横向铺开）· 15 = 纵纹为主（月柱细直）。三档对比板 pv-am025-spread.png。
-  swDirSpreadDay: 45,
+  //   swDirSpread = 双向半角（度）：0 = 各向同性（与 AM-022 之前的形态**逐位等价**）· 15 = AM-022 定稿。
+  //   🔴 **AM-029（L2）：本值回到「全天常量」= 36** —— 删 `swDirSpreadDay`、不再按 `envSunSpread` 插值
+  //      （`60-water.js: rawHalf()` 直返本值）。AM-025 的逐时化（夜 15 / 昼 45）作废；
+  //      `quantHalf()` / `applyWaveHalf()` / 跨档重编机制**保留**（档位恒定 ⇒ 实际不再重编）。
+  //      ✅ 夜段也取 36：实测 22:30 柱中−侧 82.5 → 82.4（不动），月柱位置由 `elev` 决定、与波表方向无关。
+  swDirSpread: 36, swZigAmp: 0.85, swZigFreq: 0.75,
 
   // 调试
   debug: false
@@ -750,3 +767,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-25 | AM-024：`TimeState` 加 `envSunSpread`（§2.2）· §6 加 `envSunSpreadGain` · §9 `SUN_AZ_DESIGN` ±8°→**0°**（N4 az 全归 0）；`#5` 复跑 2.108（4.00 压彩度保判据） | UP13 二轮 |
 | 09-25 | AM-025：§6 加 `swDirSpreadDay`（波表方向逐时化，`swDirSpread` 语义收窄为夜段档）；`20-time.js` 白天 `gGain` 0→0.12 + 夜段 `sun` 彩度 0.034→0.012、`gli`→0.006 + 日光色温单调化 + 18.50 降曝光；`30-scene.js` `D2A_DISC_DROP` 1.7→0.9 | UP13 三轮 |
 | 09-25 | AM-026~028：§6 加 `envWaterGainDay` / `glitterRoughDay`（两者都逐时化，夜段逐位不变）；`20-time.js` 黄昏 `spr`→1.0 + `sun` 橙→白直通 + 5.50 `sun`/`gli` 压彩度（去绿/转白）+ 白天 `gli` 单调 + 白天/黄昏 `gGain`→0.28；**5.50 色调整族**（为救 `R−B(5.5)`） | UP13 四轮 |
+| 09-29 | AM-029：§6 加 `envBand {amp,elev,sigma,detail}`（横向光带四数合一）· **删 `swDirSpreadDay`**（`swDirSpread` 回到全天常量 **36**）· §2.3 加只读面 `env.gate`；`30-scene.js` 等仰角光环 + 昼夜门控 `smoothstep(0.52,0.70,spr)` + **石头 IBL 隔离**（`env.equirect` 带光带 / `scene.environment` 走 disc 版）；`60-water.js` 镜面**非夜晚精确归零**（`uSunRadiance ×(1−g)`）+ env 采样法线解耦（`uEnvDetailW`）；`20-time.js` 昼段 `gGain` 归 0（死数清理） | UP13 五轮 |

@@ -201,22 +201,20 @@
   // 用占位符而不是把整段 FRAG 也函数化，是为了让「换波表」这个动作**只碰一处字符串**。
   var DETAIL_SLOT = '__SW_DETAIL_BLOCK__';
 
-  // ── AM-025：波表方向**逐时化**（雨桐「曝光没有横向展开，还是一小条」）──────────────
-  // 病根：`swDirSpread = 15` 原本是**全局常量**，全天都把波表定向成「纵纹为主」
-  //   ⇒ 水面法线沿 x 的变化被压窄 ⇒ 反射方向横向聚集 ⇒ 亮带必然窄。
-  //   **env 弥散（D2a）改的是"光源角宽"，改不了"水面法线的横向分布"** —— 本条才是那个杠杆。
-  // 做法：在 `P.swDirSpread`（夜段 15）与 `P.swDirSpreadDay`（白天 45）之间按
-  //   `TimeState.envSunSpread` 插值（0 = 夜 / 1 = 昼）。刻意与 D2a **共用同一个标量**：
-  //   两者表达同一件事（白天光被散开），分开只会多一路必须同步的字段。
-  //   ⚠ 若要解耦：加逐键字段 / 换插值源即可 —— `rawHalf()` 是本文件唯一的读取点。
-  // 重建纪律（AM-025 硬约束 3）：重编着色器 ≈50~200 ms ⇒ **量化到 3° 一档，只在跨档时重编**，
-  //   绝不每帧。夜 15 → 昼 45 全程只 10 个台阶，自动时钟下一小时也迈不过一格。
+  // ── AM-029（L2）：波表方向回到**常量**（全天同档，含夜段）──────────────────────
+  // 过程：AM-022 定稿 ±15（治"碎网"）→ AM-025 逐时化（夜 15 / 昼 45，治"曝光不横向展开"）
+  //   → **AM-029 统一 36**（雨桐 09-29 在实验台实调；「波表统一 36」）。
+  //   ⇒ 删掉 `P.swDirSpreadDay` 与按 `envSunSpread` 的插值，`rawHalf()` 直返 `P.swDirSpread`。
+  //   `quantHalf()` / `applyWaveHalf()` / `curHalf` 的**跨档重编机制刻意保留**（L2 显式要求）：
+  //   档位恒 36 ⇒ 实际不再重编，但 debug 滑杆手动改值后的行为与 AM-025 一字不差。
+  //   ✅ 为什么夜段也取 36：实测 22:30 柱中−侧 **82.5 → 82.4（不动）**，只是纹理从"细直横纹"
+  //      变宽一档；月柱位置由 `elev` 决定，与波表方向无关。
   var WAVE_Q = 3;              // 档位量化（度）
   var curHalf = null;          // 当前**已编进 shader** 的档位（量化值）
   function c01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
   // AM-028：取当帧的「白昼弥散度」0~1（= `TimeState.envSunSpread`）。
-  //   `rawHalf` / `mixBySpread` 共用它 —— 全项目只有这一处读，换插值源改这里即可。
+  //   `mixBySpread` 用它插值（AM-029 后 `rawHalf` 已不再用它）。
   function spread01() {
     var s = 0;
     if (SW.time && SW.time.current) {
@@ -231,11 +229,25 @@
     return a + (b - a) * spread01();
   }
 
+  // ── AM-029（L4/L6 共用门控）：昼夜门控 g ────────────────────────────────────
+  //   `g = smoothstep(0.52, 0.70, spr)`，spr = `TimeState.envSunSpread`（**原值**，不乘 gain）。
+  //   与 `30-scene.js` 的 `envGate()` **必须同式同参数** —— env 贴图（L4）与水面的镜面（L6）
+  //   要同进同退，否则会出现「白天剩半根竖条」这种两端不一致的画面。
+  //   两端是**实现常量**（同 `D2B_NEAR/FULL` 那类），**不入 `P`**。
+  //   刻度：spr ≤ 0.52 ⇒ g = 0 ⇒ 光带精确 0、圆斑与镜面**逐位回到现状**（月亮档 20:22→05:54）；
+  //        spr ≥ 0.70 ⇒ g = 1 ⇒ 纯光带、镜面**精确 0**（光带满档 06:53→20:01）。
+  var BAND_GATE_LO = 0.52, BAND_GATE_HI = 0.70;
+  function bandGate() { var t = c01((spread01() - BAND_GATE_LO) / (BAND_GATE_HI - BAND_GATE_LO)); return t * t * (3 - 2 * t); }
+
+  // L7 的权重：`P.envBand.detail`（缺字段时兜 0.3）。
+  function bandDetailW() {
+    var b = SW.P && SW.P.envBand;
+    return (b && typeof b.detail === 'number' && isFinite(b.detail)) ? b.detail : 0.3;
+  }
+
   function rawHalf() {
     var P = SW.P;
-    var base = (typeof P.swDirSpread === 'number' && isFinite(P.swDirSpread)) ? P.swDirSpread : 15;
-    var day = (typeof P.swDirSpreadDay === 'number' && isFinite(P.swDirSpreadDay)) ? P.swDirSpreadDay : base;
-    return base + (day - base) * spread01();
+    return (typeof P.swDirSpread === 'number' && isFinite(P.swDirSpread)) ? P.swDirSpread : 36;
   }
   function quantHalf() { return Math.round(rawHalf() / WAVE_Q) * WAVE_Q; }
 
@@ -279,6 +291,10 @@
     'uniform sampler2D uEnvEq;',
     'uniform float uEnvReady;',
     'uniform float uEnvGain;',
+    // ★ AM-029（L7）：env 采样法线里「高频细节波」的占比（= `P.envBand.detail`，定稿 0.3）。
+    //   1 = 与主法线 `N` 同 ⇒ 亮区 = `R.y` 的等高线 ⇒ 16 个高频波在二维上闭合成**白椭圆环**；
+    //   0.3 = 环散成横向碎光。**只给这一条采样用** —— 主法线 `N`（折射/镜面/菲涅尔都用它）一字不动。
+    'uniform float uEnvDetailW;',
     'uniform vec3 uCamPos;',
     'uniform vec3 uSunDir;',
     'uniform vec3 uSunRadiance;',
@@ -403,7 +419,15 @@
     '  vec3 refl = reflBase;',
     '  if (uEnvReady > 0.5) {',
     '    float envBias = clamp(uWaterRough * 8.0, 0.0, 4.0);',
-    '    vec3 envCol = texture2D(uEnvEq, swEnvUV(R), envBias).rgb * uEnvGain;',
+    // ★ AM-029（L7）：光带采样的法线**与主法线解耦**。
+    //   等仰角光环的亮度只依赖反射向量的 R.y ⇒ 用**含 100% 高频细节波**的主法线采样时，
+    //   亮区 = `R.y` 的等高线，而 16 个高频波在二维上会把等高线闭合成一个个**白椭圆环**
+    //   （雨桐「白天的环不好看」的病根）。这里改用**合成法线** `Nenv = 大波纹 + detail×细节波`：
+    //   高频权重降到 `uEnvDetailW`（0.3）⇒ 环散成横向碎光。
+    //   🔴 `N` 本身**一字不动** —— 折射（`#3`）、镜面、菲涅尔全部照旧，否则判据会连带漂移。
+    '    vec3 Nenv = normalize(vec3(-(sR.x + sD.x * uEnvDetailW), 1.0, -(sR.y + sD.y * uEnvDetailW)));',
+    '    vec3 Renv = reflect(-V, Nenv);',
+    '    vec3 envCol = texture2D(uEnvEq, swEnvUV(Renv), envBias).rgb * uEnvGain;',
     '    refl = mix(reflBase, envCol, uEnvReady);',
     '  }',
     '  vec3 col = mix(body, refl, clamp(Fr, 0.0, 1.0));',
@@ -581,6 +605,8 @@
       uniforms.uEnvEq = { value: makeEnvPlaceholder() };
       uniforms.uEnvReady = { value: 0 };
       uniforms.uEnvGain = { value: 1 };
+      // ★ AM-029（L7）：env 采样法线里高频细节波的占比（`P.envBand.detail`）
+      uniforms.uEnvDetailW = { value: bandDetailW() };
       uniforms.uCamPos = { value: new THREE.Vector3().copy(cam.position) };
       uniforms.uSunDir = { value: new THREE.Vector3(0, 1, 0) };
       uniforms.uSunRadiance = { value: new THREE.Color(1, 1, 1) };
@@ -666,11 +692,21 @@
         // 下限 SUN_I_FLOOR：夜间若 WP3 把 sunIntensity 归零，月光柱（夜景唯一视觉焦点）会整体消失
         var sc = Math.max(si, SUN_I_FLOOR);
         u.uSunRadiance.value.setRGB(sun.color.r * sc, sun.color.g * sc, sun.color.b * sc);
+        // ── AM-029（L6）：镜面项**昼夜门控** ─────────────────────────────────────
+        //   非夜晚（`spr ≥ 0.70` ⇒ g = 1）把整条镜面乘 **`1 − g` = 精确 0` ——
+        //   雨桐：「非夜晚竖条要完全消失，不要约等于没有」。夜段（g = 0）⇒ 乘 1 ⇒ 逐位不变。
+        //   ⚠ 用**乘 0** 而不是"调小 gGain"：`x * 0 = 0` 在 IEEE754 下是精确 0，
+        //     而调小只是让柱子变淡（柱仍在）。门控与 env 光带共用同一个 g（同进同退）。
+        //   ⚠ 与 `uGlitterGain` 的分工：`L8` 把非夜晚各键 `gGain → 0` 只是**清死数**，
+        //     真正让竖条消失的是这里。夜段 gGain 保持 0.55（护 `#11`）。
+        var k = 1 - bandGate();
+        if (k < 1) { u.uSunRadiance.value.multiplyScalar(k); }
       }
 
       u.uNormalGain.value = SW.P.normalGain;
       u.uGlitterDetail.value = SW.P.glitterDetail;
       u.uGlitterJitter.value = SW.P.glitterJitter;
+      u.uEnvDetailW.value = bandDetailW();   // AM-029 L7
       // ── AM-028：镜面粗糙度逐时化（白天摊宽亮带 / 夜段保持锐利）──────────────────
       //   同 AM-025 的 `rawHalf()` 一样借用 `TimeState.envSunSpread`（0=夜 / 1=昼）。
       //   夜段 s=0 ⇒ 逐位等于 `P.glitterRough`（0.065）⇒ 月柱锐度与 `#13` **一点不动**。
@@ -741,6 +777,11 @@
         // —— AM-028：两个逐时标量的当前值（远端反光的证据读数）——
         glitterRoughNow: +mixBySpread(SW.P.glitterRough, SW.P.glitterRoughDay).toFixed(4),
         envWaterGainNow: +mixBySpread(SW.P.envWaterGain, SW.P.envWaterGainDay).toFixed(3),
+        // —— AM-029：波表方向档（常量 36；`rawHalf` 已不再插值）+ 昼夜门控 + env 采样细节权重 ——
+        //   ⚠ AM-029 后 `uSunRadiance` 被门控乘过 —— 读它即可验证「非夜晚精确 0 / 夜段逐位不变」。
+        sunRadiance: u ? [u.uSunRadiance.value.r, u.uSunRadiance.value.g, u.uSunRadiance.value.b] : [0, 0, 0],
+        bandGate: +bandGate().toFixed(4),
+        envDetailW: u ? u.uEnvDetailW.value : 0,
         // —— AM-024 D2b：距离权重是否生效（1/0）+ 当前光源仰角下的最近处权重（与 GLSL 同式）——
         glitterNear: u ? u.uGlitterNear.value : 0,
         glitterNearMin: u ? +d2bMinAt(u.uSunDir.value.y).toFixed(4) : 0,

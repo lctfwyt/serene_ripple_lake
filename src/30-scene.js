@@ -1,10 +1,14 @@
-// src/30-scene.js —— 所有者：WP1 → UP3（AM-017 起环境光照段归 UP3）→ UP13 第二轮（AM-024 起 D2a 日光弥散）
+// src/30-scene.js —— 所有者：WP1 → UP3（AM-017 起环境光照段归 UP3）→ UP13（AM-024 D2a · AM-029 光带/门控/IBL 隔离）
 // 签名逐字对齐 01-CONTRACT.md §2.3。其它 WP：只读。
 //
 // AM-024 D2a（本文件动作）：太阳亮瓣由 `TimeState.envSunSpread` 单标量驱动 ——
-//   `disc = 2.5 − 1.7·s` · `glow = 0.20 + 0.35·s`（角宽指数不动）。
+//   `disc = 2.5 − 1.7·s` · `glow = 0.20 + 0.35·s`（角宽指数不动 → AM-025 把 1.7 下调到 0.9）。
 //   `s = 0` ⇒ 逐位回到 AM-024 之前的亮瓣；`s = 1` ⇒ 白天弥散（不再是"假月亮"）。
 //   `envDist()` 已纳入 `envSunSpread`；`P.envSunSpreadGain` 变化单独监听（它在 dist 里会被约掉）。
+//
+// AM-029（L3/L4/L5，本文件动作）：非夜晚的亮瓣由**圆斑**改**等仰角光环**（横向光带），
+//   并按 `g = smoothstep(0.52, 0.70, spr)` 与圆斑互斥混合；**同一张 env 拆成两个消费者** ——
+//   水面看「带光带」版（`env.equirect`）· PMREM/石头 IBL 看「disc 版」（`rt.texture`，逐位等于现状）。
 //
 // WP2 会用到的钩子（契约 §2.3 之外的**附加**便利属性，不影响冻结签名）：
 //   SW.scene.rtCamera  —— 赋一个镜像相机，WP1 的 render() 就会自动把场景渲进 SW.scene.sceneRT
@@ -12,8 +16,10 @@
 //   SW.scene.sceneRT    —— 已分配好，**不要重建**。颜色附件是 linear（未做 tonemap / 未编码），
 //                          DepthTexture 用 NearestFilter（用 LINEAR 会变全白）。
 //   SW.scene.env        —— **UP3 / AM-017 新增**（只读消费）：程序化环境贴图的运行时状态。
-//                          { ready, equirect, rt, rebuilds, res, err }
+//                          { ready, equirect, rt, rebuilds, res, err, spread, gate }
 //                          `60-water.js` 只读 `ready` 与 `equirect` 两个字段，**不得重建**。
+//                          ⚠ **AM-029**：`equirect` 是**水面专用**的那一张（带光带）；
+//                            石头 IBL 走 `rt.texture` 的 PMREM（disc 版）—— 两者刻意不是同一张。
 (function (SW, window, document) {
   'use strict';
   var THREE = window.THREE;
@@ -162,6 +168,21 @@
   //   改 s 必然触发重烘（若同时改指数，s 的微小变化会被指数的非线性吞掉一部分）。
   var D2A_DISC_DROP = 0.9;
   var D2A_GLOW_RISE = 0.35;
+  // ═══ AM-029（L3/L4）· 横向光带（等仰角光环）× 昼夜门控 ═════════════════════════
+  // 非夜晚的 env 亮瓣由「点光源圆斑」（= 假月亮，反射到水面收成一根**竖柱**）改为
+  //   **等仰角光环**：亮度只与**仰角**有关、与经度无关 ⇒ 反射向量 R 的仰角 ≈ 相机到该水点的仰角、
+  //   与屏幕横坐标无关 ⇒ 反射到水面天然成**横带**。这是「横向光带」的正确物理入口
+  //   （把圆斑拉长是错的：`az` 已在 AM-024 N4 全时段归 0，横拉只会得到一个更大的斑）。
+  // 门控 `g = smoothstep(0.52, 0.70, spr)`（spr = `TimeState.envSunSpread` **原值**）：
+  //   亮瓣 = **圆斑 × (1−g) + 光环 × g**。夜段 `spr = 0` ⇒ `g = 0` ⇒ 纯圆斑、**逐位回到现状**
+  //   （20:22→05:54）；`spr ≥ 0.70` ⇒ `g = 1` ⇒ 纯光环（06:53→20:01）。
+  //   两端是**实现常量**（同 `D2B_NEAR/FULL` 那类），**不入 `P`**；`60-water.js` 的
+  //   `bandGate()` 必须是**同式同参数** —— 光带（这里）与水面的镜面（L6）要同进同退。
+  // ⚠ 光环四数取 `P.envBand`（`amp / elev / sigma`）。它是**常量**：只在烘图时被读，
+  //   `envDist()` 已纳入 `sunSpread01` ⇒ 逐时门控天然触发重烘，但改 `envBand` 要手动重烘才可见。
+  var BAND_GATE_LO = 0.52, BAND_GATE_HI = 0.70;
+  function spreadRaw(s) { return clamp01(numOr(s && s.envSunSpread, 0)); }
+  function envGate(s) { return sstep(BAND_GATE_LO, BAND_GATE_HI, spreadRaw(s)); }
   // s_eff = clamp01(TimeState.envSunSpread × P.envSunSpreadGain)
   //   `numOr` / `clamp01` 是文件下方声明的函数（函数声明提升 ⇒ 这里调用安全）。
   function sunSpread01(s) {
@@ -205,7 +226,7 @@
   // ⚠ 采样约定必须与 three 的 equirectUv() **逐字一致**（否则环境贴图整个错位、水面反射全乱）：
   //     u = atan2(dir.z, dir.x)/(2π) + 0.5      v = asin(dir.y)/π + 0.5      ← v 是**非线性**的！
   //     DataTexture.flipY = false → 第 0 行对应 v = 0 → dir.y = −1（正下方）。
-  function buildEnvEquirect(s, W, H) {
+  function buildEnvEquirect(s, W, H, opt) {
     var DU = THREE.DataUtils;
     var toHalf = (DU && DU.toHalfFloat) ? DU.toHalfFloat : function (v) { return v; };
     var ce = Math.cos(s.sunElev), se = Math.sin(s.sunElev);
@@ -214,6 +235,15 @@
     var amp = Math.max(0.25, numOr(s.sunIntensity, 0.7)) * ENV_SUN_AMP;
     // AM-024 D2a：两个分量的峰值由 envSunSpread 决定（角宽指数不动）
     var lb = envLobe(s);
+    // ── AM-029（L3/L4）：光带 + 门控 ───────────────────────────────────────────
+    //   `opt` 不给 / `g = 0` ⇒ `ampDisc === amp`、`ampBand === 0` ⇒ **逐位等于 AM-024 的圆斑版**
+    //   （这正是 L5 要求的「disc 版必须与现状逐位一致」：`×1` 在 IEEE754 下精确）。
+    var g = (opt && typeof opt.g === 'number' && opt.g > 0) ? opt.g : 0;
+    var bd = (opt && opt.band) || null;
+    var ampDisc = (g > 0) ? amp * (1 - g) : amp;
+    var ampBand = (g > 0 && bd) ? amp * numOr(bd.amp, 0.5) * g : 0;
+    var elRing = (g > 0 && bd) ? numOr(bd.elev, 8) * Math.PI / 180 : 0;
+    var sigRing = (g > 0 && bd) ? Math.max(0.02, numOr(bd.sigma, 1) * Math.PI / 180) : 1;
     var data = new Uint16Array(W * H * 4);
     var k = 0, ix, iy, i;
     for (iy = 0; iy < H; iy++) {
@@ -223,6 +253,13 @@
       var up = y >= 0;
       var t = Math.pow(sstep(-0.06, 0.62, y), 0.85);                    // 同天空球
       var gm = ENV_GROUND_MIN + (1 - ENV_GROUND_MIN) * sstep(-0.75, 0.02, y);
+      // ★ AM-029 L3：等仰角光环 —— 只与仰角有关（与 `phi` 无关）⇒ 反射成横带。
+      //   高斯 σ 用 `P.envBand.sigma`（度）；`elHere = asin(y)` 就是这一行的仰角。
+      var sb = 0;
+      if (ampBand > 1e-4 && up) {
+        var de = (Math.asin(Math.min(1, y)) - elRing) / sigRing;
+        sb = Math.exp(-0.5 * de * de) * ampBand;
+      }
       for (ix = 0; ix < W; ix++) {
         var phi = ((ix + 0.5) / W - 0.5) * Math.PI * 2;
         var dx = r * Math.cos(phi), dz = r * Math.sin(phi);
@@ -235,11 +272,12 @@
           cr = B[0] * gm; cg = B[1] * gm; cb = B[2] * gm;
         }
         var dp = dx * lx + y * ly + dz * lz;
-        if (dp > 0) {
+        if (dp > 0 && ampDisc > 0) {
           // AM-024 D2a：disc/glow 随 envSunSpread 变（s=0 时 = 原 2.5 / 0.20，逐位等价）
           var lobe = Math.pow(dp, ENV_SUN_DEXP) * lb.disc + Math.pow(dp, ENV_SUN_GEXP) * lb.glow;
-          if (lobe > 1e-5) { var sc = lobe * amp; cr += C[0] * sc; cg += C[1] * sc; cb += C[2] * sc; }
+          if (lobe > 1e-5) { var sc = lobe * ampDisc; cr += C[0] * sc; cg += C[1] * sc; cb += C[2] * sc; }
         }
+        if (sb > 1e-4) { cr += C[0] * sb; cg += C[1] * sb; cb += C[2] * sb; }
         data[k++] = toHalf(cr); data[k++] = toHalf(cg); data[k++] = toHalf(cb); data[k++] = toHalf(1);
       }
     }
@@ -283,8 +321,11 @@
     lastState: null, appliedState: null,
     // UP3 / AM-017（附加属性，非冻结签名）：程序化环境贴图的运行时状态
     // AM-024 D2a：`spread` 追加为只读读数 —— 显示当前生效的 s_eff（0=夜紧致 / 1=白天弥散）
-    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0 },
-    _envPmrem: null, _envRT: null, _envEq: null, _envOldRT: null, _envOldEq: null,
+    // AM-029：`gate` 追加为只读读数 —— 当前昼夜门控 g（0 = 纯圆斑 / 1 = 纯光环）
+    //   ⚠ `equirect` 自 AM-029 起是**水面专用**的那一张（带光带）；石头 IBL 走 `rt.texture`（PMREM，disc 版）
+    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0, gate: 0 },
+    _envPmrem: null, _envRT: null, _envEq: null, _envEqW: null,
+    _envOldRT: null, _envOldEq: null, _envOldEqW: null,
     _envLast: null, _envEnabledLast: null, _envSpreadGainLast: null, _envMatPending: true, _envMatCount: 0,
 
     init: function (canvas) {
@@ -434,19 +475,32 @@
           this._envPmrem = new THREE.PMREMGenerator(this.renderer);
           this._envPmrem.compileEquirectangularShader();
         }
+        // ① **disc 版**（不带光带）—— 逐位等于 AM-024 的现状。它只喂 PMREM 生成器，
+        //    产物 `rt.texture` → `scene.environment` → `MeshStandardMaterial` 的**漫反射 IBL**
+        //    （= 两层鹅卵石湖底 + 湖底平面）。
+        //    🔴 L5 石头 IBL 隔离：一条水平光环是**镜面反射**该看到的，**不该**变成漫反射光源。
+        //       不隔离时实测石头区被照亮：正午 122.8 → 150.5、黄昏 76.8 → 98.4。
         var eq = buildEnvEquirect(s, W, H);
         var rt = this._envPmrem.fromEquirectangular(eq);
+        // ② **水面版**（带光带 × 昼夜门控）—— 只换水面这一个消费者：`env.equirect` → `uEnvEq`。
+        //    `g = 0`（夜段）时直接**复用同一张** disc 贴图 ⇒ 夜段画面逐位不变、零额外开销。
+        var g = envGate(s);
+        var eqWater = (g > 0) ? buildEnvEquirect(s, W, H, { g: g, band: P.envBand }) : eq;
         // 双缓冲释放：只回收「上上张」，避免水面当帧还指着刚被 dispose 的贴图
-        if (this._envOldRT) { this._envOldRT.dispose(); this._envOldRT = null; }
-        if (this._envOldEq) { this._envOldEq.dispose(); this._envOldEq = null; }
-        this._envOldRT = this._envRT; this._envOldEq = this._envEq;
-        this._envRT = rt; this._envEq = eq;
-        this.scene.environment = rt.texture;     // 只作用于 MeshStandardMaterial（= 两层鹅卵石湖底）
-        this.env.equirect = eq;
+        //   ⚠ 夜段 `eqWater === eq`，两处引用同一对象 ⇒ 第二次 dispose 必须跳过（否则重复释放）。
+        var oRT = this._envOldRT, oEq = this._envOldEq, oEqW = this._envOldEqW;
+        if (oRT) { oRT.dispose(); }
+        if (oEq) { oEq.dispose(); }
+        if (oEqW && oEqW !== oEq) { oEqW.dispose(); }
+        this._envOldRT = this._envRT; this._envOldEq = this._envEq; this._envOldEqW = this._envEqW;
+        this._envRT = rt; this._envEq = eq; this._envEqW = eqWater;
+        this.scene.environment = rt.texture;     // 石头 IBL：**disc 版**（不带光带）—— 与现状逐位一致
+        this.env.equirect = eqWater;             // 水面反射：**光带版**（夜段 === disc 版）
         this.env.rt = rt;
         this.env.ready = true;
         this.env.res = W + 'x' + H;
         this.env.err = '';
+        this.env.gate = +g.toFixed(4);
         this.env.rebuilds++;
         this._envMatPending = true;              // 材质 envMapIntensity / USE_ENVMAP 需要刷一次
         return true;
