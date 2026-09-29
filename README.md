@@ -4,9 +4,9 @@ https://serene-ripple-lake.netlify.app/
 
 一个治愈系的湖面网页。双击 `index.html` 就能打开 —— 不需要服务器，也不需要联网。
 
-![星夜 —— 月光柱洒在湖面上](docs/screenshot-night-moonlight.png)
+![星夜 —— 月光柱洒在湖面上](docs/screenshot-night-moonlight.jpg)
 
-![正午 —— 阳光下清澈见底的鹅卵石](docs/screenshot-noon-glitter.png)
+![正午 —— 阳光下清澈见底的鹅卵石](docs/screenshot-noon-glitter.jpg)
 
 ## 怎么玩
 

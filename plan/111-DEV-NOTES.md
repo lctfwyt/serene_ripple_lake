@@ -127,7 +127,7 @@ UP15 / AM-034 加，默认 `0.20 / 0.30 / 0.80`，`?debug=1`「音频（实时�
 | `app/public/` | PWA 静态件：`manifest.webmanifest` · `sw.js` · `icons/` 6 件（Vite 默认 `publicDir` ⇒ 原样拷进 `dist/`） |
 | `dist/` | 构建产物（**不入库**，`npm run build` 重建） |
 | `audio-build/` · `icon-build/` | 音频 / 图标的派生工作目录（**`.gitignore` 忽略**，不入库） |
-| `docs/` | README 用的实拍截图：`screenshot-night-moonlight.png`（星夜 · 3072×1534 · 1.68 MB）· `screenshot-noon-glitter.png`（正午 · 3072×1534 · 2.14 MB）。⚠ 两张合计 **~3.8 MB 入 git** —— 嫌大可用 `magick docs/*.png -resize 1600x -quality 82 docs/%[basename].jpg` 转 jpg（约 120 KB/张）再改 README 引用 |
+| `docs/` | README 用的实拍截图（**已转 jpg**，2026-09-30 04:4x）：`screenshot-night-moonlight.jpg`（星夜 · 3072×1534 · **255 KB**）· `screenshot-noon-glitter.jpg`（正午 · 3072×1534 · **334 KB**）。原 PNG（1.68 / 2.14 MB）保留在同目录作母版。**转换命令与实测**：`magick docs/X.png -quality 88 -strip docs/X.jpg`（`-strip` 去 EXIF/色彩配置；**不加 `-resize`** —— 保 3072 原始宽度，README 里放大看仍是高清）；RMSE 归一化 **0.0037 / 0.0044**（肉眼不可辨）⇒ 体积 **3.8 MB → 0.6 MB（−84%）**。⚠ 已入库的 PNG 不会因后续删除而从 git 历史消失，要真瘦身须重写历史（不推荐） |
 
 ---
 
