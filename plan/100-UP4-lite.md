@@ -308,26 +308,10 @@ roughness 512² `NoColorSpace` 同 repeat；macro 128² `NoColorSpace` + `Linear
 
 ### 7.7 提交原文
 
-```
-commit 04732edb3db344c8d245a490e086682ff66ea6ee
-Author: lctfwyt <lctfwyt@outlook.com>
-Date:   Fri Sep 25 12:37:04 2026 +0800
+`04732ed` · `feat(up4): 湖底程序化 tiling 贴图（AM-019）` · 9 文件 / +725 −13
+（diffstat 由 git 直接可查，不复述）。
 
-    feat(up4): 湖底程序化 tiling 贴图（AM-019）
-
- plan/01-CONTRACT.md               |  45 +++++-
- plan/02-AMENDMENTS.md             |   7 +-
- plan/03-COLLAB-PROTOCOL.md        |  37 +++++
- plan/04-BOARD.md                  |  11 ++
- plan/100-UP4-lite.md              | 311 ++++++++++++++++++++++++++++++++++++++
- plan/98b-AMENDMENTS-ARCHIVE-v1.md | 110 ++++++++++++++
- plan/_STATUS.md                   |   8 +-
- src/00-config.js                  |  24 ++-
- src/40-lakebed.js                 | 185 ++++++++++++++++++++++-
- 9 files changed, 725 insertions(+), 13 deletions(-)
-```
-
-模式 **A · 独占** ⇒ 自己提。按 `03-COLLAB-PROTOCOL §7.1` **逐条列名 `git add`**（禁 `-A`），
+模式 **A · 独占** ⇒ 自己提。按 `03-COLLAB-PROTOCOL §7.1` 逐条列名 `git add`（禁 `-A`），
 9 个文件**恰好**等于白名单 + 收尾四步文档。
 未提交项：`plan/pw/tests/__snapshots__/*.png` 与 `plan/pw/dist-baseline.txt` —— **属主控地盘**，
 由收口提交（`chore(up4)`）单独处理。

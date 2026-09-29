@@ -85,6 +85,7 @@ _*.mjs
 _*.py
 _*.png
 _*.json
+_*.html
 _diag/
 _dl/
 _wp5-shots/
@@ -101,3 +102,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# ---------- 12. UP13 施工诊断图（过程件，非审美静帧）----------
+# plan/shots-up4/ 里的审美板（bedtex-* / bedtune-* 等）**已入库**；
+# `diag-*` 是 UP13 调参过程中的分解图 / 波形图 / 前后对照，属过程件 —— 留本地可查，不入库。
+plan/shots-*/diag-*.png
+plan/shots-*/pv-*.png

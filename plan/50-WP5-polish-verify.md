@@ -260,59 +260,9 @@ C="/c/Program Files/Google/Chrome/Application/chrome.exe"
 
 ## 5. README.md 内容（**AM-007 §7：全部重写，旧模板已过期**）
 
-给雨桐自己以后看的，要短。**旧的「MiniMax 生成 BGM」「已装的 skill」两节全部作废** —— BGM 已换成海绵音乐 + 程序化兜底，MiniMax 接口对新用户已下线。
-
-````markdown
-# 静水 · still water
-
-Three.js 治愈湖面。**双击 `index.html` 即可**（无需服务器、无外部依赖）。
-
-## 操作
-- **点击**水面 → 拍击声 + 一圈涟漪
-- **拖动**水面 → 连续流水声（音量与频谱跟随拖动速度）+ 沿途波纹；**停手后约 1.7s 拖尾淡出**
-- 首次交互后音频启动（浏览器自动播放策略）
-- `[` / `]` 切时段（±0.5h）· 拖底部滑块锁定时段 · 双击画面空白回到真实时间
-- `?hour=18.5` 直达指定时段　`?debug=1` 只读调试面板
-
-## 一天光影
-默认跟随**系统真实时钟**，四态（晨雾 / 正午 / 黄昏 / 星夜）之间连续插值。
-夜间光源是**月亮**（正仰角约 28°），水面上有一条月光反光带。
-窗口越窄，反光带越靠画面中央（安全区随水平视角收缩）。
-
-## 可调参数
-全部在 `src/00-config.js` 的 `P` 里，改完刷新即可。控制台执行 `SW.resetP()` 复位。
-
-## 文件
-| 文件 | 职责 |
-|---|---|
-| `index.html` | 入口（**经典 `<script>`，非 ES module** —— 为了 `file://` 能直接打开） |
-| `vendor/three.min.js` | three **r160** UMD（669,884 B；r161 起 UMD 已移除，故锁此版） |
-| `src/00-config.js` | 参数表 `P` · 事件总线 · 工具函数 |
-| `src/10-audio.js` | 音频：程序化划水（连续流水模型）+ 拍击采样 + BGM |
-| `src/20-time.js` | 13 keyframe 环形插值（OKLCH 最短弧）→ `TimeState` |
-| `src/30-scene.js` | 相机 / 光照 / 雾 / 渲染循环 · `applyTimeState()` |
-| `src/40-lakebed.js` | 湖底 + 鹅卵石（两层 LOD）+ 程序化 caustic 纹理 |
-| `src/50-ripple.js` | 波纹：波动方程 FBO ping-pong（512² Float） |
-| `src/60-water.js` | 水面：屏幕空间折射 + Beer-Lambert 吸收 + GGX 反光路径 |
-| `src/70-input.js` | 指针交互 → 波纹 + 声音 |
-| `src/80-ui.js` | 时段标签 / 滑块 |
-| `src/85-fallback.js` | `prefers-reduced-motion` · WebGL 缺失兜底 · 移动端降级 |
-| `src/90-debug.js` | `?debug=1` 面板 + `window.__probe/__seek/__clock/__hold` |
-| `assets/audio/` | BGM + 拍击采样 |
-
-## 资产与授权
-- **three.js r160** —— MIT
-- **BGM `bgm-stillwater.mp3`** —— 海绵音乐生成（146.8s / 128kbps）
-  ⚠️ **授权范围需自行确认** —— 用于公司/商用项目前先核对生成平台条款
-- **拍击采样 `slap1~4.wav`** —— sounds-mp3（免费商用、免署名）
-- 其余**全部程序化生成**，零外部依赖
-
-## 已知限制
-- `file://` 下音频**不能** `fetch`/`decodeAudioData`（浏览器跨源策略）→ BGM 与拍击采样都走
-  `<audio>` 元素直放，**不过 limiter**，debug 面板的 `bgmPeak` 在 file 模式恒为 0。
-  起 http 服务器打开可恢复完整 Web Audio 链路，但**双击打开才是本项目的目标形态**。
-- 无头软件光栅（SwiftShader）下约 20 fps；真机独显无压力。
-````
+> **已执行**，草稿不在此留副本 —— **`README.md` 是唯一事实源**（现行 145 行）。
+> 本节只留写作口径：① 给雨桐自己看，要短；② 旧模板的「MiniMax 生成 BGM」「已装的 skill」
+> 两节**必须删**（BGM 已换海绵音乐 + 程序化兜底，MiniMax 接口对新用户已下线）。
 
 ---
 
