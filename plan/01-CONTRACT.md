@@ -582,7 +582,7 @@ var P = {
 | AM-033 | UP14 | `package.json` | 共享 | 描述串 | ✅ 已应用（`5c35c6b`） |
 | AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`** | WP4→UP11 · WP4 · 本包 | ① 试听段（工具）· ② 落地段（同名替换 + `SLAP_LUFS_TRIM`）· ③ **混音段**（`syncVolumes()` + 增益节点） | ✅ **已收口（2026-09-30 02:1x）**（`108 §11` / `§11.8` / `§12`~`§14`） |
 | AM-034 | UP15 | `src/00-config.js` · `src/90-debug.js` | WP1 · WP1 | **第三段扩权**：音频段加 `flowVolume`/`slapVolume`；`?debug=1` 加「音频（实时）」滑杆组 | ✅ **已收口（2026-09-30 02:1x）**（`108 §12`~`§14`） |
-| AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ✅ **已应用（`ab36aa9` · 2026-09-30 02:5x）**（另有新建 `netlify.toml` / `.nvmrc`，无需授权）· ⬜ 判据 7 真机上线挂雨桐 |
+| AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ✅ **已应用（`ab36aa9` · 2026-09-30 02:5x）**（另有新建 `netlify.toml` / `.nvmrc`，无需授权）· ✅ **判据 7 真机上线已过（09-30 04:3x**，<https://serene-ripple-lake.netlify.app/> · 主控复核 BGM 真出声 · PWA 线上 11/12） |
 | AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` · **新建 `app/public/**`** | UP1a · UP1a · WP5 · 无主 | PWA `<head>`（manifest **动态插入**）/ SW 注册块 / PWA 小节 / manifest+sw+icons | ✅ **已完工 + 收口**（`110`） |
 
 ### 7.2 契约偏离登记（由主控裁决后登记；**不是**「先做后报」的免罪符）
@@ -843,3 +843,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-29 | AM-036：登记 §7.1 —— UP17 获权写 `app/index.html` / `app/main.js` / `README.md`；**新增 `app/public/**`**（PWA manifest + SW + 图标）。**范围裁定：只改构建入口 `app/index.html`，不动免构建入口根 `index.html`**（PWA 在 `file://` 不生效；根入口引用 manifest 会产生 `requestfailed` 污染 `netErrors`） | UP17 |
 | 09-30 | **UP17 图标归属改判（雨桐裁定）**：「**图标放入 UP17，我和 UP17 多轮对话中解决**」⇒ 图标**不再是开工前置门**，并入本包由雨桐与施工方多轮定（图形 / 配色 / maskable 安全区）。波次 18 **已开工**（前置 UP16 ✅ 已合并）。`110` 新增 `§3.0` 施工顺序（① 候选页 → ② 骨架段（占位图标） → ③ 落图段）与 `§10` 记账粒度（多轮打磨包 = 一行 AM，协议 §3）；判据 3 补实现提示（读像素用无头 Chrome，**禁引 `sharp`**） | UP17 |
 | 09-30 | **UP17 收口（主控）**：① 修 `dist/` 在 `file://` 下的 manifest CORS error —— `app/index.html` 的 manifest 改**动态插入**（仅 http/https；静态 `<link>` 无法守卫，解析即发请求）；② 应用名定「静湖微澜」+ `VERSION srl-v2`（manifest 走 cache-first ⇒ 改它必须 bump）；③ favicon 透明底（雨桐定，§3.6-⑥ 规格同步）；④ README 定位改「部署后给访客看」，开发向内容迁 `111-DEV-NOTES.md`；⑤ 新增 `plan/pw/verify-pwa.mjs` + `plan/pw/serve-dist.mjs`（`npm run pw:pwa` / `serve:dist`） | 主控 |
+| 09-30 | **UP16 判据 7 真机上线完成（雨桐）**：站点 <https://serene-ripple-lake.netlify.app/> 已上线；主控独立复核 = BGM 真出声（`bgmPeak 0.45077`）· 水面与拍击就绪 · PWA 复核脚本指向线上 **11/12**。**两条线上偏差记档**（`109 §4.5`）：① 拖文件夹路径**不携带仓库根 `netlify.toml`** ⇒ manifest MIME 与音频缓存头走 Netlify 默认值；② 未认领站点被注入 184 B HUD 脚本。**均非代码缺陷**，要消 ⇒ 站点改走 Git 集成 | 主控 |

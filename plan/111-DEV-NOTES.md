@@ -127,10 +127,23 @@ UP15 / AM-034 加，默认 `0.20 / 0.30 / 0.80`，`?debug=1`「音频（实时�
 | `app/public/` | PWA 静态件：`manifest.webmanifest` · `sw.js` · `icons/` 6 件（Vite 默认 `publicDir` ⇒ 原样拷进 `dist/`） |
 | `dist/` | 构建产物（**不入库**，`npm run build` 重建） |
 | `audio-build/` · `icon-build/` | 音频 / 图标的派生工作目录（**`.gitignore` 忽略**，不入库） |
+| `docs/` | README 用的实拍截图（`screenshot-night-moonlight.jpg` 星夜 · `screenshot-noon-glitter.jpg` 正午，均 1920×958） |
 
 ---
 
 ## 7. 部署细节（Netlify）
+
+**线上站点**（2026-09-30 04:3x 雨桐拖 `dist/` 上线）：<https://serene-ripple-lake.netlify.app/>
+
+⚠ **两条线上偏差（拖文件夹路径特有，非代码缺陷）** —— 明细与读数 `109 §4.5`：
+
+1. **`netlify.toml` 不生效**：它在**仓库根**，`dist/` 里没有 ⇒ **Drop 这条路不读配置**，
+   线上命中的全是 Netlify 默认值（实测：manifest 走 `application/octet-stream` 而非配置的
+   `application/manifest+json`；音频 / 图标缓存头是 `max-age=0` 而非 7 天）。
+   ⇒ 影响可忽略（Chrome 不强制 manifest MIME，实测 `getAppManifest` errors `[]` ⇒ 可安装；音频走 304 校验）。
+   ⇒ 要配置真正生效：**站点改走 Git 集成**（Netlify 读仓库根配置并自动构建），或把配置随 `dist/` 一起发布。
+2. **Netlify HUD 注入**：线上 HTML 比本地多 **184 B** —— `<script async src="/.netlify/scripts/hud?variant=public">`
+   （34 KB 第三方脚本，未认领站点特有）。**claim 站点后复测，预期消失**；断网时该请求 `ERR_ABORTED`（无害）。
 
 - **额度**：9.0 MB / 次冷加载；免费额度 100 GB 月带宽 ⇒ 约 **1.1 万次**（个人分享绰绰有余）。
 - **缓存**（`netlify.toml` 5 条）：入口 / `sw.js` / `manifest` 一律 `max-age=0, must-revalidate`（否则新版刷不出来）；

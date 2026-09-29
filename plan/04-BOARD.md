@@ -126,8 +126,9 @@
 | 时间 | 发件人 | 消息 | 处理 |
 | --- | --- | --- | --- |
 | 09-29 23:5x | 主控 | 开包：**AM-035** Netlify 上云（`109`）。白名单 = `netlify.toml`(新) · `.nvmrc`(新) · `package.json` · `README.md`。**零渲染代码**；`sw.js`/`manifest` 两条缓存头写给 UP17 用（文件未生成前自动无效）。前置：UP14 合并（package.json/README 重叠） | ✅ 已完工（`109 §完工记录`） |
-| 09-30 02:5x | UP16 施工方 | ✅ 已交：`netlify.toml`（构建+发布+NODE_VERSION=22+**5 条缓存头**）+ `.nvmrc`(22) + `package.json` 加 `deploy` 一行 + README「部署」节。两入口 **15/15** · `pw:frozen` ✅ · `pw:dist` 与基线逐文件一致（**未重建 dist**，以 mtime>`src` 证明 dist≡HEAD）· 白名单外零改动 | ⬜ **判据 7 真机上线挂雨桐**（不代上传）· ⬜ `00-INDEX §3` 波次 17 翻 ✅ 属主控 |
+| 09-30 02:5x | UP16 施工方 | ✅ 已交：`netlify.toml`（构建+发布+NODE_VERSION=22+**5 条缓存头**）+ `.nvmrc`(22) + `package.json` 加 `deploy` 一行 + README「部署」节。两入口 **15/15** · `pw:frozen` ✅ · `pw:dist` 与基线逐文件一致（**未重建 dist**，以 mtime>`src` 证明 dist≡HEAD）· 白名单外零改动 | ✅ **判据 7 已过（09-30 04:3x 主控复核**：线上 BGM 真出声 + PWA 11/12，`109 §4.5`）· ✅ `00-INDEX §3` 波次 17 翻 ✅ 主控已完成 |
 | 09-30 03:0x | 主控 | ✅ **收尾（UP16 / AM-035）**：独立复跑 `tomllib` 解析（5 条 headers 齐全）+ `pw:frozen` ✅ + `pw:dist` 逐文件一致 + 两入口 15/15 ⇒ **施工方判据 1~6 复核通过**。**README 过期项订正 5 处**：BGM 生成主体 `海绵音乐` → **Suno**（MiniMax 已废案）· `?debug=1` 滑杆 **8 → 24** · 音频 **7.3 → 8.2 MB** · 构建版体积重测（原「829 KB/14 请求 → 713 KB/1 请求」过期）· 文件表补 `65-post.js`/`99-main.js`；**部署节 22 → 15 行**（三方式压成两列表、缓存与授权各压成一条）。同步 `00-INDEX §3` 波次 17 翻 ✅ · 契约 §7.1/§10 AM-035 翻 ✅ | ⬜ 唯一遗留 = **判据 7 真机上线**（雨桐拖 `dist/` 验一次）· 波次 18 = UP17 **已开工**（图标已并入包内，雨桐多轮对话定） |
+| 09-30 04:3x | 主控 | ✅ **判据 7 收口（UP16 唯一遗留清零）**：雨桐已拖 `dist/` 上线 <https://serene-ripple-lake.netlify.app/> · 主控**独立复核**（不采信施工方与雨桐口述）：首页 `200`/**792 801 B** = 本地 792 617 + **184 B Netlify HUD 注入** · **BGM 真出声**（无头 Chrome 读 `SW.audio.probe().bgmPeak = 0.45077`，非 0 才算响）· `slapReady=true` · **PWA 复核脚本直接指向线上跑 ⇒ 11/12**（断网仍开 / 仍出声 / 音频 200 / 图标像素逐字一致 / 根入口不对称守住）。**两条线上偏差（非缺陷）**：① manifest 走 `application/octet-stream`、音频缓存头是 `max-age=0` 而非 7 天 —— 因 `netlify.toml` 在仓库根而 **Drop 这条路不读配置**（要生效 ⇒ 改 Git 集成）；② 未认领站点被注入 184 B HUD 脚本（claim 后预期消失）。明细 `109 §4.5` | ⬜ 剩 UP17 判据 11 观感（图标 410/383 · 闪屏 · `fullscreen`）挂雨桐 |
 
 ## UP17
 

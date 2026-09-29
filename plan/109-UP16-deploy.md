@@ -109,7 +109,7 @@
 | 4 | 冻结件零改动 | `npm run pw:frozen` 两 sha256 逐字一致 |
 | 5 | headers 覆盖齐 | 5 条 `[[headers]]`（`/index.html` · `/sw.js` · `/manifest.webmanifest` · `/assets/audio/*` · `/icons/*`）逐条存在 |
 | 6 | 不该变的没变 | `src/**` 一字未动 · `assets/audio/**` 未动 · `index.html` / `app/index.html` 未动 |
-| 7 | **真机上线**（挂雨桐） | 拖一次 `dist/` → 打开链接 → 水面正常、BGM 能播。**判定权在雨桐** |
+| 7 | **真机上线**（挂雨桐） | 拖一次 `dist/` → 打开链接 → 水面正常、BGM 能播。**判定权在雨桐** ⇒ ✅ **已过（09-30 04:3x）**，读数见 `§4.5` |
 
 ---
 
@@ -157,7 +157,7 @@
 | 4 | 冻结件零改动 | `npm run pw:frozen` ⇒ ✅（`wp5-assert.js` `abf23d7d…` · `wp5-env.js` `bd9dd0e8…` 均与基线逐字一致） |
 | 5 | headers 覆盖齐 | 见判据 1 —— `/index.html` · `/sw.js` · `/manifest.webmanifest` · `/assets/audio/*` · `/icons/*` 五条逐条存在 |
 | 6 | 不该变的没变 | `git status --short` 仅 4 项：` M README.md` · ` M package.json` · `?? .nvmrc` · `?? netlify.toml`。反选过滤（白名单外）⇒ **空**。`src/**` · `assets/**` · `index.html` · `app/index.html` · `vite.config.mjs` · `plan/pw/**` · `dist/**` 全部零改动 |
-| 7 | **真机上线** | ⬜ **挂雨桐** —— 本包不激活站点、不上传 |
+| 7 | **真机上线** | ✅ **已过（2026-09-30 04:3x · 雨桐上线 + 主控复核）** —— 线上 <https://serene-ripple-lake.netlify.app/>：首页 `200`/792 801 B · **BGM 真出声**（`bgmPeak = 0.45077`）· `slapReady = true` · **PWA 线上复核 11/12**（唯一红 = manifest MIME；Chrome 仍认可 ⇒ 可安装）。读数与两条线上偏差见 **`§4.5`** |
 
 ### 3. 两处口径说明（不是偏离，是主动选边）
 
@@ -180,7 +180,27 @@
 `chore(up16): Netlify 部署配置 + README 部署节（AM-035）`
 `git add netlify.toml .nvmrc package.json README.md plan/109-UP16-deploy.md plan/02-AMENDMENTS.md plan/98b-AMENDMENTS-ARCHIVE-v1.md plan/04-BOARD.md plan/_STATUS.md`（**逐条列名，禁 `-A`**）
 
-> **遗留（唯一）**：判据 7 真机上线 —— 拖一次 `dist/` → 打开链接 → 水面正常、BGM 能播。**判定权在雨桐**，本包不代上传。
+### 4.5 判据 7 · 真机上线（2026-09-30 04:3x · 雨桐上线 · 主控独立复核）
+
+**线上地址**：<https://serene-ripple-lake.netlify.app/>
+
+| 项 | 实测 |
+|---|---|
+| 首页 | `200` · **792 801 B** = 本地 `dist/index.html` **792 617 B** + **184 B**（Netlify 注入的 HUD 脚本，见下） |
+| `sw.js` / `icons/icon-512.png` | `200` / `200`（57 621 B） |
+| `assets/audio/bgm-mingjing.mp3` | `206`（Range 正常） |
+| **BGM 真出声** | `SW.audio.probe()` ⇒ `bgmPeak` 峰值 **0.45077**（非 0 = 真的响了）· `mode = file` · `bgmGain = 0.60` · `ctx.state = running` |
+| **水面与交互** | `SW.ready = true` · `slapReady = true` · 拍击实测触发（联网 `slaps = 1`） |
+| **PWA 线上复核** | `VERIFY_URL=<线上> node plan/pw/verify-pwa.mjs` ⇒ **11/12**：SW 接管 ✅ · 断网刷新仍能开 ✅ · 断网仍出声 ✅ · 离线音频 `200`（`slap1.wav` 139 244 B）✅ · 图标像素与 `sizes` 逐字一致 ✅ · 根入口不对称守住 ✅ · console 零报错 ✅ · **唯一红 = 判据 1「manifest MIME = `application/octet-stream`」** |
+
+#### 两条线上偏差（非缺陷，记档）
+
+| # | 现象 | 成因 | 处置 |
+|---|---|---|---|
+| 1 | manifest 走 `application/octet-stream`（配置第 ③ 条明明写了 `application/manifest+json`）；音频 / 图标缓存头是 `max-age=0` 而非 7 天 | **`netlify.toml` 在仓库根，`dist/` 里没有它** ⇒ **拖文件夹（Drop）这条路不读配置**，命中的全是 Netlify 默认值 | 功能无损 —— Chrome **不强制** manifest MIME（判据 2 `getAppManifest` errors `[]` ⇒ 照样可安装）；音频走 304 校验，多一次往返而已。要配置生效 ⇒ 站点改走 **Git 集成**（Netlify 读仓库根 `netlify.toml` 并自动构建），或把配置随 `dist/` 一起发布 |
+| 2 | 线上 HTML 多 184 B：`<script async src="/.netlify/scripts/hud?variant=public">`（34 KB 第三方脚本） | Netlify 给 **Drop 未认领站点**注入的 HUD | 雨桐 **claim 站点后复测**，预期消失；断网时该脚本 `ERR_ABORTED`（无害 —— SW 缓存的壳里带着这个标签） |
+
+> **结论：判据 7 通过** —— 水面正常、BGM 能播、可安装、可离线。**本包唯一遗留已清零。**
 
 ### 5. 提交（`git log -1 --stat` · `§7.1-4`）
 
