@@ -53,7 +53,13 @@ SRC_SHA16 = "3c0470de30191980"      # 契约 108 §3.1；不符即停
 
 OUT_SR = 48000                      # 输出采样率（§2-4 硬约束）
 OUT_PEAK = 0.6200                   # 输出峰值（−4.15 dBFS，沿用旧件约定）
-DUR_MIN, DUR_MAX = 0.55, 1.70       # 选材时长夹（§4.3）；定档件可放宽到 1.80
+DUR_MIN, DUR_MAX = 0.55, 1.80       # 时长夹（§4.3 定档件上限 1.80）
+# 🔴 **定长**：素材沿革里旧 slap1~4.wav 也是「从 29 s 连续戏水里**切 1.45 s**」（§1.1 实测
+#    1.4500 s / 69 600 帧 @48k）⇒ 本源同为连续岸浪，**按同一刀法切定长**，而不是按自然衰减收尾
+#    （自然衰减只有 0.2~0.6 s，切到那儿就成了 0.55 s 的短促声，与旧件的"一段水声"不是同一物）。
+#    落点 = 起跳前 PRE_ROLL，长度 = DUR_TARGET；尾部的岸浪底噪由 150 ms 淡出收掉。
+DUR_TARGET = 1.4500
+WIN_HOP = 0.20                      # 定长窗扫描跳距（选材对象 = 定长窗本身，见 pick_candidates ①）
 
 # 选材 —— 0.25 s 窗包络峰（§4.2-②）
 ENV_WIN, ENV_HOP = 0.25, 0.025
@@ -201,7 +207,7 @@ def load_src(path):
 
 
 # --------------------------------------------------------------------------- 选材
-def pick_candidates(x, sr, want=6, gap=5.0):
+def pick_candidates(x, sr, want=6, gap=5.0, dur_t=DUR_TARGET):
     """§4.2：0.25 s 窗包络峰 → P85 门 → 精化起跳 → 三读数 → 半强半厚挑 want 个。
 
     ⚠ 本源是**连续岸浪**（99 s 无静音、无孤立瞬态），底噪 RMS ≈ 0.0088，
@@ -235,18 +241,38 @@ def pick_candidates(x, sr, want=6, gap=5.0):
             return lo + i
         return lo + i
 
-    cands = []
-    for p in pk:
+    # ① **定长窗扫描**（沿用旧件沿革 §1.1：从连续素材里按能量挑片段，而不是"按孤立事件峰切短片"）
+    #    理由（实测反转）：按事件峰切 1.45 s ⇒ 段内除了一小下全是底噪 ⇒ 峰值归一后 crest 极高，
+    #    6 段 LUFS 只有 −27.9~−31.9，比旧件 mean −20.09 **轻 8~12 LU**。旧件之所以 1.45 s 还能
+    #    −20 LU，是因为它是「连续戏水」的**密段**。故选材对象改为**定长窗本身**。
+    w = int(round(dur_t * sr))
+    hs = max(1, int(round(WIN_HOP * sr)))
+    starts = np.arange(0, max(1, len(x) - w + 1), hs)
+    cs = np.concatenate([[0.0], np.cumsum(x * x)])
+    e_win = np.sqrt(np.maximum((cs[starts + w] - cs[starts]) / float(w), 0.0))
+    low_win = np.array([low_ratio(x[s:s + w], sr) for s in starts])
+    # 排序键：强拍用 win_rms；厚拍用 **低频能量** win_rms × win_low（**不用占比** ——
+    #   占比会偏好"安静的底噪段"（底噪低频占比反而高）⇒ 初版 4 段全选到同一处。记为实测反转。）
+    wins = [{"s": int(s), "t": float(s) / sr, "win_rms": float(e),
+             "win_low": float(l), "win_lowe": float(e * l)}
+            for s, e, l in zip(starts, e_win, low_win)]
+
+    def locate(win):
+        """在定长窗内定位最强事件峰 → 起跳 / attack / 衰减尾 读数 + 切片边界。"""
+        s0, s1 = win["s"], win["s"] + w
+        inside = [q for q in pk if s0 <= int(round(float(t[q]) * sr)) <= s1]
+        if not inside:                              # 窗内无事件 ⇒ 退到**窗内**包络最大点
+            lq = int(round(s0 / sr / hop)); hq = min(len(env), int(round(s1 / sr / hop)))
+            inside = [lq + int(np.argmax(env[lq:hq]))] if hq > lq else [int(np.argmax(env))]
+        p = max(inside, key=lambda q: float(env[q]))
         ref = float(env[p])
         hgt = max(ref - bed, 1e-9)
         pk_t = float(t[p])
-        # ① 粗起跳：峰前最后一个 env25 低于 ONSET_FRAC 的位置
+        # 粗起跳 → 10 ms 包络精化（两级包络量纲不同，90% 必须取 10 ms 包络**自身的峰**）
         lo_c = max(0, p - int(round(1.0 / hop)))
         seg = env[lo_c:p + 1]
         below = np.flatnonzero(seg <= bed + ONSET_FRAC * hgt)
         coarse_t = float(t[lo_c + (int(below[-1]) if below.size else 0)])
-        # ② 精化 + ③ 起跳 ms：都改在 **10 ms 包络自身的峰**上取相对高度
-        #    （混用 env25 的峰会因两级包络量纲不同 ⇒ 90% 永远够不到，attack 出 nan）
         lo_f = max(0, int(round((coarse_t - 0.12) / hfine)))
         hi_f = min(len(fine), int(round((pk_t + 0.05) / hfine)))
         hgt_f = max(float(fine[lo_f:hi_f].max()) - bed, 1e-9)
@@ -255,55 +281,52 @@ def pick_candidates(x, sr, want=6, gap=5.0):
         i10 = crossing(fine, hgt_f, ATK_LO, lo_f, hi_f, rise=True)
         i90 = crossing(fine, hgt_f, ATK_HI, lo_f, hi_f, rise=True)
         atk = ((i90 - i10) * hfine * 1000.0) if (i10 is not None and i90 is not None) else float("nan")
-        # ④ 尾：峰后相对高度落到 TAIL_FRAC（最长 TAIL_MAX）
+        atk = max(0.0, atk)                 # 两级包络的跳距差可能读出小负值，无物理意义
         hi_t = min(len(env), p + int(round(TAIL_MAX / hop)))
         it = crossing(env, hgt, TAIL_FRAC, p + max(1, int(round(0.06 / hop))), hi_t, rise=False)
         tail_t = float(t[it]) if it is not None else float(t[hi_t - 1])
 
         a = max(0, int(round((onset_t - PRE_ROLL) * sr)))
-        b = min(len(x), int(round((tail_t + TAIL_PAD) * sr)))
-        dur = (b - a) / sr
-        if dur > DUR_MAX:
-            b = min(len(x), a + int(round(DUR_MAX * sr)))
-        elif dur < DUR_MIN:
-            b = min(len(x), a + int(round(DUR_MIN * sr)))
-        dur = (b - a) / sr
-
-        clip = x[a:b]
-        cands.append({
+        b = min(len(x), a + w)
+        if b - a < int(round(DUR_MIN * sr)):        # 贴着文件尾 ⇒ 整段左移
+            a, b = max(0, len(x) - w), len(x)
+        nxt = [float(t[q]) for q in inside if q != p and float(t[q]) > onset_t]
+        return {
             "onset_s": float(onset_t), "peak_s": pk_t, "a": int(a), "b": int(b),
-            "dur": float(dur), "rms": float(np.sqrt((clip ** 2).mean())),
-            "low": low_ratio(clip, sr), "attack_ms": float(atk),
+            "dur": float((b - a) / sr), "attack_ms": float(atk),
             "tail_s": float(tail_t - pk_t), "env_peak": ref,
-        })
+            "win_t": win["t"], "win_rms": win["win_rms"], "win_low": win["win_low"],
+            "win_lowe": win["win_lowe"],
+            "clean": not nxt, "next_ev": min(nxt) - onset_t if nxt else None,
+        }
 
-    # 半「强拍」（RMS）× 半「厚拍」（low），两两间隔 ≥ gap
-    def take(key, n, picked):
+    def take(pool, key, n, picked):
         out = []
-        for c in sorted(cands, key=lambda c: -c[key]):
-            if all(abs(c["onset_s"] - q["onset_s"]) >= gap for q in picked + out):
+        for c in sorted(pool, key=lambda c: -c[key]):
+            if all(abs(c["t"] - q["t"]) >= gap for q in picked + out):
                 out.append(c)
                 if len(out) == n:
                     break
         return out
 
-    n_strong = want // 2
-    strong = take("rms", n_strong, [])
-    thick = take("low", want - n_strong, strong)
-    if len(strong) + len(thick) < want:      # 不够则放宽 gap 再补
-        rest = [c for c in sorted(cands, key=lambda c: -c["rms"])
-                if c not in strong and c not in thick]
-        for c in rest:
-            if len(strong) + len(thick) >= want:
-                break
-            if all(abs(c["onset_s"] - q["onset_s"]) >= gap * 0.4 for q in strong + thick):
-                thick.append(c)
-
-    picks = sorted(strong + thick, key=lambda c: c["onset_s"])
+    # 🔴 **全部按窗能量挑**（§4.2-⑤ 的「一半厚拍」在本源上**不成立**）：
+    #    本源整段低频占比仅 0.0588 %（§3.2）⇒ 按低频占比挑出的段不但不"厚"（占比 0.02 %），
+    #    还比按能量挑的段轻 5~7 LU（实测 −32 vs −27）⇒ 纯粹是挑到了安静段。
+    #    ⇒ 选材只管「哪一次拍击对」，**厚度完全交给 B 段加工档**（heavy 把低频做到 60~86 %）。
+    loud = sorted(wins, key=lambda c: -c["win_rms"])[:max(want * 2, len(wins) // 3)]
+    sel = take(loud, "win_rms", want, [])
+    cands = []
+    for i, win in enumerate(sel, 1):
+        c = locate(win)
+        c["kind"] = "能量#%d" % i
+        clip = x[c["a"]:c["b"]]
+        c["rms"] = float(np.sqrt((clip ** 2).mean()))
+        c["low"] = low_ratio(clip, sr)
+        cands.append(c)
+    picks = sorted(cands, key=lambda c: c["onset_s"])
     for i, c in enumerate(picks, 1):
         c["id"] = "A%d" % i
-        c["kind"] = "强拍" if c in strong else "厚拍"
-    return picks, cands, float(thr), bed
+    return picks, cands, float(thr), bed, len(pk)
 
 
 # --------------------------------------------------------------------------- 加工
@@ -373,11 +396,12 @@ def audition_html(cands, levels, rep_id):
              "48 kHz 单声道 · 峰值统一 0.62 · 离线内嵌、不联网</div>",
              "<h2>A 段 · 6 个候选（raw 档）—— 选 4 个，听「哪一次拍击对」</h2><div class='grid'>"]
     for c in cands:
+        nx = "净尾 ✅" if c.get("next_ev") is None else "⚠ %.2f s 处还有一下" % c["next_ev"]
         parts.append(card(c["id"], c["kind"], c["b64"],
                           "t&nbsp;<b>%.2f s</b> · 时长 <b>%.3f s</b> · 起跳 <b>%.0f ms</b> · "
-                          "低频 <b>%.2f %%</b> · 尾 <b>%.2f s</b> · LUFS <b>%.1f</b>"
+                          "低频 <b>%.2f %%</b> · 衰减尾 <b>%.2f s</b> · %s · LUFS <b>%.1f</b>"
                           % (c["onset_s"], c["dur_r"], c["attack_ms"], c["low"] * 100.0,
-                             c["tail_s"], c["lufs"])))
+                             c["tail_s"], nx, c["lufs"])))
     parts.append("</div><h2>B 段 · 4 个加工档（代表段 %s，RMS 最高）—— "
                  "选 1 档，听「要多沉」</h2><div class='grid'>" % rep_id)
     for lv in levels:
@@ -409,6 +433,8 @@ def main():
     ap.add_argument("--picks", default="", help="例 A1,A3,A4,A6")
     ap.add_argument("--level", default="heavy", choices=LEVEL_ORDER)
     ap.add_argument("--cands", type=int, default=6, help="候选个数（默认 6）")
+    ap.add_argument("--dur", type=float, default=DUR_TARGET,
+                    help="**定长**裁剪秒数（默认 1.450 = 旧 slap1~4.wav 实测时长，§1.1）")
     ap.add_argument("--src", default=str(SRC_MP3))
     ap.add_argument("--out", default="")
     a = ap.parse_args()
@@ -423,21 +449,22 @@ def main():
     print("  sha256[:16] %s ✅ · %.1f kHz · %.3f s · 全段低频占比 %.4f %%"
           % (sha[:16], sr / 1000.0, len(x) / sr, low_ratio(x, sr) * 100.0))
 
-    picks, allc, thr, bed = pick_candidates(x, sr, a.cands)
+    picks, allc, thr, bed, nev = pick_candidates(x, sr, a.cands, dur_t=a.dur)
     print("\n候选（0.25 s 包络峰 ≥ P85 = %.5f；底噪中位 %.5f；全源 %d 个事件 ⇒ 取 %d）"
-          % (thr, bed, len(allc), len(picks)))
-    print("  %-4s %8s %8s %8s %9s %9s %8s %8s"
-          % ("ID", "t(s)", "时长", "起跳ms", "低频%", "RMS", "尾(s)", "LUFS"))
-    print("  " + "-" * 68)
+          % (thr, bed, nev, len(picks)))
+    print("  %-4s %8s %8s %8s %9s %9s %8s %7s %8s"
+          % ("ID", "t(s)", "时长", "起跳ms", "低频%", "RMS", "衰减尾", "净尾", "LUFS"))
+    print("  " + "-" * 76)
     for c in picks:
         y = render(x, sr, c, "raw")
         c["dur_r"] = len(y) / OUT_SR
         c["lufs"] = lufs(y, OUT_SR)
         c["wav"] = wav16(y)
         c["b64"] = base64.b64encode(c["wav"]).decode()
-        print("  %-4s %8.2f %8.3f %8.0f %9.2f %9.5f %8.2f %8.1f  [%s]"
+        nx = "✅" if c.get("next_ev") is None else "⚠+%.2fs" % c["next_ev"]
+        print("  %-4s %8.2f %8.3f %8.0f %9.2f %9.5f %8.2f %7s %8.1f  [%s]"
               % (c["id"], c["onset_s"], c["dur_r"], c["attack_ms"],
-                 c["low"] * 100.0, c["rms"], c["tail_s"], c["lufs"], c["kind"]))
+                 c["low"] * 100.0, c["rms"], c["tail_s"], nx, c["lufs"], c["kind"]))
 
     if a.audition:
         rep = max(picks, key=lambda c: c["rms"])
