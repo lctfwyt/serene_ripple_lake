@@ -16,7 +16,7 @@
 //   SW.scene.sceneRT    —— 已分配好，**不要重建**。颜色附件是 linear（未做 tonemap / 未编码），
 //                          DepthTexture 用 NearestFilter（用 LINEAR 会变全白）。
 //   SW.scene.env        —— **UP3 / AM-017 新增**（只读消费）：程序化环境贴图的运行时状态。
-//                          { ready, equirect, rt, rebuilds, res, err, spread, gate }
+//                          { ready, equirect, rt, rebuilds, res, err, spread, gate, deferred }
 //                          `60-water.js` 只读 `ready` 与 `equirect` 两个字段，**不得重建**。
 //                          ⚠ **AM-029**：`equirect` 是**水面专用**的那一张（带光带）；
 //                            石头 IBL 走 `rt.texture` 的 PMREM（disc 版）—— 两者刻意不是同一张。
@@ -142,7 +142,12 @@
   var ENV_SUN_GEXP = 20;       // 宽泛分量指数（半宽 ≈ 15°）
   var ENV_SUN_AMP = 1.6;       // 太阳瓣总幅度 = amp × max(sunIntensity, 0.25)
   var ENV_GROUND_MIN = 0.16;   // 下半球（"地面/水体半球"）最暗处的相对亮度
-  var ENV_REBUILD_MAX = 40;    // 单次会话重建上限（护栏，防阈值失效时空转）
+  // ⚠ UP13-fix1（AM-030）：原 `var ENV_REBUILD_MAX = 40;`（"单次会话重建上限"）**已废** ——
+  //   它是「白天拖到夜、横向光带不消失」的**根因**：终身配额烧光后本会话**永久不再烘 env**，
+  //   且早退是**静默**的（`env.err` 不置位 / `uEnvReady` 仍 1 / 面板与断言都看不出）。
+  //   见 plan/103-UP13-fix1-env-freeze.md §1。防抖改由「状态停稳 ENV_SETTLE_FRAMES 帧才烘」
+  //   承担；`env.rebuilds` 降级为**只读诊断计数**（不再参与任何判定）。
+  var ENV_SETTLE_FRAMES = 6;   // 状态稳定帧数（≈0.1 s @60fps）后才烘一次 env；拖动全程不烘
 
   // ═══ D2a（AM-024 → AM-025 改档）· 日光亮瓣弥散 ═════════════════════════════
   // 由 `TimeState.envSunSpread`（0 = 夜紧致 / 1 = 白天弥散，AM-024 新增的冻结字段）驱动：
@@ -323,10 +328,11 @@
     // AM-024 D2a：`spread` 追加为只读读数 —— 显示当前生效的 s_eff（0=夜紧致 / 1=白天弥散）
     // AM-029：`gate` 追加为只读读数 —— 当前昼夜门控 g（0 = 纯圆斑 / 1 = 纯光环）
     //   ⚠ `equirect` 自 AM-029 起是**水面专用**的那一张（带光带）；石头 IBL 走 `rt.texture`（PMREM，disc 版）
-    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0, gate: 0 },
+    // AM-030：`deferred` 追加为只读读数 —— 因静默期（debounce）被推迟的累计次数（诊断用）
+    env: { ready: false, equirect: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0, gate: 0, deferred: 0 },
     _envPmrem: null, _envRT: null, _envEq: null, _envEqW: null,
     _envOldRT: null, _envOldEq: null, _envOldEqW: null,
-    _envLast: null, _envEnabledLast: null, _envSpreadGainLast: null, _envMatPending: true, _envMatCount: 0,
+    _envLast: null, _envSeen: null, _envStill: 0, _envEnabledLast: null, _envSpreadGainLast: null, _envMatPending: true, _envMatCount: 0,
 
     init: function (canvas) {
       var w = canvas.clientWidth || window.innerWidth;
@@ -431,6 +437,7 @@
       if (envOn !== this._envEnabledLast) {          // 运行时开关翻转 → 强制重判
         this._envEnabledLast = envOn;
         this._envLast = null;
+        this._envSeen = null;
       }
       // AM-024 D2a：`envSunSpreadGain` 是运行时倍率 —— 在 envDist() 里**会被约掉**
       //   （两端同乘一个增益），所以必须单独监听：一变就作废 `_envLast` 强制重烘。
@@ -443,11 +450,27 @@
       this.env.spread = sunSpread01(s);   // 只读读数（复核 / 断言 / 出图脚本用）
       var envLive = false;
       if (envOn) {
-        if (envDist(s, this._envLast) > ENV_EPS || !this.env.ready) {
-          this._envLast = s;
+        // ── UP13-fix1（AM-030）：env 重建 = 「停稳才烘」+「成功才提交」────────────────
+        // 旧实现两处缺陷（根因见 plan/103-UP13-fix1-env-freeze.md §1）：
+        //   ① `buildEnv()` 首行的**终身配额**闸门（已删）：拖一次刻度尺 = 每个 pointermove
+        //      都换状态对象 ⇒ 每次都重建 ⇒ 40 次配额烧光 ⇒ **本会话永久不再烘 env**
+        //      ⇒ 画面冻在最后那一档（症状：白天拖到夜，横向光带不消失）。
+        //   ② `_envLast = s` 在 `buildEnv()` **之前**提交 ⇒ 被早退后下一帧 `envDist ≈ 0`
+        //      ⇒ 再没有重试机会 ⇒ 不可自愈。
+        // 现改为：状态**仍在动**（拖动中每帧换新对象）就不烘；**停稳 ENV_SETTLE_FRAMES 帧**
+        //   才烘一次；且 `_envLast` **只在烘成功后提交** ⇒ 永不锁死、可自愈、拖动全程 0 次重建。
+        if (envDist(s, this._envSeen) > 0) { this._envStill = 0; } else { this._envStill++; }
+        this._envSeen = s;
+        var envDirty = (envDist(s, this._envLast) > ENV_EPS) || !this.env.ready;
+        if (envDirty && (!this.env.ready || this._envStill >= ENV_SETTLE_FRAMES)) {
           envLive = this.buildEnv(s);
+          if (this.env.ready && !this.env.err) {   // ★ 成功才提交（可自愈的关键）
+            this._envLast = s;
+            this._envStill = 0;
+          }
         } else {
-          envLive = this.env.ready;
+          if (envDirty) { this.env.deferred++; }   // 只读读数：被静默期推迟的累计次数
+          envLive = this.env.ready;                // 沿用上一张贴图（拖动中即是此路径）
         }
       } else if (this.env.ready) {
         this.dropEnv();
@@ -469,7 +492,9 @@
       var P = SW.P;
       var W = Math.max(8, numOr(P.envResolution, 128) | 0);
       var H = Math.max(4, W >> 1);
-      if (this.env.rebuilds >= ENV_REBUILD_MAX) { return this.env.ready; }
+      // ⚠ UP13-fix1（AM-030）：「终身重建配额」闸门**已删** ——
+      //   原为 `if (this.env.rebuilds >= ENV_REBUILD_MAX) { return this.env.ready; }`，
+      //   它是「白天拖到夜、横向光带不消失」的根因（见 plan/103-UP13-fix1-env-freeze.md §1）。
       try {
         if (!this._envPmrem) {
           this._envPmrem = new THREE.PMREMGenerator(this.renderer);
