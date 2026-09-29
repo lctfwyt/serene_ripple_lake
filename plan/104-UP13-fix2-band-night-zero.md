@@ -282,5 +282,29 @@ ok 13 [main] › plan\pw\tests\60-envgate.spec.mjs:75:1 › UP13-fix2 · 光带�
 
 ### 10.7 提交凭证
 
-（见 §10.7 补记）
+模式 **A 独占**（本波次无并行包）· 信息带 `AM-031` · `git add` **逐条列名**（未用 `-A`）· 未 `--amend` / 未动 tag / 未动基线。
+
+```
+commit 904dad0a689d6fc6bf7851910d57cbdeb4a86791
+Author: lctfwyt <lctfwyt@outlook.com>
+Date:   Tue Sep 29 22:41:38 2026 +0800
+
+    fix(up13): 光带夜段结构性归零 —— 水面按 bandGate() 选无光带贴图（AM-031）
+
+ plan/02-AMENDMENTS.md                 |   7 ++-
+ plan/04-BOARD.md                      |   9 ++-
+ plan/104-UP13-fix2-band-night-zero.md |  97 +++++++++++++++++++++++++++++-
+ plan/_STATUS.md                       |   5 +-
+ plan/pw/tests/60-envgate.spec.mjs     | 108 +++++++++++++++++++++++++++++++++-
+ src/30-scene.js                       |  14 ++++-
+ src/60-water.js                       |  23 +++++++-
+ 7 files changed, 249 insertions(+), 14 deletions(-)
+```
+
+**白名单越界核查**（逐条对照 §4）：`src/00-config.js` / `src/20-time.js` / `src/40-lakebed.js` / `src/90-debug.js` /
+`01-CONTRACT.md` / `plan/wp5-assert.js` / `plan/wp5-env.js` / `plan/pw/__snapshots__/**` / `plan/pw/dist-baseline.txt` /
+`dist/**` —— **全部 0 改动**（`git status` 与 `git show --stat` 双证）。
+白名单外的两个文件 `plan/02-AMENDMENTS.md`（AM-031 翻 ✅，收尾生命周期）与 `plan/04-BOARD.md`（§5 板：清自己箱 + 给主控留行）
+是 `03-COLLAB-PROTOCOL §5/§7` 要求的写作面，**未改任何他人规格**。
+
 
