@@ -77,6 +77,11 @@ audio-build/
 *.tmp.wav
 *.crossfade.wav
 
+# ---------- 8b. 图标派生工作目录（UP17 / AM-036：PWA 图标）----------
+# 候选页、master 源、中间栅格件都放这里 —— 都能由脚本重建 ⇒ 不入库。
+# **入库的只有交付件** `app/public/icons/` 那 6 个 PNG/ICO/SVG。
+icon-build/
+
 # ---------- 9. 一次性诊断件 ----------
 # 项目纪律：临时脚本一律 `_` 前缀，用完即删（见 plan/_STATUS.md §清理）
 # ⚠️ 注意：plan/_STATUS.md 是**正式台账**，不是临时件 —— 别被本段误导
