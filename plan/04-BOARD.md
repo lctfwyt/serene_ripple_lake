@@ -115,6 +115,8 @@
 | 09-29 23:5x | 主控 | 开包：**AM-034** slap 拍击采样换源（`108`）。白名单 = `src/10-audio.js` + `assets/audio/slap1~4.wav`。**规格未定**（雨桐「具体细节我来沟通」）⇒ 本包先落沟通清单，答题后再派施工方。⚠ 若选「改数量/改名」会撞 `50-brand.spec.mjs` 判据 6（音频文件名全集）⇒ 由 AM-034 授权一并改 | ⬜ 来源已裁，待素材 |
 | 09-30 00:2x | 主控 | **来源裁决**：`sounds-mp3` **不可商用** —— 站方 About 页原文「site is not intended for commercial use」+ 素材自述「collected from open sources」（不持有版权、给不出授权），全站无 license 页 ⇒ **§3-A「换不换」作废，直接换源**（候选 `sound dino`，与 `bird1~6` 同源）。**先前的「免费商用免署名」系误记** | ✅ 已裁（本轮提交） |
 | 09-30 00:4x | 主控 | **授权已清 + 派试听段**：新源（`lake-water-breaks-on-a-rocky-shore.mp3`）出处 = **`sound dino`**（雨桐确认）⇒ 与 `bird1~6` **同源同档**（*free for personal and commercial work, no attribution*，可商用免署名）。**派 UP15 出试听件**：`plan/audio-slap-cut.py --audition` → `108 §4.6` 试听页（**不落 `assets/audio/`、不改 `src/`**） | 🔶 施工中，待雨桐试听定档 |
+| 09-30 01:0x | UP15 施工方 | ✅ 试听段已交：`plan/audio-slap-cut.py` + `audio-build/slap-audition/audition.html`（6 候选 + 4 档位内嵌）。源指纹 ✅ · 全段低频 0.0588 % 与 `108 §3.2` 逐位吻合 · `pw:frozen` ✅ · `src/`+`assets/` 一字未动。`heavy` 低频 0.01 %→86 %、+2.9 LU | ⬜ 待你 present 给雨桐定档（`108 §11.6`）|
+| 09-30 01:0x | UP15 施工方 | ⚠ **§4 三处口径订正**（包内，未开 AM）：① 尾「<8 % 峰」在本源（连续岸浪，8 % 峰低于底噪）永远达不到 ⇒ 改**相对高度** 55 %/25 % + 1.4 s 帽；② 5 ms 窗 RMS 对宽带噪声≈\\|x\\| ⇒ 改 **10 ms 窗 / 5 ms 跳 + 连续 3 跳**；③ `deep` 的 `resample_poly(100,115)` 与注解「降调 0.87× · 变慢」**方向相反** ⇒ 按意图取 `(115,100)`（0.550→0.633 s，+15 % ✅）。明细 `108 §11.4` | ⬜ 主控知悉 |
 
 ## UP16
 
