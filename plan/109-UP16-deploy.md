@@ -181,3 +181,23 @@
 `git add netlify.toml .nvmrc package.json README.md plan/109-UP16-deploy.md plan/02-AMENDMENTS.md plan/98b-AMENDMENTS-ARCHIVE-v1.md plan/04-BOARD.md plan/_STATUS.md`（**逐条列名，禁 `-A`**）
 
 > **遗留（唯一）**：判据 7 真机上线 —— 拖一次 `dist/` → 打开链接 → 水面正常、BGM 能播。**判定权在雨桐**，本包不代上传。
+
+### 5. 提交（`git log -1 --stat` · `§7.1-4`）
+
+```
+commit ab36aa9b188e76e3ad97f316bd4a46f6ea6569f8
+    chore(up16): Netlify 部署配置 + README 部署节（AM-035）
+
+ .nvmrc                            |  1 +
+ README.md                         | 24 ++++++++++++++++++
+ netlify.toml                      | 48 ++++++++++++++++++++++++++++++++++++
+ package.json                      |  3 ++-
+ plan/02-AMENDMENTS.md             | 31 +++---------------------
+ plan/04-BOARD.md                  |  5 ++--
+ plan/109-UP16-deploy.md           | 51 +++++++++++++++++++++++++++++++++++++++
+ plan/98b-AMENDMENTS-ARCHIVE-v1.md | 33 +++++++++++++++++++++++++
+ plan/_STATUS.md                   |  4 ++-
+ 9 files changed, 169 insertions(+), 31 deletions(-)
+```
+
+提交后 `git status --short` ⇒ **空**（工作区干净）。
