@@ -1,0 +1,48 @@
+# netlify.toml —— UP16 · Netlify 静态部署（AM-035）
+#
+# ⚠ dist/ 被 .gitignore 忽略（这是正确的）：仓库里没有 dist，
+#   所以**必须让 Netlify 自己构建**，不能直接上传目录当源码。
+#   免登录拖拽（app.netlify.com/drop）不受本文件影响 —— 那条路不读配置。
+
+[build]
+  command  = "npm run build"
+  publish  = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"          # 与 .nvmrc 双保险（vite@8.3.0 要求 ^20.19 || >=22.12）
+
+# ---- 缓存策略 ----
+# 核心：能长缓存的只有"永不改名又不会变"的音频；入口与 SW 必须每次校验，
+#       否则发了新版用户端刷不出来（尤其后面 UP17 上了 Service Worker 之后）。
+
+# ① 入口：绝不长缓存 —— 否则更新发不出去
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# ② Service Worker：绝不长缓存（由 UP17 产出；文件不存在时这条规则自动无效，不报错）
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    # SW 根作用域所需的响应头（Netlify 默认已允许，显式写防漂移）
+    Service-Worker-Allowed = "/"
+
+# ③ manifest：正确 MIME（否则浏览器不认 PWA manifest）
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# ④ 音频与图标：文件名不含 content hash ⇒ 用 7 天而非 immutable（换了要能刷出来）
+[[headers]]
+  for = "/assets/audio/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

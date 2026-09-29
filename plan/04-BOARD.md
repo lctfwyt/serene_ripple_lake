@@ -23,7 +23,7 @@
 | 主控                                 | 0     | 分包 → 主控（09-29 23:3x 清零） |
 | **UP14** | 0 | ✅ **已收口**（AM-033 品牌改名 + 标题行 · 09-30 主控重录基线 + 重建 dist），见 `plan/106-UP14-brand.md §9` |
 | **UP15** | 0 | ✅ **已收口**（AM-034 slap 换源全段 · 09-30 02:1x 主控）—— 试听 ✅ `5276d57` · 落地 ✅ `5283aef` · **换源二轮 ✅** `3469c4f`/`024a7c1` · 混音 ✅ `ef50754`/`c56267b`/`8f38014` · 定档 `flowVolume 0.20` / `slapVolume 0.30` / `handVolume 0.80` · `dist` 重建 **790 636 B** + 重落基线 · 主控独立复核 **16/16**。**本包为「多轮打磨包」**：往返期间不动 `02-AMENDMENTS.md`，收口时 AM-034 落 `§2` **一行**（协议 §3）。见 `plan/108-UP15-slap.md §11.8`/`§13`/`§14` |
-| **UP16** | 0 | ⬜ **待开工**（AM-035 Netlify 部署配置）。前置 UP14 合并 · 见 `plan/109-UP16-deploy.md` |
+| **UP16** | 0 | ✅ **已交**（AM-035 Netlify 部署配置 · 09-30 02:5x），见 `plan/109-UP16-deploy.md §完工记录` |
 | **UP17** | 0 | ⬜ **阻塞在图标**（AM-036 PWA 可安装）。图标规格见 `plan/110-UP17-pwa.md §3` |
 | **UP13-fix3**                     | 0     | **已交**，见 `plan/105-UP13-fix3-band-mix.md §11` |
 | **UP13-fix2**                     | 0     | 已交，见 `plan/104-UP13-fix2-band-night-zero.md §10` |
@@ -125,7 +125,8 @@
 
 | 时间 | 发件人 | 消息 | 处理 |
 | --- | --- | --- | --- |
-| 09-29 23:5x | 主控 | 开包：**AM-035** Netlify 上云（`109`）。白名单 = `netlify.toml`(新) · `.nvmrc`(新) · `package.json` · `README.md`。**零渲染代码**；`sw.js`/`manifest` 两条缓存头写给 UP17 用（文件未生成前自动无效）。前置：UP14 合并（package.json/README 重叠） | ⬜ 待开工 |
+| 09-29 23:5x | 主控 | 开包：**AM-035** Netlify 上云（`109`）。白名单 = `netlify.toml`(新) · `.nvmrc`(新) · `package.json` · `README.md`。**零渲染代码**；`sw.js`/`manifest` 两条缓存头写给 UP17 用（文件未生成前自动无效）。前置：UP14 合并（package.json/README 重叠） | ✅ 已完工（`109 §完工记录`） |
+| 09-30 02:5x | UP16 施工方 | ✅ 已交：`netlify.toml`（构建+发布+NODE_VERSION=22+**5 条缓存头**）+ `.nvmrc`(22) + `package.json` 加 `deploy` 一行 + README「部署」节。两入口 **15/15** · `pw:frozen` ✅ · `pw:dist` 与基线逐文件一致（**未重建 dist**，以 mtime>`src` 证明 dist≡HEAD）· 白名单外零改动 | ⬜ **判据 7 真机上线挂雨桐**（不代上传）· ⬜ `00-INDEX §3` 波次 17 翻 ✅ 属主控 |
 
 ## UP17
 

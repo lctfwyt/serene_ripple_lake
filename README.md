@@ -83,6 +83,29 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
 另：`npm run dev` 后开 `http://localhost:5173/jsm-smoke.html` 可看 `three/examples/jsm` 是否可达
 （`EffectComposer` / `UnrealBloomPass` / `RGBELoader` —— **UP2 / UP3 的前置**）。
 
+## 部署（Netlify）
+
+`dist/` 是**纯静态、全相对路径、零外部请求**（`dist/index.html` 约 772 KB 内联 + `assets/audio/` 14 文件 8.08 MB
+⇒ 合计 **≈ 8.9 MB / 15 文件**），任意域名、任意子路径都能开。**不需要 SPA 回退**（只有 1 个 HTML、无前端路由）。
+
+`netlify.toml` 已写好构建命令 / 发布目录 / 5 条缓存头，下面三种方式任选。
+
+| 方式 | 操作 | 说明 |
+|---|---|---|
+| **A · 拖文件夹**（最快） | `npm run build` → 打开 `app.netlify.com/drop` → 拖**整个 `dist/` 目录** | 🔴 **必须拖目录**：只拖 `index.html` 则 `assets/audio/` 不跟着走 ⇒ **BGM / 拍击 / 鸟鸣全静音**（代码按相对路径找它们）。⚠ **免登录站点 1 小时后自动删除**，上传后要点 **claim** 认领到免费账号 |
+| **B · CLI**（本仓库） | `npm run build` → `npm run deploy` | 走 `npx --yes netlify-cli`，不进依赖树；首次会提示登录并问「新建站点 / 关联已有站点」 |
+| **C · Git 集成**（可选） | Netlify 连仓库 → Build `npm run build` · Publish `dist` | 每次 push 自动部署。⚠ `dist/` 被 `.gitignore` 忽略（正确）⇒ **必须让 Netlify 自己构建**，仓库里没有 `dist` |
+
+- **先把 `dist/` 建出来**：`npm run build`（A/B 两条路都是上传本地产物，不读 `netlify.toml` 的构建段）。
+- **体积与额度**：8.9 MB / 次；Netlify 免费额度 100 GB 月带宽 ⇒ 约 **1.1 万次完整冷加载**（个人分享绰绰有余）。
+- **缓存策略**（`netlify.toml`）：`/index.html` · `/sw.js` · `/manifest.webmanifest` 一律 `max-age=0, must-revalidate`
+  （否则发了新版刷不出来）；`/assets/audio/*` 与 `/icons/*` 是 7 天 —— 文件名不含 content hash，不能用 `immutable`。
+  `/sw.js` 与 `/manifest.webmanifest` 那两条**现在自动无效**（文件还不存在，Netlify 不报错），UP17 产出后自动生效。
+- 🔴 **公开部署 = 向公众传播音频资产** ⇒ 上线前先核「资产与授权」一节与 `plan/70-REPO-BASELINE.md §6`
+  （BGM 两首的商用口径、以及仓库若公开时是否把 mp3 移出 git 历史 —— 该条仍挂雨桐）。
+- **「整包下载到本地」不需要额外脚本**：`npm run build` 后把**整个 `dist/` 目录**压成 zip 发给对方，
+  解压双击 `index.html` 即开（相对路径 + 免构建同款能力）。代价：8.9 MB 一份、改版要重发、无更新机制。
+
 ## 文件
 | 文件 | 职责 |
 |---|---|
@@ -102,6 +125,7 @@ python plan/audio-baseline.py --seam-ab   # 音频资产体检：LUFS / 真峰�
 | `assets/audio/` | BGM + 拍击采样 |
 | `package.json` · `package-lock.json` | 依赖与脚本（**`package-lock.json` 必须入库**） |
 | `vite.config.mjs` | 构建配置：singlefile + 音频随行 + dev HMR 垫片（**见上方"开发 / 构建"**） |
+| `netlify.toml` · `.nvmrc` | 部署配置：构建命令 / 发布目录 / 5 条缓存头 · Node 锁 22（**见上方"部署"**） |
 | `app/` | 构建入口：`index.html` / `main.js` / `three-global.js` / `jsm-smoke.*`（dev-only） |
 | `dist/` | 构建产物（**不入库**，`npm run build` 重建） |
 

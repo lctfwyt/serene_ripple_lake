@@ -19,29 +19,6 @@
 
 ## 1. 当前未决变更单
 
-### AM-035 · UP16 Netlify 上云 —— 部署配置与文档（2026-09-29 23:5x · ⬜ 未决）
-
-**变更**：新增 `netlify.toml`（构建/发布 + 5 条缓存头 + manifest MIME）与 `.nvmrc`；`package.json` 加 1 条 `deploy` script；`README.md` 加「部署」一节。**零渲染代码。**
-
-**影响面（跨包写权限授权）**
-
-| 文件 | 契约所有者 | 动作 |
-|---|---|---|
-| `package.json` | 共享 | 加 1 条 script（其余不动） |
-| `README.md` | WP5 | 追加「部署」一节 |
-| `netlify.toml` · `.nvmrc` | —（新文件） | 新建（无需授权） |
-
-**逐包动作**：只有 **UP16 一个包**（`109-UP16-deploy.md`，波次 17，独占）。
-**前置**：UP14 合并（`package.json` / `README.md` 与它重叠 ⇒ 必须串行）。
-
-**断言变更**：**无** —— 零渲染改动 ⇒ `assert` / `assert:dist` 必须仍 15/15 · `pw` 全绿 · 冻结件零改动。
-
-**⚠ 与 AM-036 的配套**：本 AM 写的 `/sw.js` · `/manifest.webmanifest` 两条缓存头，其**响应对象由 AM-036 产出**；文件未生成前该规则自动无效（Netlify 不报错）。
-
-**状态**：⬜ 未开工。
-
----
-
 ### AM-036 · UP17 PWA 可安装 —— manifest / Service Worker / 图标（2026-09-29 23:5x · ⬜ 未决）
 
 **变更**：`app/public/` 下新增 `manifest.webmanifest` · `sw.js` · `icons/*`；`app/index.html` 的 `<head>` 加 3~6 行；`app/main.js` 末尾追加 SW 注册块；`README.md` 追加 PWA 小节。
@@ -72,9 +49,9 @@
 
 ---
 
-> 全库最新**已应用** = **AM-034**（UP15 slap 换源 · 三段 + 一次换源二轮 · `108` · 2026-09-30 02:1x 主控收口）；
-> 其上一条为 AM-033（UP14 品牌改名 · `106`）；再上为 AM-032（UP13-fix3 · `105 §11`）。第五轮明细 `102 §9`。
-> 最新**未决** = **AM-035 / AM-036**（UP16 Netlify · UP17 PWA）。
+> 全库最新**已应用** = **AM-035**（UP16 Netlify 部署配置 · `109` · 2026-09-30 02:5x 施工方应用并自翻 ✅，全文已入 `98b`）；
+> 其上一条为 AM-034（UP15 slap 换源 · `108` · 2026-09-30 02:1x 主控收口）；再上为 AM-033（UP14 品牌改名 · `106`）。第五轮明细 `102 §9`。
+> 最新**未决** = **AM-036**（UP17 PWA · 阻塞在图标）。
 
 **挂账（不是变更单，明细见 `_STATUS.md §4`）**
 
@@ -125,7 +102,7 @@
 | AM-032 | 09-29 | UP13-fix3：光带**与月亮柱同频** —— 生产端恒烘两张满档贴图 + 消费端 `mix(base, band, bandGate())`（治「夜→昼 必须松手才出现」） | UP13 | ✅ 已应用（`105 §11`） |
 | AM-033 | 09-29 | **UP14 品牌改名**：`静水 · still water` → `静湖微澜 · Serene Ripple Lake` + 首屏「轻触水面」上方加一行中英网页名（同起同落）。**跨包写权限授权**：`index.html`(WP1) · `app/index.html` · `src/85-fallback.js`(WP5) · `README.md`(WP5) · `package.json` | UP14 | ✅ 已应用（`106` · 波次 15 · 主控收尾 09-30：重录像素基线 **2 张** + `dist` 重建 **789133 B**） |
 | AM-034 | 09-29 | **UP15 slap 拍击采样换源**：写权限授权（`src/10-audio.js` · `assets/audio/slap1~4.wav` 同名替换 · 新建 `plan/audio-slap-cut.py` · **第三段扩权** `src/00-config.js` + `src/90-debug.js`）。原源 `sounds-mp3` **已裁不可商用**；**两版新源出处均 = `sound dino` ✅**（源② `small-splashes-of-water.mp3` 定案）；**规格 = `108 §4`**；**第三段 = 混音平衡 `flowVolume/slapVolume`（`108 §12`）** | UP15 | ✅ **已收口（2026-09-30 02:1x）** —— 三段 + 一次换源二轮全完（`108 §11`/`§11.8`/`§13`/`§14`）· 定档 `0.20 / 0.30 / 0.80` · `dist` 重建 + 重落基线 · 两入口 15/15 · `pw` 25 passed · 主控独立复核 **16/16** |
-| AM-035 | 09-29 | **UP16 Netlify 上云**：`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节。**零渲染代码** | UP16 | ⬜ 未决（`109` · 波次 17） |
+| AM-035 | 09-29 | **UP16 Netlify 上云**：`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节。**零渲染代码** | UP16 | ✅ **已应用**（`109` · 波次 17 · 2026-09-30 02:5x；两入口 15/15 · `pw:frozen` ✅ · `pw:dist` 与基线一致 · 未重建 `dist`。全文已入 `98b`）· ⬜ 判据 7 真机上线挂雨桐 |
 | AM-036 | 09-29 | **UP17 PWA 可安装**：`app/public/`（manifest · sw · icons）+ `app/index.html` head + `app/main.js` 注册块。**只改构建入口、不动根入口** | UP17 | ⬜ 未决（`110` · 波次 18） |
 
 > **编号纪律**：变更单号**不提前预留**，由主控开包当刻分配 —— 三次撞号教训（AM-012/013 被 UP5/截帧占用、AM-010 被 UP9 占用、AM-011 被 UP10 占用）。

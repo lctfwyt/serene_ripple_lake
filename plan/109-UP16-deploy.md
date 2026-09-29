@@ -130,3 +130,54 @@
 **主控专属**：`00-INDEX` 波次 17 翻 ✅ · 契约若需记「部署形态」一行 · AM-035 状态行（施工方按生命周期自翻 ✅ 亦可，见 §7.4-②）。
 
 > **当前状态：⬜ 待开工**（等 UP14 合并；AM-035 与本文件同批落）。
+
+---
+
+## 完工记录（2026-09-30 02:5x · UP16 施工方）
+
+> ⚠ **本包无独立复核方，复核为同上下文自证**（`03-COLLAB-PROTOCOL §7.2-1`）。
+> 下面每条判据都给机械证据；观感/真机类（判据 7）一律挂雨桐，不由施工方判定通过。
+
+### 1. 改动清单（= §7.4 白名单 ①，逐条列名）
+
+| # | 文件 | 动作 |
+|---|---|---|
+| 1 | `netlify.toml`（新建） | `[build]`（`command=npm run build` / `publish=dist`）+ `[build.environment] NODE_VERSION=22` + **5 条 `[[headers]]`** |
+| 2 | `.nvmrc`（新建） | `22` |
+| 3 | `package.json` | **加 1 行** `"deploy": "npx --yes netlify-cli deploy --prod --dir=dist"`（其余字段一字未动，未加任何依赖） |
+| 4 | `README.md` | 新增 `## 部署（Netlify）` 一节（三种方式 + 缓存策略 + 授权前置 + 整包 zip）+ 文件表加 1 行 |
+
+### 2. 判据逐条实测
+
+| # | 判据 | 证据 |
+|---|---|---|
+| 1 | TOML 语法合法 | `python -c "import tomllib…"` 解析通过 → `command=npm run build` · `publish=dist` · `NODE_VERSION=22` · `headers count: 5` · 缺失 `[]`。**未走 `netlify-cli build --dry`**：那条要 `npx` 拉一个几十 MB 的 CLI，而本包只改静态配置；改用 stdlib `tomllib` 做**键值齐全**校验（§5 判据 1 明列的第二种做法） |
+| 2 | 构建链未坏 | **刻意不重建 `dist`**（`dist/**` 不在白名单，重建有改字节、打挂 `dist-baseline.txt` 的风险）。改用两条机械证据证明「dist ≡ f(HEAD src)」：<br>① `dist/index.html` mtime **02:33:59** > 最后改动的 `src/10-audio.js` **02:33:58**（`find src assets app index.html vite.config.mjs -newer dist/index.html` ⇒ **空**）<br>② `node plan/pw/verify-dist.mjs check` ⇒ **15 文件逐文件一致**（`index.html` **790 636 B**）· 引用泄漏检查：**无** |
+| 3 | 两入口 15/15 | `npm run assert` ⇒ **15/15**（JS 错误 0 · Log error 0）· `npm run assert:dist` ⇒ **15/15**（同上） |
+| 4 | 冻结件零改动 | `npm run pw:frozen` ⇒ ✅（`wp5-assert.js` `abf23d7d…` · `wp5-env.js` `bd9dd0e8…` 均与基线逐字一致） |
+| 5 | headers 覆盖齐 | 见判据 1 —— `/index.html` · `/sw.js` · `/manifest.webmanifest` · `/assets/audio/*` · `/icons/*` 五条逐条存在 |
+| 6 | 不该变的没变 | `git status --short` 仅 4 项：` M README.md` · ` M package.json` · `?? .nvmrc` · `?? netlify.toml`。反选过滤（白名单外）⇒ **空**。`src/**` · `assets/**` · `index.html` · `app/index.html` · `vite.config.mjs` · `plan/pw/**` · `dist/**` 全部零改动 |
+| 7 | **真机上线** | ⬜ **挂雨桐** —— 本包不激活站点、不上传 |
+
+### 3. 两处口径说明（不是偏离，是主动选边）
+
+1. **不重建 `dist`**：`109 §5-2` 原文写的是「`npm run build` 成功」，与 `§6 禁区` 的「`dist/**` 不重建」在字面上冲突。
+   取禁区：本包零渲染改动 ⇒ 重建的**唯一后果**是赌字节不变，赌输了就打挂主控刚落好的基线（`dist-baseline.txt` 属主控专有，我无权重录）。
+   ⇒ 改用「mtime 单调 + `pw:dist check` 逐文件一致」证明 dist 与 HEAD 源码一致，**判据强度不降**（判据 2 的立法意图是「构建链没被我弄坏」，而本包连 `vite.config.mjs` 都没碰）。
+2. **`/icons/*` 缓存头现在无效**：`dist/` 里没有 `icons/`（UP17 才产出）。Netlify 对「规则命中不到文件」不报错 ⇒ 与 AM-036 的配套说明一致，保留。
+   `/sw.js` / `/manifest.webmanifest` 同理，README 里已写明「这两条现在自动无效」。
+
+### 4. 收尾四步
+
+| 步 | 落地 |
+|---|---|
+| ① 包文档完工记录 | 本節 |
+| ② `_STATUS.md` 一行 | §2「升级 UP（波次 3+）」表追加 **UP16** 一行（遗留列挂判据 7 雨桐 + 波次 17 翻 ✅ 属主控） |
+| ③ 跨包影响 | **无新 AM** —— 本包只写 AM-035 已授权的两个文件 + 两个新文件。按生命周期把 AM-035 翻 ✅：`02-AMENDMENTS §1` 全文块**移入 `98b`**（含应用记录），`§2` 总表该行翻 ✅，「最新已应用」注同步 |
+| ④ 板上 ⬜ 清零 | `04-BOARD` 的 **UP16 箱**那条「⬜ 待开工」→ ✅（附完工指向）；收件箱目录 UP16 行同步 |
+
+**提交**：模式 A（独占，`git status` 仅本包 4 个文件）
+`chore(up16): Netlify 部署配置 + README 部署节（AM-035）`
+`git add netlify.toml .nvmrc package.json README.md plan/109-UP16-deploy.md plan/02-AMENDMENTS.md plan/98b-AMENDMENTS-ARCHIVE-v1.md plan/04-BOARD.md plan/_STATUS.md`（**逐条列名，禁 `-A`**）
+
+> **遗留（唯一）**：判据 7 真机上线 —— 拖一次 `dist/` → 打开链接 → 水面正常、BGM 能播。**判定权在雨桐**，本包不代上传。

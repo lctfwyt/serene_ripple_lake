@@ -2641,3 +2641,36 @@ AM-020 时它只动 −1 B（几乎全被容差吃掉），本轮 +25 B ⇒ **�
 **本条最有价值的一条（再次实证 §7.2）**：我在批 2 里已经把"降 `rvar` 拿余量"当成了正解，
 **差一步就写进配置** —— 是"用带后期的真实画面重测"这一步把它拦下来的。
 ⇒ **判据指标（`#6`）向好 ≠ 观感向好**，这是 AM-020 之后的**第二次**同源实证。
+
+---
+
+# AM-035 · UP16 Netlify 上云 —— 部署配置与文档（2026-09-29 23:5x 开单 · ✅ 已应用 2026-09-30 02:5x）
+
+**变更**：新增 `netlify.toml`（构建/发布 + 5 条缓存头 + manifest MIME）与 `.nvmrc`；`package.json` 加 1 条 `deploy` script；`README.md` 加「部署」一节。**零渲染代码。**
+
+**影响面（跨包写权限授权）**
+
+| 文件 | 契约所有者 | 动作 |
+|---|---|---|
+| `package.json` | 共享 | 加 1 条 script（其余不动） |
+| `README.md` | WP5 | 追加「部署」一节 |
+| `netlify.toml` · `.nvmrc` | —（新文件） | 新建（无需授权） |
+
+**逐包动作**：只有 **UP16 一个包**（`109-UP16-deploy.md`，波次 17，独占）。
+**前置**：UP14 合并（`package.json` / `README.md` 与它重叠 ⇒ 必须串行）—— ✅ 已满足（`5c35c6b`）。
+
+**断言变更**：**无** —— 零渲染改动 ⇒ `assert` / `assert:dist` 必须仍 15/15 · `pw` 全绿 · 冻结件零改动。
+
+**⚠ 与 AM-036 的配套**：本 AM 写的 `/sw.js` · `/manifest.webmanifest` 两条缓存头，其**响应对象由 AM-036 产出**；文件未生成前该规则自动无效（Netlify 不报错）。
+
+**应用记录（2026-09-30 02:5x · UP16 施工方）**
+
+| 判据 | 结果 |
+|---|---|
+| 1 TOML 语法合法 | ✅ `tomllib` 解析通过：`command=npm run build` · `publish=dist` · `NODE_VERSION=22` · **5 条 headers** 齐（`/index.html` · `/sw.js` · `/manifest.webmanifest` · `/assets/audio/*` · `/icons/*`） |
+| 2 构建链未坏 | ✅ **未重建 `dist`**（`dist/**` 不在本包白名单）：以 mtime 证明 `dist/index.html`（02:33:59 / 790 636 B）**晚于**最后改动的 `src/10-audio.js`（02:33:58）＝ dist 已是 HEAD 产物；`pw:dist check` ⇒ **15 文件逐文件一致** |
+| 3 两入口 15/15 | ✅ `npm run assert` **15/15** · `npm run assert:dist` **15/15**（console 0 错误） |
+| 4 冻结件零改动 | ✅ `npm run pw:frozen` 两 sha256 逐字一致 |
+| 5 headers 覆盖齐 | ✅ 见判据 1 |
+| 6 不该变的没变 | ✅ `git status` 仅 `README.md` / `package.json`（M）+ `netlify.toml` / `.nvmrc`（??）；`src/**` · `assets/**` · `index.html` · `app/index.html` · `vite.config.mjs` 一字未动 |
+| 7 真机上线 | ⬜ **挂雨桐**（`109 §5-7`）—— 本包不激活站点、不上传 |
