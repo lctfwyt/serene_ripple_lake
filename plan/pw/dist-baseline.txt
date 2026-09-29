@@ -1,5 +1,5 @@
 # dist/ 内容基线 —— UP6 验收 #5「Playwright 不进交付物」的比对基准。
-# 记录环境：node v22.22.2 · vite 8.3.0 · three 0.160.0 · 2026-09-29T20:02:01.521Z
+# 记录环境：node v22.22.2 · vite 8.3.0 · three 0.160.0 · 2026-09-29T21:10:51.896Z
 # 复核：npm run build && npm run pw:dist      （不一致 = dist ≡ f(src) 被破坏，或有 dev-only 引用泄漏）
 6f977ada98e61c08286d0531cdda508cacec8e7212365f3dadb3b284e742d4d7  ./assets/audio/bgm-mingjing.mp3
 153a206a076724b526acec7738997e3ee2a1ede5a0b59fa6e78a1158bce3ca5a  ./assets/audio/bgm-weifeng.mp3
@@ -15,12 +15,12 @@ d81768034ad70234f9e1449dceb80f4935a3defd50fefae4eb10eda0d2db2c38  ./assets/audio
 490c98022d0d3083cfe1d4ec936ad628e8a70efddaf51a7cc1b1c47bb6930a77  ./assets/audio/slap4.wav
 ce8e7cd84e5100e3c8e922299c06fac552f4ba94927c761cc7d4981c716bec88  ./assets/audio/tick1.wav
 f9b10150fe46bcc3066192750aa5e0305ea983beced021c3e7ee16700bcf302a  ./assets/audio/tick2.wav
-5422bdbcb71627d21c1e7291709a0852d8e698b5c4c7bd269a2c2b20404d0029  ./icons/apple-touch-icon.png
+32f16980d9a55f4e5c864f4d300adcea600b04d0072ae84e5161ca0fe89a809b  ./icons/apple-touch-icon.png
 f883b70b4fec56299294d470a5339bc4b07cf316562d9234c0e92f308cc8fb82  ./icons/favicon.ico
 96cb4ac04638150c644aaab0044ea10c35c3be89ad8e810652f562238d478da5  ./icons/favicon.svg
 7099e2408f0a2bbd0ba889579411420b6452598068a49238162bb84c66f199b5  ./icons/icon-192.png
 0900904c1f1d704fb333cc4dd5ad11782fcafd631bb5016d64b627d5afeb93d2  ./icons/icon-512.png
-54b3f7bf44f0b315217bdb34a44fdcf1c6d27b8e04be0e7a01944e5706a64fa7  ./icons/icon-maskable-512.png
+90d15123e521f43f3ce8dee9ca50be192aef9ff83c973d89add0259b86423531  ./icons/icon-maskable-512.png
 46f9f6e16f6c480f66a4c747d79c422b643739156c35cb10aefae254f2b6cfd1  ./index.html
 443c26feaaf708cecc67354fcc9a64f8365b52eb5fcd3247faa3857185f0692e  ./manifest.webmanifest
-afb739c5fe3ea87b0db8ff8035fc85ad43ee5eec598ee906e020bab5e0d6b9f5  ./sw.js
+07291ca89c3a276d04b2631e58bd48d3d704ebe27f132fcd76f2c9dffc4a71bd  ./sw.js

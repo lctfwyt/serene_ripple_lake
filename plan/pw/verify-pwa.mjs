@@ -19,6 +19,10 @@ const ck = (name, ok, detail) => { console.log(`${ok ? '✅' : '❌'} ${name}  $
 const mani = JSON.parse(readFileSync('dist/manifest.webmanifest', 'utf8'));
 const swjs = readFileSync('dist/sw.js', 'utf8');
 const VERSION = (swjs.match(/VERSION\s*=\s*'([^']+)'/) || [])[1];
+// ⚠ 别把期望版本写死成字面量（曾写 `=== 'srl-v2'`，每次 bump 都假红一次）。
+//   真要守的是「dist 产物与源码同步」：源码改了版本、产物还停在旧版 ⇒ 构建没带上。
+const swjsSrc = readFileSync('app/public/sw.js', 'utf8');
+const SRC_VERSION = (swjsSrc.match(/VERSION\s*=\s*'([^']+)'/) || [])[1];
 const rootHtml = readFileSync('index.html', 'utf8');
 
 /* ------------------------------------------------------------------- 浏览器 */
@@ -119,8 +123,9 @@ ck('10 根 index.html 未引用 manifest / sw（不对称裁定守住）',
    !/manifest\.webmanifest/.test(rootHtml) && !/serviceWorker/.test(rootHtml),
    `rel=manifest ${/manifest\.webmanifest/.test(rootHtml) ? '存在（违规）' : '无'} · serviceWorker ${/serviceWorker/.test(rootHtml) ? '存在（违规）' : '无'}`);
 
-ck('11 VERSION 与 sw.js 一致（改 manifest 必须同步 bump）', VERSION === 'srl-v2',
-   `dist/sw.js VERSION = ${VERSION} · manifest.name = ${mani.name}`);
+ck('11 dist 与源码 VERSION 同步（改 manifest / 图标必须 bump）',
+   VERSION === SRC_VERSION && /^srl-v\d+$/.test(VERSION),
+   `dist = ${VERSION} · 源码 = ${SRC_VERSION} · manifest.name = ${mani.name}`);
 
 const realErrs = jsErrs.filter((e) => !/Failed to load resource/.test(e));
 ck('12 console 零 JS 报错（http 入口）', realErrs.length === 0,

@@ -18,7 +18,11 @@
  * ========================================================================== */
 'use strict';
 
-const VERSION     = 'srl-v2';                    // ← 改这个 = 发新版（activate 会清掉旧 cache）
+const VERSION     = 'srl-v3';                    // ← 改这个 = 发新版（activate 会清掉旧 cache）
+// srl-v2 → srl-v3：图标底色深青 `#0b1418` → 米白 `#F5F0E6`（`icon-maskable-512` / `apple-touch-icon` 两件）。
+//   图标同样在 SHELL 里走 **cache-first** ⇒ 换图不 bump 的话，已装上的 PWA 永远吃旧图标。
+//   `manifest.webmanifest` 本次**未改**（`background_color`/`theme_color` 仍 `#0b1418`：
+//   那是 Android 启动画面与状态栏底色，保持深色才能与深色湖面无缝衔接）。
 // ⚠ 连带规则：`manifest.webmanifest` 本身在 SHELL 里、走 **cache-first**。
 //   所以**改 manifest（应用名 / 图标 / 主题色）必须同时 bump 本 VERSION** ——
 //   否则已安装的 PWA 永远吃缓存里的旧 manifest，桌面名、图标都不刷新。

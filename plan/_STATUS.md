@@ -131,7 +131,7 @@
 | AM-033 | UP14 品牌改名 + 首屏标题行（`#brand` 显隐派生自 `#hint.on`） | ✅ 已应用（`106` · 主控收尾 09-30） |
 | AM-034 | UP15 slap 拍击采样换源（写权限：① 试听/落地段 —— `SLAP_LUFS_TRIM` + `slap1~4.wav` 同名替换 + 新建 `plan/audio-slap-cut.py`；② **第三段扩权** —— `src/00-config.js` + `src/90-debug.js`）。**原源 sounds-mp3 已裁不可商用**；**定案源 = `small-splashes-of-water.mp3`（出处 `sound dino` ✅ 可商用免署名）· `A1/A2/A3/A5` × `heavy`**；**规格 = `108 §4`** + **`§12`（混音平衡）** | ✅ **已收口（09-30 02:1x）** —— ①②③ 全完 + **一次计划外换源（§11.8）**；**混音定档 `flowVolume 0.20` / `slapVolume 0.30`** · `dist` 790 636 B · 独立复核 16/16 · 波次 16 翻 ✅（明细 `108 §11.8`/`§13`/`§14`） |
 | AM-035 | UP16 Netlify 上云（`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节） | ⬜ 未决（`109`） |
-| AM-036 | UP17 PWA 可安装（`manifest` + `sw.js` + `icons`） | ✅ **已收口 09-30 03:5x**（`110 §11/§12` · 波次 18 ✅ · 多轮打磨包 ⇒ `02 §2` 恒一行）· 主控独立复核 **12/12** · ⬜ 判据 11 观感挂雨桐 |
+| AM-036 | UP17 PWA 可安装（`manifest` + `sw.js` + `icons`） | ✅ **已收口 09-30 03:5x**（`110 §11/§12` · 波次 18 ✅ · 多轮打磨包 ⇒ `02 §2` 恒一行）· 主控独立复核 **12/12** · ✅ **判据 11 已关闭（09-30 04:5x · `110 §13`）**：雨桐看对比页后裁定「看不出区别，**保持现状**」—— 410 档 · 闪屏现状 · `standalone` · ✅ **图标底色第二轮（09-30 05:0x · `110 §11.2`）**：雨桐裁定「**改成米白，不要纯白** · iOS/Android **一套**」⇒ `maskable-512` + `apple-touch-180` 换 **米白 `#F5F0E6`**（同一 master 派生链、同一 410 构图，只换底色）· `manifest` 两个色值**不动**（`background_color` 是 Android 启动画面底色，保持深色才能与深色湖面无缝）· `sw.js` **VERSION `srl-v2 → srl-v3`**（图标在 SHELL 走 cache-first，不 bump 旧装 PWA 刷不出新图）· 电脑端 `favicon`/`icon-192`/`icon-512` 仍**透明无底** · 自检全绿：`assert`/`assert:dist` 15/15 · `pw` 25 passed · `pw:frozen` ✅ · `pw:dist` 一致（基线已重落）· **`pw:pwa` 12/12（含判据 11 脚本订正：硬编码 `srl-v2` 假红 → 改「dist 与源码同步」）** |
 
 ---
 
