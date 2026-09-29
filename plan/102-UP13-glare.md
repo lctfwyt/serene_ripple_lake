@@ -157,7 +157,7 @@ g = smoothstep(0.52, 0.70, spr)        昼夜门控（spr = TimeState.envSunSpre
 | 中央竖带 − 两侧（全天 6 格） | 12:30 **−1.1** · 18:30 4.2 · 19:45 3.0 · 20:30 **69.0** · 22:30 **90.9** · 05:30 **52.5** |
 | 门控换档钟点 | 光带满档 **06:53→20:01** · 月亮档 **20:22→05:54** |
 
-**参考板**：`plan/shots-up4/diag-v4-daynight.png`（全天 6 格）· `diag-band-ibl.png`（石头 IBL 隔离 before/after）· `diag-band-gate.png`（门控过渡）· `diag-night-spread.png`（夜 15° vs 36°：只换纹理、柱位不动）。
+**参考板**（4 张；2026-09-29 已随「测试图清理」移出工作区，取回 `git show 5460b3a:plan/shots-up4/<名>`）：`diag-v4-daynight.png`（全天 6 格）· `diag-band-ibl.png`（石头 IBL 隔离 before/after）· `diag-band-gate.png`（门控过渡）· `diag-night-spread.png`（夜 15° vs 36°：只换纹理、柱位不动）。
 
 ## 4 · 遗留
 
@@ -460,4 +460,4 @@ g = smoothstep(0.52, 0.70, spr)        昼夜门控（spr = TimeState.envSunSpre
 
 `git add` **逐条列名**（禁 `-A`）：`src/{00-config,20-time,30-scene,60-water}.js` + `plan/{01-CONTRACT,02-AMENDMENTS,04-BOARD,102-UP13-glare,_STATUS}.md` ⇒ `ca94589`（feat）+ `eb6b7c9`（docs 完工记录）。
 
-未提交（`.gitignore`，故意不入库）：`_rminusb.mjs` / `_am029probe.mjs`（临时诊断脚本）· `plan/shots-up4/diag-band-*.png`。基线段 `plan/pw/**` 未动（`§7.1-3` 主控地盘）。
+未提交（`.gitignore`，故意不入库）：`_rminusb.mjs` / `_am029probe.mjs`（临时诊断脚本）· `plan/shots-up4/diag-band-*.png`（诊断图）。**两者均已于 2026-09-29 清除**（`docs(plan): 清理测试图`）。基线段 `plan/pw/**` 未动（`§7.1-3` 主控地盘）。

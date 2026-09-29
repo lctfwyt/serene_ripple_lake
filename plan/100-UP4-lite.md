@@ -345,10 +345,13 @@ roughness 512² `NoColorSpace` 同 repeat；macro 128² `NoColorSpace` + `Linear
 `pw` **14 passed** · 两入口 console 0。
 
 
-### 7.9 对照静帧（审美判断用，非证据）
+### 7.9 对照静帧（结论留档 · 图已清理）
 
-`plan/shots-up4/bedtex-before-after.png` —— 上「改后（贴图开）」/ 下「改前（`?bedtex=0`）」，
-同一钉相位帧裁近场湖底带（CSS y 424~720）。
+原对照静帧 `plan/shots-up4/bedtex-before-after.png` —— 上「改后（贴图开）」/ 下「改前（`?bedtex=0`）」，
+同一钉相位帧裁近场湖底带（CSS y 424~720）—— 已于 **2026-09-29** 随「测试图清理」移出工作区。
+取回：`git show 5460b3a:plan/shots-up4/bedtex-before-after.png > bedtex.png`。
+
+**当时判读**（结论留档）：
 
 - **238 颗鹅卵石逐颗位置完全一致**（肉眼可核）—— 这是"两层 LOD 没动"最直观的旁证；
 - 差异只落在**石头之间的地面**：改后有可见颗粒/团块纹理，改前是平滑纯色。

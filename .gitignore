@@ -103,8 +103,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ---------- 12. UP13 施工诊断图（过程件，非审美静帧）----------
-# plan/shots-up4/ 里的审美板（bedtex-* / bedtune-* 等）**已入库**；
-# `diag-*` 是 UP13 调参过程中的分解图 / 波形图 / 前后对照，属过程件 —— 留本地可查，不入库。
-plan/shots-*/diag-*.png
-plan/shots-*/pv-*.png
+# ---------- 12. 施工 / 诊断图（过程件，不入库）----------
+# `plan/shots-up4/` 是 UP2~UP13 的验收与诊断板（`pv-*` / `diag-*` / `bedtune-*`），
+#   2026-09-29 按「测试图不留在工作区」**整体清理**（`docs(plan): 清理测试图`，删除前 `5460b3a`）；
+#   本段保留，以防将来再出图被 `git add -A` 带入。
+# ⚠️ `plan/shots-wp5/` **不在此列** —— 升级前唯一视觉证据，入库冻结（70-REPO-BASELINE §2）。
+plan/shots-up4/
