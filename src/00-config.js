@@ -184,8 +184,10 @@
     //     `FLOW_*_TAU/HOLD/TICK/THROTTLE`（时间常数）在 `10-audio.js` 内，**一律不碰**。
     //   ⚠ `flowVolume` 仅在图路生效点 = 流水链恒在 Web Audio（两入口同）；`slapVolume`
     //     在 `file://` 元素路另须叠乘（`108 §12.4-②`）。
-    //   定档：由雨桐在 `?debug=1`「音频（实时）」滑杆组定，收口后主控更新本行最终值。
-    flowVolume: 1.00, slapVolume: 1.00,
+    //   定档（2026-09-30 雨桐）：**`flowVolume` 0.20 / `slapVolume` 1.00 / `handVolume` 保持 0.80** ——
+    //     流水层 −13.98 dB（20 log 0.2），沙沙不再盖过拍击；拍击层与手总线不动。
+    //     观测点：改前 `?debug=1` 拖水时沙沙明显压过 slap；0.20 时拍击清晰可辨。
+    flowVolume: 0.20, slapVolume: 1.00,
 
     // 反光路径（glitter path）—— AM-002 新增
     // AM-006（2026-09-24）：收窄夜间白光范围。
