@@ -18,7 +18,10 @@
  * ========================================================================== */
 'use strict';
 
-const VERSION     = 'srl-v1';                    // ← 改这个 = 发新版（activate 会清掉旧 cache）
+const VERSION     = 'srl-v2';                    // ← 改这个 = 发新版（activate 会清掉旧 cache）
+// ⚠ 连带规则：`manifest.webmanifest` 本身在 SHELL 里、走 **cache-first**。
+//   所以**改 manifest（应用名 / 图标 / 主题色）必须同时 bump 本 VERSION** ——
+//   否则已安装的 PWA 永远吃缓存里的旧 manifest，桌面名、图标都不刷新。
 const SHELL_CACHE = VERSION + '-shell';
 const AUDIO_CACHE = VERSION + '-audio';
 
