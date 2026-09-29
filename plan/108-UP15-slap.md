@@ -272,12 +272,13 @@ expect(fs.readdirSync('assets/audio').sort()).toEqual(wantAudio);
 `AM-034`（`02-AMENDMENTS.md`）已登记**文件写权限**，变更内容 = 本文 §4 生产规格。
 **派工分两段**：
 
-| 段 | 范围 | 落地 |
-|---|---|---|
-| ① **试听段**（**本次已派**） | 只出 `plan/audio-slap-cut.py` + `--audition` 产物（§4.6 试听页） | **不落 `assets/audio/`、不改 `src/`** |
-| ② **落地段**（定档后） | 渲定档四件 → 同名替换 `assets/audio/slap1~4.wav` → 重算 `SLAP_LUFS_TRIM` 写回 `src/10-audio.js` | 由主控 build + 重落 `dist-baseline` |
+| 段 | 范围 | 落地 | 状态 |
+|---|---|---|---|
+| ① **试听段** | 只出 `plan/audio-slap-cut.py` + `--audition` 产物（§4.6 试听页） | **不落 `assets/audio/`、不改 `src/`** | ✅ 已完（`§11.1~11.6`） |
+| ② **落地段** | 渲定档四件 → 同名替换 `assets/audio/slap1~4.wav` → 重算 `SLAP_LUFS_TRIM` 写回 `src/10-audio.js` | 由主控 build + 重落 `dist-baseline` | ✅ 已完（`§11.7`） |
+| ③ **混音段**（**2026-09-30 01:2x 扩权新增**） | `flowVolume` / `slapVolume` 参数 + 调试滑杆（§12）—— 治「沙沙盖过 slap」 | 由主控 build + 重落 `dist-baseline` | ⬜ **本次派** |
 
-**AM-034 授权面**：`src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`**（试听段即用）。
+**AM-034 授权面**：`src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`**（试听段即用）· **`src/00-config.js` + `src/90-debug.js`**（第三段扩权：`flowVolume`/`slapVolume` 字段 + `?debug=1` 滑杆组，见 §12）。
 
 **本包是多轮打磨包 —— 记账粒度（协议 §3「多轮打磨包」· 2026-09-30 定）**：
 
@@ -412,5 +413,130 @@ expect(fs.readdirSync('assets/audio').sort()).toEqual(wantAudio);
 
 ---
 
-> **当前状态：🔶 落地段已完 · 待雨桐复听终判** —— 授权门已清（§3.3 ✅ `sound dino`）· 定档件已落 `assets/audio/` · `SLAP_LUFS_TRIM` 已重算（§11.7）。
-> ⬜ 主控专属：`npm run build` + 重落 `dist-baseline`（`dist/**` 主控专有，本包不碰）· 波次 16 翻 ✅ 待复听后。
+> **当前状态：🔶 第三段（混音段）已派 · 待施工** —— 授权门已清（§3.3 ✅ `sound dino`）· 定档件已落 `assets/audio/`（§11.7）· 混音规格见 §12。
+> ⬜ 主控专属：`npm run build` + 重落 `dist-baseline`（`dist/**` 主控专有，本包不碰）· 波次 16 翻 ✅ 待混音定档。
+
+---
+
+## 12. 「沙沙声」与「拍击」的混音平衡（第三段 · 2026-09-30 01:2x 主控扩权派）
+
+### 12.1 问题（雨桐原话）
+
+> 「新的音效比较小声，原来鼠标按住滑动水面的沙沙声就太大声了，盖过 slap。」
+
+两条**独立**事实，都能在代码里定位：
+
+| # | 现象 | 代码定位 |
+|---|---|---|
+| 1 | 新 slap 比旧件轻 | §11.7 已实测：配平后 mean **−24.21 LUFS**，旧件 **−20.09** ⇒ **差 ~4.1 LU** |
+| 2 | 沙沙声（连续「流水」层）**没跟着变小** | `FLOW_MIN 0.10 / FLOW_MAX 0.60`（`10-audio.js:44-45`）**一字未动** |
+
+⇒ 拖动时流水层电平不变、拍击层变轻 ⇒ **沙沙盖过 slap**。这是**混音平衡问题，不是换源失败**（换源按 §11.7 判据全过）。
+
+### 12.2 为什么不能靠 `handVolume`
+
+`P.handVolume = 0.80` 驱动的是 **`handGain`** —— 流水与拍击**共用的手总线**：
+
+```
+流水: handEnv ─┬─ anHand ──────────────┐
+               └─ handConv → handWet ──┤
+                                       ├─→ handGain (P.handVolume) → handPan → limiter
+拍击: slapSum ── slapAn ───────────────┘
+```
+
+压 `handVolume` 会**连 slap 一起压**，改变不了相对平衡。另有一个隐藏机制：`handGain` 后接 **limiter** ⇒ 流水偏大时 limiter 会**压掉 slap 的瞬态** —— 这正是「盖过」的物理成因，只降总线治不了。
+
+### 12.3 正解：两层各加一个**独立增益**，并做成**实时滑杆**由雨桐亲耳定档
+
+| 理由 | 说明 |
+|---|---|
+| **不猜数** | 「要压多少」是听感判断。硬编码 = 让施工方替你拍板 + 来回往返 |
+| **一次到位** | 「参数 + 实时滑杆」**严格包含**「直接改小」：调完的值就是新默认值 |
+| **零新机制** | 与既有三次先例**同构**（见下表），照抄即可 |
+
+| 先例 | 参数组 | 生效方式 |
+|---|---|---|
+| 主控 09-24 | 后期 8 项（bloom/vignette/grain/glitter） | 写 `SW.P`，`65-post` 每帧读 ⇒ **实时** |
+| AM-020 | 湖底贴图 10 项 | 140 ms 防抖重建 |
+| AM-022 | 水面波纹 3 项 | 140 ms 防抖重编着色器 |
+
+⇒ 本项属**第 1 类**（写 `SW.P` 即时生效），**最便宜**。
+
+### 12.4 实施规格
+
+**① `src/00-config.js`**（音频段，紧邻 `bgmVolume/handVolume/ambVolume`）
+
+```js
+flowVolume: 1.00, slapVolume: 1.00,
+```
+
+| 字段 | 默认 | 范围 | 作用 |
+|---|---|---|---|
+| **`flowVolume`** | **1.00** | 0 ~ 1.50 | 流水层（沙沙）总增益 —— **主项** |
+| **`slapVolume`** | **1.00** | 0 ~ 1.50 | 拍击层总增益 |
+
+- 默认 `1.00` = **完全等价于当前行为**（零回归）
+- `P0`（「重置默认」基线）**必须同步**（契约 §6 明文）
+- `handVolume` **已存在**（0.80），无需新增 —— 本段只让它**可实时调**
+
+**② `src/10-audio.js`**：插两个增益节点，**各只缩放自己那一层**
+
+| 层 | 现状拓扑 | 改为 |
+|---|---|---|
+| 流水 | `handEnv → anHand → handGain`<br>`handEnv → handConv → handWet → handGain` | `handEnv → anHand → **flowGain** → handGain`<br>`handEnv → handConv → handWet → **flowGain**` |
+| 拍击 | `slapSum → slapAn → handGain` | `slapSum → slapAn → **slapGain** → handGain` |
+
+- ⚠ **`flowGain` 置于 `anHand` 之后、`slapGain` 置于 `slapAn` 之后** ⇒ 两个 analyser 仍读**原始未缩放**电平 ⇒ `probe()` 语义**逐字不变**
+- 新增内部 `syncVolumes()`：`flowGain.gain.value = P.flowVolume` · `slapGain.gain.value = P.slapVolume` · `handGain.gain.value = P.handVolume`
+  **在 `flowCmd()` 与 `playSlap()` 开头各调一次** ⇒ 拖水 / 拍击时改滑杆**当次即生效**
+  （**不新增 `SW.audio` 接口** —— §2.1 冻结签名一字不动）
+- ⚠ **`file://` 元素路**（该路无 `slapGain`）：`10-audio.js:747` 改为
+  `el.volume = clamp(P.handVolume * P.slapVolume * amp, 0, 1);`
+  （图路 `:743` 的 `el.volume = 1` 不动 —— 电平仍全交给 Web Audio）
+  > **流水层无此问题**：它永远是 Web Audio 合成（`handEnv`），两条入口都经过 `flowGain`。
+
+**③ `src/90-debug.js`**：新增滑杆组 **`音频（实时）`**（表驱动，与现有三组同构）
+
+```js
+var audioDefs = [
+  // [SW.P 字段, passProp, 标签, min, max, step, 小数位]
+  ['handVolume', null, '手总线    ', 0, 1.5, 0.01, 2],
+  ['flowVolume', null, '流水(沙沙)', 0, 1.5, 0.01, 2],
+  ['slapVolume', null, '拍击(slap)', 0, 1.5, 0.01, 2]
+];
+```
+
+- **无防抖**（写 `SW.P` 即生效，与后期组同类）
+- ⚠ **「重置默认」按钮的 `all` 数组必须加 `audioDefs`** —— 否则重置漏掉这 3 项
+  （`:365` 现为 `var all = defs.concat(bedDefs).concat(waveDefs);`）
+- 位置：**放最前**（调音第一站）
+
+### 12.5 判据
+
+| # | 判据 | 方式 |
+|---|---|---|
+| 1 | **零回归**：三值全默认（1.00 / 1.00 / 0.80）时，拖动 + 拍击的输出与改前一致 | 同手势 / 同 `__clock` 时刻的 `probe()` 读数比对；无法逐位则给 RMS 比对 + 说明 |
+| 2 | `flowVolume = 0.5` ⇒ 流水层 **−6.0 ± 0.2 dB**，**slap 不变** | 分路读数（`anHand` ↔ `limAn`）或离线渲染 |
+| 3 | `flowVolume = 0` ⇒ 流水**全静**，slap 与混响不静 | 手动 + 读数 |
+| 4 | `slapVolume = 0.5` ⇒ 拍击 **−6 dB**、流水不变；**两条入口都成立**（`http` + `file://`） | 两入口各跑一次 |
+| 5 | `?debug=1` 出现该组 · 拖动后**下一次拖水即变** · 「重置默认」三项回默认 | 手动 + `SW.P0` 比对 |
+| 6 | `probe()` 字段名 / 语义**零变化**（`lastHandPeak` 仍 = 原始 `flowTarget`；两 analyser 仍读原始电平） | 断言 + 读代码 |
+| 7 | 冻结件 sha256 零改动 · `npm run pw` 全绿 | `pw:frozen` / `pw` |
+| 8 | `dist` **必变**（3 个 `src` 文件）⇒ **主控 `build` + 重落 `dist-baseline`** | 主控 |
+
+### 12.6 禁区（本段）
+
+- ❌ `FLOW_MIN / FLOW_MAX` 与 `FLOW_*_TAU / FLOW_HOLD / FLOW_TICK / FLOW_THROTTLE`（**目标电平与时间常数 = 音色**，不是音量）
+- ❌ `handBodyGain 0.55` / `handSprayGain 0.45` / `handWet 0.38` / `handBand`（**层内配比**）
+- ❌ 三条 LFO 参数（去同质化主力）
+- ❌ `SLAP_FILES / SLAP_TRIM / SLAP_RATE / SLAP_DELAY / SLAP_LUFS_TRIM`
+- ❌ `bgmVolume / ambVolume / uiVolume`（本段只做 hand 总线）
+- ❌ `SW.audio` 签名（§2.1）· `probe()` 字段 · 冻结件
+
+### 12.7 定档（**雨桐唯一动作**）
+
+`?debug=1` → 面板最上「音频（实时）」→ **一边拖水一边拖滑杆**，把「流水(沙沙)」往下压到 slap 能清楚听见为止（必要时把「拍击」往上抬）→ **回一个三元组**：
+
+> 例：`流水 0.62 · 拍击 1.00 · 手总线 0.80`
+
+施工方写回 `00-config.js` 默认 ⇒ 主控 `build` + 重落 baseline ⇒ 本包收口（`AM-034` 翻 ✅）。

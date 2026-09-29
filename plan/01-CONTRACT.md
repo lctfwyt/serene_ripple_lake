@@ -489,6 +489,16 @@ var P = {
 
   // 音频
   audioMode: 'auto', bgmVolume: 0.60, handVolume: 0.80, ambVolume: 0.50,
+  // AM-034 第三段（UP15 · 2026-09-30）：**两层各自的电平**。此前 hand 总线只有共用的
+  //   `handVolume` ⇒ 压它会连 slap 一起压，治不了「沙沙盖过 slap」（`108 §12.2`）。
+  //   语义：`flowVolume` = 连续「流水」层增益 · `slapVolume` = 离散「拍击」层增益。
+  //   默认 1.00 = **零回归**（等价于改前）；范围建议 [0, 1.5]。
+  //   ⚠ **只缩电平、不改音色** —— `FLOW_MIN/FLOW_MAX`（目标电平）与
+  //     `FLOW_*_TAU/HOLD/TICK/THROTTLE`（时间常数）在 `10-audio.js` 内，**一律不碰**。
+  //   ⚠ `flowVolume` 仅在图路生效点 = 流水链恒在 Web Audio（两入口同）；`slapVolume`
+  //     在 `file://` 元素路另须叠乘（`108 §12.4-②`）。
+  //   定档：由雨桐在 `?debug=1`「音频（实时）」滑杆组定，收口后**主控更新本行最终值**。
+  flowVolume: 1.00, slapVolume: 1.00,
   duckAmount: 0.45, duckDown: 0.05, duckUp: 0.70,
   handBand: [400, 1400, 0.8], handDecay: 0.62,
   bgmFiles: ['assets/audio/bgm-mingjing.mp3', 'assets/audio/bgm-weifeng.mp3'],
@@ -542,17 +552,17 @@ var P = {
 | `app/index.html` | **UP1a**（构建入口镜像） | 只读（**UP14/AM-033**：`<title>`+`#brand`，`5c35c6b`；**UP17/AM-036**：加 PWA `<head>` 元信息，未开工） |
 | `app/main.js` | **UP1a** | 只读（**UP17/AM-036**：末尾追加 SW 注册块，**不得新增 `import`** —— R3 顺序约束） |
 | `app/public/**` | —（**UP17/AM-036** 新建） | 新建（Vite `publicDir` ⇒ 原样拷进 `dist/` 根） |
-| `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`；**UP3/AM-017 改 env 段**；**UP4-lite/AM-019 改湖底贴图段**） |
+| `src/00-config.js` | **WP1** | 只读（UP11/AM-015 经主控授权改过音频段：`bgmFile` → `bgmFiles`；**UP3/AM-017 改 env 段**；**UP4-lite/AM-019 改湖底贴图段**；**UP15/AM-034 第三段**：音频段加 `flowVolume` / `slapVolume` + `P0` 同步 —— `108 §12`） |
 | `src/30-scene.js` | **WP1 → UP2 → UP3**（AM-017，波次 8 起移交） | 只读（`applyTimeState` 在 WP1 内实现，WP3 只提供 `TimeState`；**环境光照段属 UP3**） |
 | `src/40-lakebed.js` | **WP1 → UP4-lite**（AM-019，波次 9 起移交） | 只读（UP3/AM-017 连材质都没碰，只从 `30-scene.js` 用 `traverse` 设 `envMapIntensity`；**UP4-lite/AM-019 加湖底 tiling 贴图 —— 但 `InstancedMesh` 两层 LOD 与 `pebble*` 参数一个字节未动**；**AM-020 同包修复轮：贴图观感整容 + 新增 `refreshBedTexture()` 运行时重建面 —— 鹅卵石与 LOD 仍一字未动**） |
-| `src/90-debug.js` | **WP1** | 只读（读数已按 §5 暴露，WP2/3/4 只需保证自己的 probe 返回对应字段）。AM-020 在 `?debug=1` 面板新增「湖底贴图」滑杆组（10 项，140 ms 防抖重建；`bedMacroScale`/`bedMacroGain` 两项走 uniform 真·实时）；纯 dev-only，不进交付物、不改 `SW.debug` 冻结签名 |
+| `src/90-debug.js` | **WP1** | 只读（读数已按 §5 暴露，WP2/3/4 只需保证自己的 probe 返回对应字段）。AM-020 在 `?debug=1` 面板新增「湖底贴图」滑杆组（10 项，140 ms 防抖重建；`bedMacroScale`/`bedMacroGain` 两项走 uniform 真·实时）；**UP15/AM-034 第三段**：新增「音频（实时）」滑杆组 3 项（`handVolume`/`flowVolume`/`slapVolume`，无防抖、写 `SW.P` 即生效），并须把该组纳入「重置默认」的 `all` 数组（`108 §12.4`）。⚠ **事实更正（2026-09-30）**：此前注「纯 dev-only、**不进交付物**」**不准确** —— `app/main.js` 明确 `import '../src/90-debug.js'`，实测 `dist/index.html` 含 `dbg-sliders` / `重置默认` / `湖底贴图` ⇒ **代码进包，只是面板默认不显示（`?debug=1` 才建）**。故本文件的任何改动**都会改变 `dist` 字节**，须由主控 `build` + 重落 `dist-baseline`。不改 `SW.debug` 冻结签名 |
 | `src/99-main.js` | **WP1** | 只读 |
 | `src/50-ripple.js` | **WP2** | 只读 |
 | `src/60-water.js` | **WP2 → UP8 → UP3**（AM-017，波次 8 起移交） | 只读（UP3 只动**反射那一行 + 3 个 uniform**） |
 | `src/70-input.js` | **WP2** | 只读 |
 | `src/20-time.js` | **WP3** | 只读 |
 | `src/80-ui.js` | **WP3 → UP10**（AM-011）**→ UP11**（AM-015） | 只读 |
-| `src/10-audio.js` | **WP4 → UP9**（AM-010）**→ UP11**（AM-015） | 只读（**UP15/AM-034 授权**：仅 `SLAP_LUFS_TRIM` —— **试听段不动 `src/`**） |
+| `src/10-audio.js` | **WP4 → UP9**（AM-010）**→ UP11**（AM-015） | 只读（**UP15/AM-034 授权**：① `SLAP_LUFS_TRIM` ② **第三段**：`syncVolumes()` + `file://` 元素路电平公式 + 流水/拍击两个增益节点 `flowGain`/`slapGain`。`FLOW_MIN/FLOW_MAX` 与 `FLOW_*_TAU/HOLD/TICK/THROTTLE`、`SLAP_*` 常量、两条 analyser 位置 **均不动** —— `108 §12.5/§12.6`） |
 | `assets/audio/*` | **WP4**（UP11 改名两首 BGM：`bgm-stillwater.mp3` → `bgm-mingjing.mp3`、`bgm-cand1.mp3` → `bgm-weifeng.mp3`） | 只读（**UP15/AM-034 授权**：`slap1~4.wav` **同名替换** —— **试听段不动 `assets/`**） |
 | `src/85-fallback.js` | **WP5** | 只读（**UP14/AM-033 授权**：品牌串，`5c35c6b`） |
 | `README.md` | **WP5** | 只读（**UP14/AM-033** 标题 · **UP16/AM-035** 部署节 · **UP17/AM-036** PWA 小节） |
@@ -569,7 +579,8 @@ var P = {
 | AM-033 | UP14 | `index.html` · `app/index.html` | WP1 · UP1a | 改 `<title>` + 加 `#brand` DOM/CSS | ✅ 已应用（`5c35c6b`） |
 | AM-033 | UP14 | `src/85-fallback.js` · `README.md` | WP5 | 品牌串 / 标题 | ✅ 已应用（`5c35c6b`） |
 | AM-033 | UP14 | `package.json` | 共享 | 描述串 | ✅ 已应用（`5c35c6b`） |
-| AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`** | WP4→UP11 · WP4 · 本包 | slap 拍击采样换源（同名替换）+ 新建选材/试听工具 | 🔶 试听段施工中（`108`） |
+| AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`** | WP4→UP11 · WP4 · 本包 | ① 试听段（工具）· ② 落地段（同名替换 + `SLAP_LUFS_TRIM`）· ③ **混音段**（`syncVolumes()` + 增益节点） | ✅ ①② 已完成（`108 §11`）· 🔶 ③ 施工中 |
+| AM-034 | UP15 | `src/00-config.js` · `src/90-debug.js` | WP1 · WP1 | **第三段扩权**：音频段加 `flowVolume`/`slapVolume`；`?debug=1` 加「音频（实时）」滑杆组 | 🔶 施工中（`108 §12`） |
 | AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ⬜ 未开工（`109`） |
 | AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` | UP1a · UP1a · WP5 | PWA `<head>` / SW 注册块 / PWA 小节 | ⬜ 未开工（`110`） |
 
@@ -824,5 +835,6 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-29 | AM-033：产品名 → `静湖微澜 · Serene Ripple Lake`（**非契约面**：`<title>` / README / package.json 描述 / 兜底页串）；**新增 §7.1 跨包写权限授权登记 + §7.2 契约偏离登记**（登记 UP14 的 2 处偏离） | UP14 |
 | 09-29 | AM-034：登记 §7.1 —— UP15 获权写 `src/10-audio.js` / `assets/audio/slap1~4.wav` / **新建 `plan/audio-slap-cut.py`**（slap 换源） | UP15 |
 | 09-30 | AM-034：新源出处 = **`sound dino`**（与 `bird1~6` 同源，可商用免署名）⇒ **授权门已清**；**派试听段**（`plan/audio-slap-cut.py --audition` → `108 §4.6` 试听页，**不落 `assets/audio/`、不改 `src/`**） | UP15 |
+| 09-30 | AM-034 **第三段（混音平衡）**：§6 加 **`flowVolume` / `slapVolume`**（两层**各自**电平 —— 此前只有共用的 `handVolume`，压它会连 slap 一起压）· §7 登记 `src/00-config.js` / `src/90-debug.js` **扩权**（`?debug=1` 加「音频（实时）」滑杆组）· §7 `src/10-audio.js` 行补 `flowGain`/`slapGain` 两个增益节点 + `file://` 元素路电平公式 · ⚠ **事实更正**：§7 `src/90-debug.js` 行原注「纯 dev-only、**不进交付物**」不成立 —— `app/main.js` 明确 import 它，实测 `dist/index.html` 含 `dbg-sliders`/`重置默认`/`湖底贴图` ⇒ **代码进包、面板默认不显示**，故其改动**必改 `dist` 字节** | UP15 |
 | 09-29 | AM-035：登记 §7.1 —— UP16 获权写 `package.json` / `README.md`（Netlify 部署配置，**新增 `netlify.toml` / `.nvmrc`**，未开工） | UP16 |
 | 09-29 | AM-036：登记 §7.1 —— UP17 获权写 `app/index.html` / `app/main.js` / `README.md`；**新增 `app/public/**`**（PWA manifest + SW + 图标）。**范围裁定：只改构建入口 `app/index.html`，不动免构建入口根 `index.html`**（PWA 在 `file://` 不生效；根入口引用 manifest 会产生 `requestfailed` 污染 `netErrors`） | UP17 |

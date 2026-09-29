@@ -19,7 +19,7 @@
 
 ## 1. 当前未决变更单
 
-### AM-034 · UP15 slap 拍击采样换源 —— 文件写权限授权（2026-09-29 23:5x 开 · **2026-09-30 素材到位 + 授权已清** · 🔶 试听段施工中）
+### AM-034 · UP15 slap 拍击采样换源 —— 文件写权限授权（2026-09-29 23:5x 开 · **2026-09-30 素材到位 + 授权已清 + 落地段已完成** · 🔶 第三段 混音平衡 施工中）
 
 **背景**：雨桐要求「slap 音效开一个包，**具体细节我来沟通**」⇒ 本包题材 = **离散「拍击」采样 `slap1~4.wav` 换源**。本 AM **授权文件写权限**；**变更内容 = `108 §4` 生产规格**。
 
@@ -33,17 +33,23 @@
 
 **授权面**：「换掉 `slap1~4.wav`（**同名替换**）」+ 新建加工工具；**连续「流水」合成层不在授权内**。
 
+**🔴 2026-09-30 01:2x 扩权（第三段 · 混音平衡）**：雨桐报「**沙沙盖过 slap**」（新 slap 比旧件轻 ~4.1 LU，而流水层电平未动）⇒ 追加授权 ——
+新增 `flowVolume` / `slapVolume` 两个 `SW.P` 字段 + 流水/拍击各自的独立增益节点 + `?debug=1` 滑杆组（`108 §12`）。
+**「流水层不在授权内」就此修订为**：允许**加一个只缩放流水电平的增益节点 `flowGain`**；**目标电平（`FLOW_MIN/FLOW_MAX`）与时间常数（`FLOW_*_TAU/HOLD/TICK/THROTTLE`）仍不碰**（禁区全文 `108 §12.6`）。
+
 **影响面（跨包写权限授权 —— 下列文件他包权限为「只读」）**
 
 | 文件 | 契约所有者 | 动作 |
 |---|---|---|
-| `src/10-audio.js` | WP4 → UP9（AM-010）→ UP11（AM-015） | 仅 **`SLAP_LUFS_TRIM`（换采样后必须重算）**；`SLAP_FILES` / `SLAP_TRIM` / `SLAP_RATE` / `SLAP_DELAY` **不动** |
-| `assets/audio/slap1~4.wav` | WP4 | **同名替换**（本包定死此方案 ⇒ 判据 6 不撞） |
-| `plan/audio-slap-cut.py`（**新建**） | 本包 | 选材 / 加工 / 试听工具（沿用 `audio-baseline.py` 的「脚本入库、产物忽略」原则） |
+| `src/10-audio.js` | WP4 → UP9（AM-010）→ UP11（AM-015） | ① **`SLAP_LUFS_TRIM`**（换采样后重算，§11.7 已落）② **第三段**：`playSlap` 内**新增** `syncVolumes()` 调用 + `file://` 元素路电平公式 + 流水/拍击两个增益节点。`SLAP_FILES` / `SLAP_TRIM` / `SLAP_RATE` / `SLAP_DELAY` · `FLOW_*` 常量 **一律不动** |
+| `assets/audio/slap1~4.wav` | WP4 | **同名替换**（本包定死此方案 ⇒ 判据 6 不撞）· ✅ 已落（`§11.7`） |
+| `plan/audio-slap-cut.py`（**新建**） | 本包 | 选材 / 加工 / 试听工具（沿用 `audio-baseline.py` 的「脚本入库、产物忽略」原则）· ✅ 已落 |
+| `src/00-config.js` | **WP1** | **第三段新增**：音频段加 `flowVolume: 1.00, slapVolume: 1.00` + `P0` 同步（**字段冻结表，跨包**） |
+| `src/90-debug.js` | **WP1** | **第三段新增**：`?debug=1` 面板加「音频（实时）」滑杆组 3 项 + 「重置默认」`all` 数组纳入（**纯 dev-only**，不改 `SW.debug` 冻结签名） |
 
 **规格正文 = `108 §4`**（切片策略 / 四档加工链 / 输出规格 / 试听页 / 工具 CLI）；**待定档清单 = `108 §9`**。
 
-**已确认的硬约束（不随规格变）**：`SW.audio` 签名（§2.1）与 `probe()` 字段名/语义不动 · 冻结件零改动 · `file://` 只走 `<audio>` 元素 · AudioContext 仍由首次手势创建 · **输出 48 000 Hz / 单声道 / PCM_16 / 峰值 0.6200** · **文件名与数量不变** · **连续「流水」合成层不碰**。
+**已确认的硬约束（不随规格变）**：`SW.audio` 签名（§2.1）与 `probe()` 字段名/语义不动 · 冻结件零改动 · `file://` 只走 `<audio>` 元素 · AudioContext 仍由首次手势创建 · **输出 48 000 Hz / 单声道 / PCM_16 / 峰值 0.6200** · **文件名与数量不变** · **连续「流水」合成层**：第三段起**只允许加电平增益节点（`flowGain`）**，`FLOW_MIN/FLOW_MAX` 与 `FLOW_*_TAU/HOLD/TICK/THROTTLE` **仍不碰**。
 
 **断言变更（预判）**
 
@@ -51,12 +57,13 @@
 |---|---|
 | `plan/pw/tests/50-brand.spec.mjs` 判据 6 | ✅ **零改动**（同名替换 ⇒ 文件名全集不变） |
 | `python plan/audio-baseline.py` | 换采样后 `SLAP_LUFS_TRIM` 漂移检测会报警 ⇒ 施工方 `--emit-js` 取新值写回源码 |
-| `plan/pw/dist-baseline.txt` | 采样字节变 ⇒ 随之变化 ⇒ **主控重落** |
+| `plan/pw/dist-baseline.txt` | 采样字节变 + 第三段改 3 个 `src` 文件 ⇒ 随之变化 ⇒ **主控重落** |
 | `plan/pw/tests/__snapshots__/**` | **零影响**（音频不进像素） |
+| `plan/01-CONTRACT.md` §6 字段表 | 第三段加 `flowVolume` / `slapVolume` 两行（**主控**，与 `00-config.js` 逐字对应） |
 
-**派工分两段**：① **试听段（2026-09-30 00:4x 已派）** —— 只出 `plan/audio-slap-cut.py` + `--audition` 产物（`108 §4.6` 试听页），**不落 `assets/audio/`、不改 `src/`**；② **落地段（定档后）** —— 渲定档四件、同名替换 `slap1~4.wav`、重算 `SLAP_LUFS_TRIM` 写回 `src/10-audio.js`。
+**派工分三段（同一窗口串行）**：① **试听段（2026-09-30 00:4x 已派）** —— 只出 `plan/audio-slap-cut.py` + `--audition` 产物（`108 §4.6` 试听页），**不落 `assets/audio/`、不改 `src/`** · ✅ 已完（`108 §11.1~11.6`）；② **落地段** —— 渲定档四件、同名替换 `slap1~4.wav`、重算 `SLAP_LUFS_TRIM` 写回 `src/10-audio.js` · ✅ 已完（`108 §11.7`）；③ **混音段（2026-09-30 01:2x 派）** —— `flowVolume`/`slapVolume` 字段 + 两层独立增益 + 调试滑杆（`108 §12`），治「沙沙盖过 slap」。
 
-**状态**：🔶 **施工中（试听段）** —— 授权门已清（`108 §3.3` ✅ `sound dino`）· 规格已定（`108 §4`）；**⬜ 待雨桐试听定档**（`108 §9`）后方得落地 `assets/audio/`。
+**状态**：🔶 **施工中（第三段 · 混音平衡）** —— 授权门已清（`108 §3.3` ✅ `sound dino`）· 落地段已完成（§11.7）· 混音规格见 `108 §12`；**⬜ 待雨桐在 `?debug=1` 调三个滑杆定档**（`108 §12.7`）后收口。
 
 ---
 
@@ -164,7 +171,7 @@
 | AM-031 | 09-29 | UP13-fix2：光带**消费层硬门控** —— `bandGate() = 0` 时水面改采无光带贴图 `env.equirectBase`（照月亮柱 `×(1−g)` 的手法） | UP13 | ✅ 已应用（`104`） |
 | AM-032 | 09-29 | UP13-fix3：光带**与月亮柱同频** —— 生产端恒烘两张满档贴图 + 消费端 `mix(base, band, bandGate())`（治「夜→昼 必须松手才出现」） | UP13 | ✅ 已应用（`105 §11`） |
 | AM-033 | 09-29 | **UP14 品牌改名**：`静水 · still water` → `静湖微澜 · Serene Ripple Lake` + 首屏「轻触水面」上方加一行中英网页名（同起同落）。**跨包写权限授权**：`index.html`(WP1) · `app/index.html` · `src/85-fallback.js`(WP5) · `README.md`(WP5) · `package.json` | UP14 | ✅ 已应用（`106` · 波次 15 · 主控收尾 09-30：重录像素基线 **2 张** + `dist` 重建 **789133 B**） |
-| AM-034 | 09-29 | **UP15 slap 拍击采样换源**：写权限授权（`src/10-audio.js` 仅 `SLAP_LUFS_TRIM` · `assets/audio/slap1~4.wav` 同名替换 · 新建 `plan/audio-slap-cut.py`）。原源 `sounds-mp3` **已裁不可商用**；**新源 = 雨桐给的环境声、出处 `sound dino` ✅**（`108 §3.1`）；**规格 = `108 §4`** | UP15 | 🔶 **试听段施工中** · **⬜ 待雨桐试听定档** `108 §9` 后落地 |
+| AM-034 | 09-29 | **UP15 slap 拍击采样换源**：写权限授权（`src/10-audio.js` · `assets/audio/slap1~4.wav` 同名替换 · 新建 `plan/audio-slap-cut.py` · **第三段扩权** `src/00-config.js` + `src/90-debug.js`）。原源 `sounds-mp3` **已裁不可商用**；**新源 = 雨桐给的环境声、出处 `sound dino` ✅**；**规格 = `108 §4`**；**第三段 = 混音平衡 `flowVolume/slapVolume`（`108 §12`）** | UP15 | 🔶 **第三段施工中** · 试听段/落地段 ✅（`108 §11`）· **⬜ 待雨桐调滑杆定档** `108 §12.7` |
 | AM-035 | 09-29 | **UP16 Netlify 上云**：`netlify.toml` + `.nvmrc` + `deploy` script + README 部署节。**零渲染代码** | UP16 | ⬜ 未决（`109` · 波次 17） |
 | AM-036 | 09-29 | **UP17 PWA 可安装**：`app/public/`（manifest · sw · icons）+ `app/index.html` head + `app/main.js` 注册块。**只改构建入口、不动根入口** | UP17 | ⬜ 未决（`110` · 波次 18） |
 
