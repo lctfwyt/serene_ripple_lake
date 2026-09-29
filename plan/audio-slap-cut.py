@@ -530,8 +530,8 @@ def main():
         mean = float(np.mean(lus))
         print("\n⚠ 落地（第二段，本脚本不做）："
               "拷进 assets/audio/ 后跑 `python plan/audio-baseline.py --emit-js` 取")
-        print("  SLAP_LUFS_TRIM = [%s];   （mean LUFS %.2f）"
-              % ", ".join("%.4f" % (10 ** ((mean - v) / 20.0)) for v in lus), mean)
+        trims = ", ".join("%.4f" % (10 ** ((mean - v) / 20.0)) for v in lus)
+        print("  SLAP_LUFS_TRIM = [%s];   （mean LUFS %.2f）" % (trims, mean))
     return 0
 
 
