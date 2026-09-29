@@ -268,6 +268,12 @@
   var slapGains = [];                  // 每片段的 gain 节点；null = 该片段走元素直放
   var slapSum = null, slapAn = null;   // 拍击求和点 + 体检点（只在非 file:// 建）
   var slapMode = 'none';               // 'graph'（过 limiter）| 'element'（file:// 直放）
+  // AM-034 第三段（UP15 · 2026-09-30）：手总线内部**两层各自的电平**增益（治「沙沙盖过 slap」）。
+  //   flowGain = 流水层总增益（干路 anHand 后 + 湿路 handWet 后）· slapGain = 拍击层总增益（slapAn 后）。
+  //   ⚠ `slapGain`（**单数**，本段新增的层总线）与既有的 `slapGains[]`（**复数**，逐元素的 gain）
+  //     **不是同一个东西** —— 后者是 file:// 元素路建图失败时的退回路径，与本段无关。
+  //   ⚠ 两个都插在体检点**之后** ⇒ `anHand` / `slapAn` 仍读**原始未缩放**电平 ⇒ `probe()` 语义逐字不变。
+  var flowGain = null, slapGain = null;
   var curPan = 0;                      // 最近一次下达的声像值（probe 用）
   var lastSplashX = 0;
   var bgmFade = 1, bgmElDuck = 1;      // 循环淡入淡出系数 / duck 在元素路径上的系数
@@ -299,6 +305,9 @@
   function now() { return ctx ? ctx.currentTime : 0; }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
   function lerp(a, b, t) { return a + (b - a) * t; }
+  // AM-034 第三段：取 `SW.P` 上的数值字段，非有限值（字段缺失 / 被写坏）退回 dflt。
+  //   ⚠ 不能直接 `gain.value = P.flowVolume`：字段缺失 ⇒ undefined ⇒ AudioParam 变 NaN ⇒ 整条链静音。
+  function pnum(v, dflt) { return (typeof v === 'number' && isFinite(v)) ? v : dflt; }
 
   // 墙钟（ms）。⚠ 切歌包络**不能**用 ctx.currentTime 做时基：无头 Chrome（SwiftShader）下
   //   音频渲染线程会被主线程饿住 —— `ctx.state === 'running'` 但 currentTime 在起播后 ~1.1s 内
@@ -655,7 +664,9 @@
     if (!IS_FILE && ctx) {
       slapSum = ctx.createGain(); slapSum.gain.value = 1;
       slapAn = ctx.createAnalyser(); slapAn.fftSize = 1024;
-      slapSum.connect(slapAn); slapAn.connect(handGain);
+      // AM-034 第三段：拍击层总增益（`slapAn` 之后 ⇒ 体检点仍读原始电平，`probe()` 语义不变）
+      slapGain = ctx.createGain(); slapGain.gain.value = pnum(P.slapVolume, 1);
+      slapSum.connect(slapAn); slapAn.connect(slapGain); slapGain.connect(handGain);
     }
     for (var i = 0; i < files.length; i++) {
       var el;
@@ -714,6 +725,7 @@
   // 播一次采样。返回 false 表示没播成（调用方要退回气泡模型 —— 保证点击永远有声）
   function playSlap(lv, x) {
     buildSlap();                       // 还没到延迟时间就被点了 → 立即建
+    syncVolumes();                     // AM-034 第三段：拍击当次生效
     if (!slapPool.length) { return false; }
     panTo(x);
     // 从上次位置往后找：① 优先「空闲」元素 —— 采样现在带 0.6s 混响尾，
@@ -744,7 +756,9 @@
         g.gain.cancelScheduledValues(now());
         g.gain.setValueAtTime(amp, now());
       } else {
-        el.volume = clamp(P.handVolume * amp, 0, 1);   // file://：元素直放，自己乘手总线音量
+        // file://：元素直放，自己乘总线音量。AM-034 第三段：叠乘 `P.slapVolume`
+        //   （该路无 `slapGain` 节点 —— 元素直放不进 Web Audio 图，只能靠 el.volume）。
+        el.volume = clamp(P.handVolume * pnum(P.slapVolume, 1) * amp, 0, 1);
       }
       var p = el.play();
       if (p && p['catch']) { p['catch'](function () { }); }
@@ -778,14 +792,17 @@
     handBodyGain.connect(handEnv); handSprayGain.connect(handEnv);
 
     anHand = ctx.createAnalyser(); anHand.fftSize = 1024;
-    handEnv.connect(anHand); anHand.connect(handGain);
+    // AM-034 第三段：干路与湿路都先过 `flowGain` 再进手总线（湿声也必须跟着压，否则
+    //   只压干路会剩一条混响尾巴）。`flowGain` 在体检点之后 ⇒ `anHand` 仍读原始电平。
+    flowGain = ctx.createGain(); flowGain.gain.value = pnum(P.flowVolume, 1);
+    handEnv.connect(anHand); anHand.connect(flowGain); flowGain.connect(handGain);
 
     // ④ 混响支路：水声用**短**混响（1.2s，衰减快），长混响会糊成一片嗡。
     //    IR 单声道省一半 CPU；湿声不进体检点（混响尾巴会污染 peak 读数）
     handConv = ctx.createConvolver();
     handConv.buffer = makeIR(1.2, 3.4, true);
     handWet = ctx.createGain(); handWet.gain.value = 0.38;
-    handEnv.connect(handConv); handConv.connect(handWet); handWet.connect(handGain);
+    handEnv.connect(handConv); handConv.connect(handWet); handWet.connect(flowGain);
 
     // ⑤ 三条互不同步的慢 LFO → 流水的不规则起伏。这是「去同质化」的主力：
     //    固定频谱的噪声 = 机器味；三条 0.2~1Hz 的非同步调制 = 每次听起来都不一样
@@ -806,10 +823,21 @@
     handSpray.start(0, rng() * 1.5);
   }
 
+  // AM-034 第三段：把 `SW.P` 的三个音量字段灌进对应增益节点。
+  //   在 `flowCmd()` 与 `playSlap()` 开头各调一次 ⇒ 拖水 / 拍击时改 `?debug=1` 滑杆**当次即生效**
+  //   （**不新增 `SW.audio` 接口** —— 契约 §2.1 冻结签名一字不动）。
+  //   默认值 1.00 / 1.00 ⇒ 与加这两个节点之前**逐位等价**（零回归，判据 1）。
+  function syncVolumes() {
+    if (handGain) { handGain.gain.value = pnum(P.handVolume, handGain.gain.value); }
+    if (flowGain) { flowGain.gain.value = pnum(P.flowVolume, 1); }
+    if (slapGain) { slapGain.gain.value = pnum(P.slapVolume, 1); }
+  }
+
   // 下达包络目标。setTargetAtTime 从「当前值」指数逼近 —— 连续调用不会跳变，
   // 天然就是淡入（上升）与淡出（下降），不需要 ramp 也不会产生脉冲。
   function flowCmd(t) {
     if (!handEnv) { return; }
+    syncVolumes();                     // AM-034 第三段：拖水当次生效
     handEnv.gain.setTargetAtTime(flowTarget, t, flowTarget > flowCur ? FLOW_UP_TAU : FLOW_DN_TAU);
     flowCur = flowTarget;
     lastFlowCmdT = t;

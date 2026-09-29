@@ -413,8 +413,69 @@ expect(fs.readdirSync('assets/audio').sort()).toEqual(wantAudio);
 
 ---
 
-> **当前状态：🔶 第三段（混音段）已派 · 待施工** —— 授权门已清（§3.3 ✅ `sound dino`）· 定档件已落 `assets/audio/`（§11.7）· 混音规格见 §12。
-> ⬜ 主控专属：`npm run build` + 重落 `dist-baseline`（`dist/**` 主控专有，本包不碰）· 波次 16 翻 ✅ 待混音定档。
+## 13. 完工记录 · **混音段**（2026-09-30 01:2x，AM-034 第三段）
+
+### 13.1 交付（三处，逐条对应 §12.4）
+
+| # | 文件 | 改动 |
+|---|---|---|
+| ① | `src/00-config.js` | 音频段加 `flowVolume: 1.00, slapVolume: 1.00`（含 8 行注释：语义 / 零回归 / 禁区 / 定档去向）；`P0` 由 `SW.P0 = JSON.parse(JSON.stringify(P))` **自动派生** ⇒ 无需另改 |
+| ② | `src/10-audio.js` | ① 新增 `flowGain`（干路 `anHand` 后 + 湿路 `handWet` 后）与 `slapGain`（`slapAn` 后），两节点都在**体检点之后**；② 新增内部 `syncVolumes()`，在 `flowCmd()` / `playSlap()` 开头各调一次；③ `file://` 元素路公式 `el.volume = clamp(P.handVolume × P.slapVolume × amp, 0, 1)`；④ 新增 `pnum()`（字段缺失/非有限 ⇒ 退回默认，防 `AudioParam` 变 NaN 静音） |
+| ③ | `src/90-debug.js` | `?debug=1` 面板**最前**加「音频（实时）」组 3 项（`handVolume` / `flowVolume` / `slapVolume`，0~1.5 / step 0.01，**无防抖**）；「重置默认」的 `all` 改为 `audioDefs.concat(defs).concat(bedDefs).concat(waveDefs)` |
+
+> ⚠ `slapGain`（**单数**，本段新增的层总线）与既有的 `slapGains[]`（**复数**，逐元素 gain、元素路建图失败时的退回路径）**不是同一个东西** —— 已在源码注释里显式区分。
+> ⚠ `90-debug.js` 的「重置默认」按 **DOM 里 input 的出现顺序**用索引回写 ⇒ `audioDefs` 必须同时是 `all` 的第一段（已实测，见 §13.3 判据 5）。
+
+### 13.2 实测方法（判据 1~4 · 机械）
+
+`base` = **改前**（`git show HEAD:` 三个文件 + 复制的 `index.html`/`vendor`/`assets`，起独立 http 服务 8011）· `now` = 工作区（8012）· 两条入口各跑一次：
+
+| 路 | 入口 | `slapMode` | 缩放生效点 |
+|---|---|---|---|
+| 图路 | `http://127.0.0.1:801x` | `graph` | `flowGain` / `slapGain` 节点 |
+| 元素路 | `file:///…index.html` | `element` | `el.volume`（页面加载前包一层 `window.Audio` 记实例 ⇒ 事后直读）|
+
+隔离口径：**只调 `SW.audio.playHand()`**（连续流水层）**不发 splash** ⇒ 测流水稳态时不掺拍击；测拍击时先 `flowVolume = 0` 静掉流水。读数 = `probe()` 的 `limInPeak`（limiter 输入）· `handPeak`（`anHand`）· `slapAnPeak`（`slapAn`），稳态取 30 次均值、拍击取密集轮询最大。
+
+### 13.3 判据结果
+
+| # | 判据 | base（改前） | now（改后） | 结论 |
+|---|---|---|---|---|
+| **1** | **零回归**（三值全默认） | 图路 `limInPeak` 0.101560 / `handPeak` 0.179986 · 元素路 `limInPeak` 0.109169 · **元素路 `el.volume` = 0.4831 / 0.6926 / 0.4762 / 0.7006** | 图路 0.102226（**+0.66 %**）/ 0.179780（**−0.11 %**）· 元素路 0.103936（−4.8 %，同量级）· **元素路 `el.volume` 与 base 逐位相同** | ✅ **零回归**（`el.volume` 是**逐位**证据；两条 `limInPeak` 差在测量噪声内 —— 同版本自身重复波动 3~7 %）|
+| **2** | `flowVolume = 0.5` ⇒ 流水 −6 dB | 0.091471（设了没用，**不变** ✅ 对照组） | 图路 0.051093 / 0.102226 = **×0.4998（−6.01 dB）**；`handPeak` 0.179780→0.178183（体检点不受缩放） | ✅ |
+| **3** | `flowVolume = 0` ⇒ 流水全静 | 0.111204（不变） | 图路 **0** · 元素路 **0**；`handPeak` 仍 0.20（体检点照读） | ✅ |
+| **4** | `slapVolume = 0.5` ⇒ 拍击 −6 dB，**两入口** | 图路 0.323121 → 0.359073（不变）· 元素路 `el.volume` 不变 | 图路 0.300420 → **0.149969 = ×0.4993（−6.02 dB）**；`slapAnPeak` 0.53858 → 0.537659（**不变**）· 元素路 `el.volume` **0.4831→0.2415 · 0.6926→0.3463 · 0.4762→0.2381 · 0.7006→0.3503（全部 ×0.5000）**，拍击计数 `slaps` 16→21 ✅ 确实在播 | ✅ 两条入口均成立 |
+| **5** | 滑杆可用 + 重置 | — | 面板出现「音频（实时）」且**在最前**（3 项：手总线 0.80 / 流水(沙沙) 1.00 / 拍击(slap) 1.00）· 拖第 2 项到 0.62 ⇒ `SW.P.flowVolume` = 0.62 且显示同步 · 点「重置默认」⇒ 三项回 `P0` `[0.8, 1, 1]` 且 DOM 显示同步（`#dbg-sliders` 共 **24** 个 input = 3+8+10+3 ⇒ 索引对齐未错位）· console **0 错误** | ✅ |
+| **6** | `probe()` 字段名/语义零变化 | — | 源码未动 `probe()`；`handPeak` / `slapAnPeak` 实测**不随两个新滑杆变化**（§13.3 判据 2/4 两列） | ✅ |
+| **7** | 冻结件零改动 | — | `npm run pw:frozen` ✅ · `npm run assert` **15/15**（console 0 错误）· `audio-baseline` 漂移检测**全绿** | ⚠ **`npm run pw` 未跑**：本机 `ms-playwright` 缺 `chromium_headless_shell-1243`（浏览器未安装），与改动无关 ⇒ 报主控 / 环境问题 |
+| **8** | `dist` 不碰 | — | 本包未重建；改了 3 个 `src` ⇒ `dist` **必变** ⇒ **主控 `build` + 重落 `dist-baseline`** | ⬜ 主控 |
+
+### 13.4 自证（§7.2-2 正反两面）
+
+| 面 | 证据 |
+|---|---|
+| 该变的 | `git status --porcelain` ⇒ **仅** `src/00-config.js` · `src/10-audio.js` · `src/90-debug.js`（+ 文档）；三个文件 `node --check` 全过 |
+| 不该变的 | ① `FLOW_MIN/FLOW_MAX` · `FLOW_*_TAU/HOLD/TICK/THROTTLE` **一字未动**（禁区 ①）；② `handBodyGain 0.55` / `handSprayGain 0.45` / `handWet 0.38` / `handBand` / 三条 LFO 未动（禁区 ②）；③ `SLAP_FILES/TRIM/RATE/DELAY/LUFS_TRIM` 未动（禁区 ③）；④ `bgmVolume/ambVolume/uiVolume` 未动；⑤ `SW.audio` 签名与 `probe()` 字段未动（禁区 ④）；⑥ `plan/pw/**` · `dist/**` · 冻结件零改动 |
+| 独立性 | ⚠ **本包无独立复核方，复核为同上下文自证**（§7.2-1）。base 与 now 是**两份独立页面**（不同目录 / 不同端口），读数非同一会话内切换 ⇒ 优于会话内 A/B，但仍非第三方复核 |
+
+### 13.5 一处边界（未改，记档）
+
+`foleySpray()`（拍击的水花补片，**由 `playSlap` 触发**）仍直连 `handGain`，**不随 `slapVolume` 缩放** —— §12.4-② 的拓扑表只列了 `slapSum → slapAn → slapGain`，未含它 ⇒ **本包按规格未改**。
+实测影响在噪声内（判据 4 的峰值比 0.4993，foley 量级远低于采样本体）。若雨桐调完觉得「拍击压不干净」，再把 foley 接到 `slapGain` 即可（**不动 `FOLEY_SPRAY` 常量**）。
+
+### 13.6 ⬜ 定档（**雨桐唯一动作** · §12.7）
+
+`?debug=1` → 面板最上「音频（实时）」→ **一边拖水一边拖滑杆**，把「流水(沙沙)」往下压到 slap 清楚听见（必要时抬「拍击」）→ 回一个三元组：
+
+> 例：`流水 0.62 · 拍击 1.00 · 手总线 0.80`
+
+施工方写回 `00-config.js` 默认 ⇒ 主控 `build` + 重落 baseline ⇒ 本包收口（AM-034 翻 ✅）。
+**默认值仍是 1.00 / 1.00（零回归）⇒ 现在不听也完全等于改前。**
+
+---
+
+> **当前状态：🔶 滑杆已可用 · 待雨桐调音定档** —— 试听段 ✅（`5276d57`）· 落地段 ✅（`5283aef`）· 混音段 ✅ 已交（本节）。
+> ⬜ 主控专属：`npm run build` + 重落 `dist-baseline`（`dist/**` 主控专有，本包不碰）· 波次 16 翻 ✅ 待定档后。
 
 ---
 

@@ -209,6 +209,50 @@
         'border-top:1px solid rgba(216,230,234,.25)'
       ].join(';');
 
+      // ── 音频（实时）—— AM-034 第三段（UP15 · 2026-09-30）──
+      // 与「后期」那组同类：**写 SW.P 即生效**（`10-audio.js` 的 `syncVolumes()` 在
+      //   `flowCmd()` / `playSlap()` 开头各调一次）⇒ **无防抖**，边拖水边拖滑杆当场可听。
+      //   ⚠ 放最前（调音第一站）；⚠ 「重置默认」按 **DOM 里 input 的出现顺序**回写
+      //     ⇒ `audioDefs` 必须同时是 `all` 数组的**第一**段（`108 §12.4-③`）。
+      //   为什么需要两个新滑杆：hand 总线只有共用的 `handVolume`，压它会连 slap 一起压，
+      //   治不了「沙沙盖过 slap」⇒ 流水 / 拍击各自一个（`108 §12.2`）。
+      var audioBox = document.createElement('div');
+      audioBox.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid rgba(216,230,234,.25)';
+      var audioTitle = document.createElement('div');
+      audioTitle.textContent = '音频（实时）';
+      audioTitle.style.cssText = 'opacity:.75';
+      audioBox.appendChild(audioTitle);
+
+      var audioDefs = [
+        // [SW.P 字段, passProp, 标签, min, max, step, 小数位]
+        ['handVolume', null, '手总线    ', 0, 1.5, 0.01, 2],
+        ['flowVolume', null, '流水(沙沙)', 0, 1.5, 0.01, 2],
+        ['slapVolume', null, '拍击(slap)', 0, 1.5, 0.01, 2]
+      ];
+
+      audioDefs.forEach(function (d) {
+        var field = d[0], label = d[2], min = d[3], max = d[4], step = d[5], dec = d[6];
+        var row = document.createElement('div');
+        row.style.cssText = 'white-space:nowrap;margin:2px 0';
+        var lab = document.createElement('span');
+        lab.textContent = label;
+        var input = document.createElement('input');
+        input.type = 'range'; input.min = min; input.max = max; input.step = step;
+        input.value = SW.P[field];
+        input.style.cssText = 'width:110px;vertical-align:middle;accent-color:#7fb8c9;height:14px';
+        var val = document.createElement('span');
+        val.textContent = Number(SW.P[field]).toFixed(dec);
+        val.style.cssText = 'display:inline-block;width:48px;text-align:right';
+        input.addEventListener('input', function () {
+          var v = parseFloat(input.value);
+          SW.P[field] = v;             // syncVolumes() 下一次拖水 / 拍击时读 ⇒ 无防抖
+          val.textContent = v.toFixed(dec);
+        });
+        row.appendChild(lab); row.appendChild(input); row.appendChild(val);
+        audioBox.appendChild(row);
+      });
+      box.appendChild(audioBox);
+
       var defs = [
         // [SW.P 字段, bloomPass 属性, 标签, min, max, step, 小数位]
         //  · bloom 三参：init 时烘焙进 pass → 直写 SW.post.bloomPass 同名属性
@@ -363,7 +407,7 @@
       reset.addEventListener('click', function () {
         var P0 = SW.P0;
         // ⚠ 顺序必须与 DOM 里 input 的出现顺序一致（下面按索引回写 rows[i]）
-        var all = defs.concat(bedDefs).concat(waveDefs);
+        var all = audioDefs.concat(defs).concat(bedDefs).concat(waveDefs);   // ⚠ 顺序 = DOM 中 input 顺序
         all.forEach(function (d) {
           SW.P[d[0]] = P0[d[0]];
           if (d[1] && SW.post && SW.post.bloomPass) { SW.post.bloomPass[d[1]] = P0[d[0]]; }
