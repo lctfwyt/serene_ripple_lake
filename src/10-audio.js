@@ -62,8 +62,16 @@
   // 拍击采样：一次性离散事件，用 <audio> 元素池直放。
   // ⚠ 为什么不用 BufferSource：file:// 下 fetch/XHR/decodeAudioData 全部被拦（实测 FAIL），
   //   采样想出声只能走元素直放 —— 而它正好不需要连续调制，是唯一可行的路。
-  // 片段集：从 slap.mp3（29s 连续戏水）里按「低频能量占比」自动挑出的 4 个低沉厚重片段，
-  //   每个 0.55s，已统一峰值 + 淡入淡出（生成脚本见 plan/_STATUS.md 的 WP4-sfx2 记录）。
+  // 片段集：由 `plan/audio-slap-cut.py`（入库）从源 mp3 自动挑段 + 加工生成 ——
+  //   48000 Hz · 单声道 · PCM_16 · 各 **1.4500 s / 69 600 帧 / 峰值 0.6200**（与历代旧件同规格）。
+  //   换源史（AM-034）：① `slap.mp3`（29s 连续戏水，每段 0.55 s；WP4-sfx2）
+  //     → ② `lake-water-breaks-on-a-rocky-shore.mp3`（岸浪环境声；落地段 `108 §11.7`，因整体偏轻被换）
+  //     → ③ **`small-splashes-of-water.mp3`（现行 · 2026-09-30 定案）**。
+  //   出处：① `sounds-mp3` **不可商用**（站方 About 原文「not intended for commercial use」+ 素材
+  //     「collected from open sources」⇒ 站方不持版权、无权可授）⇒ 这正是换源的原因；
+  //     ②③ 均 = **`sound dino`**（可商用免署名，与 `bird1~6` 同源，`108 §3.3`）。
+  //   现行选材 = **定长窗扫描 + 全按能量挑**（`--final --picks A1,A2,A3,A5 --level heavy`）——
+  //   「挑一半厚拍」在现行源不成立，改全按能量（`108 §4.2` 订正）。
   var SLAP_FILES = ['assets/audio/slap1.wav', 'assets/audio/slap2.wav',
                     'assets/audio/slap3.wav', 'assets/audio/slap4.wav'];
   var SLAP_DELAY = 4000;              // 延迟建池（ms）：错开 BGM 加载高峰，否则 BGM 播不动

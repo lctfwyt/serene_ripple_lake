@@ -196,9 +196,11 @@
       return this;
     },
 
-    // —— 后期参数滑杆（主控 2026-09-24：雨桐调 taste 用）——
-    // 仅 ?debug=1 存在。grain/vignette 走 SW.P（65-post 每帧读，立即生效）；
-    // bloom 三参 init 时已烘焙进 pass → 直接写 SW.post.bloomPass 的同名属性并回写 SW.P 保持一致。
+    // —— 参数滑杆（后期组：主控 2026-09-24 / 音频组：AM-034 第三段 2026-09-30）——
+    // 仅 ?debug=1 存在。**分四组，DOM 顺序 = 音频 → 后期 → 湖底 → 波纹**（「重置」按该顺序索引回写）。
+    // 后期组：grain/vignette 走 SW.P（65-post 每帧读，立即生效）；
+    //   bloom 三参 init 时已烘焙进 pass → 直接写 SW.post.bloomPass 的同名属性并回写 SW.P 保持一致。
+    // 音频组：写 SW.P 即生效（`10-audio.js` 的 `syncVolumes()` 在拖水/拍击时读），**无防抖**。
     // 不落盘：刷新即回到 00-config.js 默认值；「重置」按钮回 SW.P0。
     // 时序：dbg.init 早于 post 的 ready → 先建 UI 挂「启动中」提示，ready 后再定性（激活/未激活）。
     _buildSliders: function () {
@@ -371,7 +373,7 @@
 
       var waveDefs = [
         // [SW.P 字段, passProp, 标签, min, max, step, 小数位]
-        ['swDirSpread', null, '方向半角  ', 0,   90,  0.5,  1],   // 0 = 各向同性 · 15 = 定稿 · 44 = 碎网回升
+        ['swDirSpread', null, '方向半角  ', 0,   90,  0.5,  1],   // 0 = 各向同性 · 36 = 现行(AM-029 全天统一档) · 15 = AM-022 旧定稿 · 44 = 碎网回升
         ['swZigAmp',    null, '之字幅度  ', 0,   2.0, 0.05, 2],   // 0 = 关（横纹变百叶窗）
         ['swZigFreq',   null, '之字频率  ', 0.1, 2.0, 0.05, 2]
       ];

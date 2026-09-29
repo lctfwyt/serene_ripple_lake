@@ -492,13 +492,14 @@ var P = {
   // AM-034 第三段（UP15 · 2026-09-30）：**两层各自的电平**。此前 hand 总线只有共用的
   //   `handVolume` ⇒ 压它会连 slap 一起压，治不了「沙沙盖过 slap」（`108 §12.2`）。
   //   语义：`flowVolume` = 连续「流水」层增益 · `slapVolume` = 离散「拍击」层增益。
-  //   默认 1.00 = **零回归**（等价于改前）；范围建议 [0, 1.5]。
   //   ⚠ **只缩电平、不改音色** —— `FLOW_MIN/FLOW_MAX`（目标电平）与
   //     `FLOW_*_TAU/HOLD/TICK/THROTTLE`（时间常数）在 `10-audio.js` 内，**一律不碰**。
   //   ⚠ `flowVolume` 仅在图路生效点 = 流水链恒在 Web Audio（两入口同）；`slapVolume`
   //     在 `file://` 元素路另须叠乘（`108 §12.4-②`）。
-  //   定档：由雨桐在 `?debug=1`「音频（实时）」滑杆组定，收口后**主控更新本行最终值**。
-  flowVolume: 1.00, slapVolume: 1.00,
+  //   ✅ **定档完成（2026-09-30 02:1x 主控收口 · `108 §13.6`）**：雨桐两轮定档 ——
+  //     流水 −13.98 dB（20log 0.20）· 拍击 −10.46 dB（20log 0.30）· 手总线保持 0.80。
+  //     第二轮由**换源 ②**触发（源② 比源① 响 2.05 LU ⇒ 同电平下拍击更抢）⇒ 压到 0.30。
+  flowVolume: 0.20, slapVolume: 0.30,
   duckAmount: 0.45, duckDown: 0.05, duckUp: 0.70,
   handBand: [400, 1400, 0.8], handDecay: 0.62,
   bgmFiles: ['assets/audio/bgm-mingjing.mp3', 'assets/audio/bgm-weifeng.mp3'],
@@ -580,7 +581,7 @@ var P = {
 | AM-033 | UP14 | `src/85-fallback.js` · `README.md` | WP5 | 品牌串 / 标题 | ✅ 已应用（`5c35c6b`） |
 | AM-033 | UP14 | `package.json` | 共享 | 描述串 | ✅ 已应用（`5c35c6b`） |
 | AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`** | WP4→UP11 · WP4 · 本包 | ① 试听段（工具）· ② 落地段（同名替换 + `SLAP_LUFS_TRIM`）· ③ **混音段**（`syncVolumes()` + 增益节点） | ✅ ①② 已完成（`108 §11`）· 🔶 ③ 施工中 |
-| AM-034 | UP15 | `src/00-config.js` · `src/90-debug.js` | WP1 · WP1 | **第三段扩权**：音频段加 `flowVolume`/`slapVolume`；`?debug=1` 加「音频（实时）」滑杆组 | 🔶 施工中（`108 §12`） |
+| AM-034 | UP15 | `src/00-config.js` · `src/90-debug.js` | WP1 · WP1 | **第三段扩权**：音频段加 `flowVolume`/`slapVolume`；`?debug=1` 加「音频（实时）」滑杆组 | ✅ **已收口（2026-09-30 02:1x）**（`108 §12`~`§14`） |
 | AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ⬜ 未开工（`109`） |
 | AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` | UP1a · UP1a · WP5 | PWA `<head>` / SW 注册块 / PWA 小节 | ⬜ 未开工（`110`） |
 
@@ -836,5 +837,6 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-29 | AM-034：登记 §7.1 —— UP15 获权写 `src/10-audio.js` / `assets/audio/slap1~4.wav` / **新建 `plan/audio-slap-cut.py`**（slap 换源） | UP15 |
 | 09-30 | AM-034：新源出处 = **`sound dino`**（与 `bird1~6` 同源，可商用免署名）⇒ **授权门已清**；**派试听段**（`plan/audio-slap-cut.py --audition` → `108 §4.6` 试听页，**不落 `assets/audio/`、不改 `src/`**） | UP15 |
 | 09-30 | AM-034 **第三段（混音平衡）**：§6 加 **`flowVolume` / `slapVolume`**（两层**各自**电平 —— 此前只有共用的 `handVolume`，压它会连 slap 一起压）· §7 登记 `src/00-config.js` / `src/90-debug.js` **扩权**（`?debug=1` 加「音频（实时）」滑杆组）· §7 `src/10-audio.js` 行补 `flowGain`/`slapGain` 两个增益节点 + `file://` 元素路电平公式 · ⚠ **事实更正**：§7 `src/90-debug.js` 行原注「纯 dev-only、**不进交付物**」不成立 —— `app/main.js` 明确 import 它，实测 `dist/index.html` 含 `dbg-sliders`/`重置默认`/`湖底贴图` ⇒ **代码进包、面板默认不显示**，故其改动**必改 `dist` 字节** | UP15 |
+| 09-30 | AM-034 **收口（UP15 全段）**：§6 `flowVolume` / `slapVolume` **定档值落定 0.20 / 0.30**（原占位 1.00/1.00）· §7.1 该行翻 ✅ · 过程 = 试听 → 落地 → **换源二轮** → 混音（`108 §11`/`§11.8`/`§13`）；`dist` 重建 **790 636 B** + 重落基线 · 主控独立复核 **16/16** · 收口顺带订正 `10-audio.js` / `90-debug.js` / `audio-slap-cut.py` 三处**过期注释**（纯注释、零逻辑） | UP15 |
 | 09-29 | AM-035：登记 §7.1 —— UP16 获权写 `package.json` / `README.md`（Netlify 部署配置，**新增 `netlify.toml` / `.nvmrc`**，未开工） | UP16 |
 | 09-29 | AM-036：登记 §7.1 —— UP17 获权写 `app/index.html` / `app/main.js` / `README.md`；**新增 `app/public/**`**（PWA manifest + SW + 图标）。**范围裁定：只改构建入口 `app/index.html`，不动免构建入口根 `index.html`**（PWA 在 `file://` 不生效；根入口引用 manifest 会产生 `requestfailed` 污染 `netErrors`） | UP17 |

@@ -4,9 +4,14 @@
 
 【为什么存在】
 assets/audio/slap1~4.wav 的原源 sounds-mp3 **不可商用**（2026-09-30 主控裁决），必须换源。
-新源 = 雨桐提供的 `lake-water-breaks-on-a-rocky-shore.mp3`（出处 `sound dino`，可商用免署名）。
-本脚本把「从 99.253 s 岸浪环境声里挑 4 个拍击 + 加工成『低沉厚重』」变成**一条命令可复跑**的
-确定性流程 —— 选材靠**读数**（包络峰 / 起跳 / 低频占比），不靠耳朵翻 99 秒。
+**两版源，出处均 = `sound dino`（可商用免署名）**：
+  · 源 ①（第一版）`lake-water-breaks-on-a-rocky-shore.mp3`（99.253 s 岸浪环境声）—— 已落过一版，
+    因整体偏轻 + 厚重感不足被换掉（`108 §11.7`）。
+  · 源 ②（**定案**）`small-splashes-of-water.mp3`（17.856 s）—— 现行 `assets/audio/slap1~4.wav` 的来源（`108 §11.8`）。
+本脚本把「从源里挑 4 个拍击 + 加工成『低沉厚重』」变成**一条命令可复跑**的
+确定性流程 —— 选材靠**读数**（包络峰 / 起跳 / 低频占比），不靠耳朵翻整段。
+换源：`--src` 指向 `audio-build/src/` 里的新文件；指纹须先登记进 `SRC_SHA_WHITELIST`
+（或显式 `--any` + 已确认出处）。
 
 【口径】（与 plan/audio-baseline.py 同源，见其头部）
   · 解码    libsndfile（soundfile）· 源 44.1 kHz 立体声 → 单声道取均值
@@ -387,7 +392,7 @@ code{background:#0e1a1f;padding:1px 5px;border-radius:3px;color:var(--acc)}
 """
 
 
-def audition_html(cands, levels, rep_id):
+def audition_html(cands, levels, rep_id, src_name):
     def card(name, tag, blob_b64, meta):
         return ("<div class='card%s'><div class='hd'><span class='id'>%s</span>"
                 "<span class='tag'>%s</span></div>"
@@ -399,8 +404,8 @@ def audition_html(cands, levels, rep_id):
              "<meta name='viewport' content='width=device-width,initial-scale=1'>",
              "<title>slap 试听 · UP15</title><style>%s</style></head><body>" % CSS,
              "<h1>slap 拍击采样 · 试听定档</h1>",
-             "<div class='sub'>源 lake-water-breaks-on-a-rocky-shore.mp3（sound dino）· "
-             "48 kHz 单声道 · 峰值统一 0.62 · 离线内嵌、不联网</div>",
+             "<div class='sub'>源 %s（sound dino · 可商用免署名）· "
+             "48 kHz 单声道 · 峰值统一 0.62 · 离线内嵌、不联网</div>" % src_name,
              "<h2>A 段 · 6 个候选（raw 档）—— 选 4 个，听「哪一次拍击对」</h2><div class='grid'>"]
     for c in cands:
         nx = "净尾 ✅" if c.get("next_ev") is None else "⚠ %.2f s 处还有一下" % c["next_ev"]
@@ -500,7 +505,7 @@ def main():
         for lv in lv_out:
             (d / ("%s_level-%s.wav" % (rep["id"], lv["level"]))).write_bytes(
                 base64.b64decode(lv["b64"]))
-        html = audition_html(picks, lv_out, rep["id"])
+        html = audition_html(picks, lv_out, rep["id"], src.name)
         (d / "audition.html").write_text(html, encoding="utf-8")
         (d / "readings.json").write_text(json.dumps(
             {"src": src.name, "sha256": sha, "sr": sr, "dur": len(x) / sr,
