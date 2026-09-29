@@ -202,7 +202,8 @@ SW.water = {
   setGlitterNear(v),      // AM-024 D2b：反光项距离权重的运行时混合 v∈[0,1]（1=生效/0=关闭）
                           //   **交付态恒 1**，只给对比出图 / 降级用；与 setRefract 同族的差分手法
   probe()                 // → { refract, normalGain, tris, envReady, envGain,
-                          //     glitterNear, glitterNearMin, glitterWBottom, glitterWJ13Edge }
+                          //     glitterNear, glitterNearMin, glitterWBottom, glitterWJ13Edge,
+                          //     envTex }
 };
 ```
 
@@ -210,6 +211,11 @@ SW.water = {
 与 `envGain`（`P.envWaterGain`）；`uniforms` 追加 `uEnvEq` / `uEnvReady` / `uEnvGain`
 （`uEnvEq` 每帧从 `SW.scene.env.equirect` 重指 —— 重建会换贴图，同 `uHeight` 的道理）。
 `setRefract` / 其余方法签名未动。
+
+**AM-031（2026-09-29，UP13-fix2）**：`probe()` 追加只读读数 **`envTex`** ∈ `'base'` / `'band'` / `'none'`
+—— 当帧水面**实际采样**的是「无光带版」还是「带光带版」（消费层门控 `bandGate()` 的选择结果），
+`'none'` = env 未生效走降级。与 `SW.scene.env.equirectBase`（§2.3，AM-031 追加）配对：
+`bandGate() = 0`（夜段）⇒ `'base'` **且不依赖是否重烘**（判据靠它读，见 `104 §5`）。
 
 
 ### 2.6b `65-post.js` → `SW.post`（所有者：UP2 · **AM-009 新增**）
