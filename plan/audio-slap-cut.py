@@ -50,6 +50,11 @@ SRC_MP3 = ROOT / "audio-build" / "src" / "lake-water-breaks-on-a-rocky-shore.mp3
 OUTDIR = ROOT / "audio-build"
 
 SRC_SHA16 = "3c0470de30191980"      # 契约 108 §3.1；不符即停
+# 已登记源指纹白名单（新源进 `audio-build/src/` 时在此登记，避免 `--any` 滥用）
+SRC_SHA_WHITELIST = {
+    SRC_SHA16: "lake-water-breaks-on-a-rocky-shore.mp3（108 §3.1）",
+    "c246ea712ffa82e9": "small-splashes-of-water.mp3（雨桐 2026-09-30 提供，出处同 §3.3 `sound dino`）",
+}
 
 OUT_SR = 48000                      # 输出采样率（§2-4 硬约束）
 OUT_PEAK = 0.6200                   # 输出峰值（−4.15 dBFS，沿用旧件约定）
@@ -195,12 +200,14 @@ def wav16(x, sr=OUT_SR):
 
 
 # --------------------------------------------------------------------------- 加载
-def load_src(path):
+def load_src(path, allow_any=False):
     import hashlib
     sha = hashlib.sha256(path.read_bytes()).hexdigest()
-    if sha[:16] != SRC_SHA16:
-        sys.exit("🔴 源文件 sha256[:16] = %s ≠ %s（108 §3.1）⇒ 停工核对"
-                 % (sha[:16], SRC_SHA16))
+    if sha[:16] not in SRC_SHA_WHITELIST:
+        if not allow_any:
+            sys.exit("🔴 源文件 sha256[:16] = %s 未登记 ⇒ 停工核对（先在 "
+                     "SRC_SHA_WHITELIST 登记，或确认后加 --any）" % sha[:16])
+        print("  ⚠ 源 %s 未登记，--any 放行（指纹 %s）" % (path.name, sha[:16]))
     x, sr = sf.read(str(path), dtype="float64", always_2d=True)
     mono = x.mean(axis=1)
     return mono, sr, sha
@@ -433,9 +440,11 @@ def main():
     ap.add_argument("--picks", default="", help="例 A1,A3,A4,A6")
     ap.add_argument("--level", default="heavy", choices=LEVEL_ORDER)
     ap.add_argument("--cands", type=int, default=6, help="候选个数（默认 6）")
+    ap.add_argument("--gap", type=float, default=5.0, help="候选两两最小间隔秒（短源须调小）")
     ap.add_argument("--dur", type=float, default=DUR_TARGET,
                     help="**定长**裁剪秒数（默认 1.450 = 旧 slap1~4.wav 实测时长，§1.1）")
     ap.add_argument("--src", default=str(SRC_MP3))
+    ap.add_argument("--any", action="store_true", help="源指纹未登记时放行（须先确认出处）")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
     if not (a.final or a.audition):
@@ -444,12 +453,12 @@ def main():
     src = Path(a.src)
     if not src.exists():
         sys.exit("🔴 源文件不存在：%s" % src)
-    x, sr, sha = load_src(src)
+    x, sr, sha = load_src(src, allow_any=a.any)
     print("源：%s" % src.name)
     print("  sha256[:16] %s ✅ · %.1f kHz · %.3f s · 全段低频占比 %.4f %%"
           % (sha[:16], sr / 1000.0, len(x) / sr, low_ratio(x, sr) * 100.0))
 
-    picks, allc, thr, bed, nev = pick_candidates(x, sr, a.cands, dur_t=a.dur)
+    picks, allc, thr, bed, nev = pick_candidates(x, sr, a.cands, gap=a.gap, dur_t=a.gap and a.dur or a.dur)
     print("\n候选（0.25 s 包络峰 ≥ P85 = %.5f；底噪中位 %.5f；全源 %d 个事件 ⇒ 取 %d）"
           % (thr, bed, nev, len(picks)))
     print("  %-4s %8s %8s %8s %9s %9s %8s %7s %8s"
