@@ -139,10 +139,18 @@ SW.scene.env            // 只读消费：{ ready, equirect, equirectBase, rt, r
                         //   🔴 **AM-031 追加 `equirectBase`** = **无光带**版（= PMREM 的 disc 源）。
                         //     自 AM-031 起 `60-water.js` **每帧按 `bandGate()` 选图** —— `g = 0`（夜段）
                         //     采 `equirectBase` ⇒ 光带**结构性为 0**，不再依赖"夜里重烘过一张"。
+                        //   🔴 **AM-032 · 两张改为「满档常驻」+ 消费端混权重 （改写 AM-029/031 的选图机制）** ——
+                        //     生产端不再按 `g` 烘"混好的成品"，改**恒烘两张**（内容与当帧 `g` 无关）：
+                        //       `equirectBase` = **纯圆斑满档**（= `opt` 不传 / `g = 0` 那张）
+                        //       `equirect`     = **纯光环满档**（= `buildEnvEquirect(s, W, H, { g: 1, band })` 那张）
+                        //     ⇒ `equirect !== equirectBase` **恒成立**（原"夜段两张同一对象"的特例**作废**）。
+                        //     消费端由"二选一"升级为 **`mix(base, band, uEnvMix)`**、`uEnvMix = bandGate()`
+                        //     ⇒ 光带**当帧**出/消，与月亮柱 `uSunRadiance ×(1−g)` 同频（`105-UP13-fix3-band-mix.md`）。
+                        //     稳态（`g ∈ {0,1}`）**逐位不变**；过渡段（`0<g<1`）允许 ≤1 ULP 差异（half 量化）。
                         //   🔴 **AM-029 L5 · 同一张 env 有两个消费者（刻意不同源）** ——
-                        //     `equirect` = **水面专用**（带光带版 → `60-water.js` 的 `uEnvEq`）；
+                        //     `equirect` = **水面专用**（满档光环版 → `60-water.js` 的 `uEnvEq`）；
                         //     `rt.texture` → `scene.environment` = **石头/湖底漫反射 IBL**（走 PMREM，
-                        //     源是 **disc 版**、逐位等于 AM-029 之前）。夜段 `g = 0` ⇒ 两者复用同一张。
+                        //     源是 **disc 版**、逐位等于 AM-029 之前）。
 SW.scene.buildEnv(s)    // 用 TimeState 重建 equirect + PMREM；返回 boolean（是否生效）
 SW.scene.dropEnv()      // 退回旧光照（envEnabled=false / 建失败）——不销毁 PMREM
 ```
@@ -203,7 +211,7 @@ SW.water = {
                           //   **交付态恒 1**，只给对比出图 / 降级用；与 setRefract 同族的差分手法
   probe()                 // → { refract, normalGain, tris, envReady, envGain,
                           //     glitterNear, glitterNearMin, glitterWBottom, glitterWJ13Edge,
-                          //     envTex }
+                          //     envTex, envMix }
 };
 ```
 
@@ -216,6 +224,13 @@ SW.water = {
 —— 当帧水面**实际采样**的是「无光带版」还是「带光带版」（消费层门控 `bandGate()` 的选择结果），
 `'none'` = env 未生效走降级。与 `SW.scene.env.equirectBase`（§2.3，AM-031 追加）配对：
 `bandGate() = 0`（夜段）⇒ `'base'` **且不依赖是否重烘**（判据靠它读，见 `104 §5`）。
+
+**AM-032（2026-09-29，UP13-fix3 · ⬜ 待施工）**：**本包改的是"怎么用两张"**。
+- `uniforms` 追加 **`uEnvEqBase`**（→ `SW.scene.env.equirectBase`，无光带版）与 **`uEnvMix`**（每帧 `bandGate()`）；
+  **`uEnvEq` 保留**，语义变为「**满档光环版**」（→ `SW.scene.env.equirect`，**不再二选一**）。
+- FRAG 的 env 反射由"采一张"改为 **`mix(texture2D(uEnvEqBase, …), texture2D(uEnvEq, …), uEnvMix)`**。
+- `probe()` 追加只读读数 **`envMix`**（0~1，带 4 位小数）；`envTex` 由二态扩为**三态**：
+  `'base'`（`envMix ≤ 0`）/ `'mix'`（`0 < envMix < 1`）/ `'band'`（`envMix ≥ 1`）/ `'none'`（env 未生效）。
 
 
 ### 2.6b `65-post.js` → `SW.post`（所有者：UP2 · **AM-009 新增**）
@@ -778,3 +793,6 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-25 | AM-025：§6 加 `swDirSpreadDay`（波表方向逐时化，`swDirSpread` 语义收窄为夜段档）；`20-time.js` 白天 `gGain` 0→0.12 + 夜段 `sun` 彩度 0.034→0.012、`gli`→0.006 + 日光色温单调化 + 18.50 降曝光；`30-scene.js` `D2A_DISC_DROP` 1.7→0.9 | UP13 三轮 |
 | 09-25 | AM-026~028：§6 加 `envWaterGainDay` / `glitterRoughDay`（两者都逐时化，夜段逐位不变）；`20-time.js` 黄昏 `spr`→1.0 + `sun` 橙→白直通 + 5.50 `sun`/`gli` 压彩度（去绿/转白）+ 白天 `gli` 单调 + 白天/黄昏 `gGain`→0.28；**5.50 色调整族**（为救 `R−B(5.5)`） | UP13 四轮 |
 | 09-29 | AM-029：§6 加 `envBand {amp,elev,sigma,detail}`（横向光带四数合一）· **删 `swDirSpreadDay`**（`swDirSpread` 回到全天常量 **36**）· §2.3 加只读面 `env.gate`；`30-scene.js` 等仰角光环 + 昼夜门控 `smoothstep(0.52,0.70,spr)` + **石头 IBL 隔离**（`env.equirect` 带光带 / `scene.environment` 走 disc 版）；`60-water.js` 镜面**非夜晚精确归零**（`uSunRadiance ×(1−g)`）+ env 采样法线解耦（`uEnvDetailW`）；`20-time.js` 昼段 `gGain` 归 0（死数清理） | UP13 五轮 |
+| 09-29 | AM-030：`30-scene.js` 删 env「终身 40 次重建配额」→ 改「停稳 `ENV_SETTLE_FRAMES = 6` 帧才烘 + **成功才提交** `_envLast`」；§2.3 只读面加 `env.deferred`（`env.rebuilds` 降为诊断计数） | UP13-fix1 |
+| 09-29 | AM-031：§2.3 加 `env.equirectBase`（无光带版）· §2.6 加 `probe().envTex`（二态）；`60-water.js` 每帧按 `bandGate()` 选图 ⇒ 夜段光带**结构性为 0**、不依赖重烘 | UP13-fix2 |
+| 09-29 | AM-032（⬜ 待施工）：§2.3 两张改为「**满档常驻**」（`equirect` = 纯光环 `g=1` / `equirectBase` = 纯圆斑，与当帧 `g` 无关）· §2.6 加 `uEnvEqBase` / `uEnvMix` / `probe().envMix`，`envTex` 扩为**三态**；消费端 `mix(base, band, bandGate())` ⇒ 光带与月亮柱**同频** | UP13-fix3 |
