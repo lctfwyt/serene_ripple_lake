@@ -211,9 +211,10 @@
   //      变宽一档；月柱位置由 `elev` 决定，与波表方向无关。
   var WAVE_Q = 3;              // 档位量化（度）
   var curHalf = null;          // 当前**已编进 shader** 的档位（量化值）
-  // AM-031（L5）：水面当帧采的是哪张 env 贴图 —— `'base'`（无光带） / `'band'`（带光带） / `'none'`。
-  //   `update()` 每帧写入、`probe()` 只读读出。判据 2（stale 免疫）就靠它证明
-  //   「夜段归零**不依赖重烘**」—— 光看画面像素分不出"没光带"与"光带很淡"。
+  // AM-031（L5）／AM-032：水面当帧的 env 门控档 —— `'base'`（→ 纯圆斑）/ `'band'`（→ 纯光环）
+  //   / `'mix'`（两张按权重混，过渡段）/ `'none'`（env 未生效）。
+  //   `update()` 每帧写入、`probe()` 只读读出。判据 1/2（stale 免疫 + 当帧跟随）就靠它证明
+  //   「光带出/消**不依赖重烘**」—— 光看画面像素分不出"没光带"与"光带很淡"。
   var curEnvTex = 'none';
   function c01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
@@ -292,7 +293,11 @@
     'uniform vec3 uSkyBottom;',
     // ★ UP3 / AM-017：环境贴图反射。uEnvEq 由 SW.scene.env.equirect 供给（每帧在 update() 里重指），
     //   uEnvReady 是 0/1 开关 —— 0 时整段等于旧路径（= envEnabled=false / PMREM 建失败 的降级）。
+    //   🔴 **AM-032（L4）**：`uEnvEq` 语义改为**满档光环版**（`g = 1`）；新增 `uEnvEqBase`（纯圆斑满档）。
+    //      `uEnvMix = bandGate()`（每帧写）⇒ 门控由**消费端 mix** 承担、当帧生效（旧版二选一做不到）。
     'uniform sampler2D uEnvEq;',
+    'uniform sampler2D uEnvEqBase;',
+    'uniform float uEnvMix;',
     'uniform float uEnvReady;',
     'uniform float uEnvGain;',
     // ★ AM-029（L7）：env 采样法线里「高频细节波」的占比（= `P.envBand.detail`，定稿 0.3）。
@@ -420,9 +425,14 @@
     //   uSkyTop / uSkyBottom **保留**并作为 fallback：env 未就绪（含建失败）时画面绝不黑。
     //   水面**不**采样 PMREM 出来的 CubeUV RT：r160 的 CUBEUV_* 定义是给内建材质注入的，
     //   自定义 ShaderMaterial 拿不到 → 改走「同一张 equirect + mip」，视觉等价、零编译风险。
-    //   🔴 **AM-031（L6）**：这里拿到的 `uEnvEq` 已经是**消费层选过的那一张** ——
-    //      `update()` 每帧按 `bandGate()` 选（`g = 0` ⇒ 无光带的 `env.equirectBase`）。
-    //      与月亮柱 `×(1−g)` 同族：每个消费者自己掐一次，不依赖缓存刷新。**本段 GLSL 一字未动。**
+    //   🔴 **AM-031（L6）**：这里拿到的 `uEnvEq` 曾是**消费层选过的那一张**（`g = 0` ⇒ 无光带版）。
+    //   🔴 **AM-032（L5 · 核心）**：改为**两张按 `uEnvMix` 混权重** —— 生产端恒烘两张满档贴图
+    //      （`uEnvEqBase` 纯圆斑 / `uEnvEq` 纯光环 `g=1`），门控每帧在 shader 里 mix
+    //      ⇒ 光带**当帧**出/消，与月亮柱 `uSunRadiance ×(1−g)`（本文件 ⑥ 段）**同频**。
+    //      `g ∈ {0,1}`（13 个 keyframe 上）时 `mix` 精确退化为单张 ⇒ 稳态**逐位不变**：
+    //        `mix(a,b,0) = a·1 + b·0 = a` / `mix(a,b,1) = a·0 + b·1 = b`（IEEE754 精确）。
+    //      ⚠ 过渡段（`0 < g < 1`）两张各自 half 量化后再求和 ⇒ 允许 ≤1 ULP 差异（不在任何基线上）。
+    //      `uEnvMix` 由 `update()` 每帧写（`bandGate()`）；env 未就绪时 `uEnvReady = 0` ⇒ 整段跳过。
     '  vec3 refl = reflBase;',
     '  if (uEnvReady > 0.5) {',
     '    float envBias = clamp(uWaterRough * 8.0, 0.0, 4.0);',
@@ -434,7 +444,9 @@
     //   🔴 `N` 本身**一字不动** —— 折射（`#3`）、镜面、菲涅尔全部照旧，否则判据会连带漂移。
     '    vec3 Nenv = normalize(vec3(-(sR.x + sD.x * uEnvDetailW), 1.0, -(sR.y + sD.y * uEnvDetailW)));',
     '    vec3 Renv = reflect(-V, Nenv);',
-    '    vec3 envCol = texture2D(uEnvEq, swEnvUV(Renv), envBias).rgb * uEnvGain;',
+    '    vec2 eUV = swEnvUV(Renv);',
+    '    vec3 envCol = mix(texture2D(uEnvEqBase, eUV, envBias).rgb,',
+    '                      texture2D(uEnvEq,     eUV, envBias).rgb, uEnvMix) * uEnvGain;',
     '    refl = mix(reflBase, envCol, uEnvReady);',
     '  }',
     '  vec3 col = mix(body, refl, clamp(Fr, 0.0, 1.0));',
@@ -610,6 +622,9 @@
       uniforms.uSkyBottom = { value: new THREE.Color(0.62, 0.76, 0.78) };
       // ★ UP3 / AM-017：env 供给入口（真正指向由 update() 每帧刷新 —— 重建后会换新贴图）
       uniforms.uEnvEq = { value: makeEnvPlaceholder() };
+      // ★ AM-032（L6）：纯圆斑满档（`env.equirectBase`）+ 每帧门控权重 `uEnvMix = bandGate()`。
+      uniforms.uEnvEqBase = { value: makeEnvPlaceholder() };
+      uniforms.uEnvMix = { value: 0 };
       uniforms.uEnvReady = { value: 0 };
       uniforms.uEnvGain = { value: 1 };
       // ★ AM-029（L7）：env 采样法线里高频细节波的占比（`P.envBand.detail`）
@@ -727,20 +742,26 @@
       // ★ UP3 / AM-017：env 供给。水面**不拥有**环境贴图（构建在 30-scene.js），
       //   只消费 SW.scene.env。重建会换新贴图 → 必须每帧重指（同 uHeight 的道理）。
       var ev = SW.scene.env;
-      var envOn = !!(SW.P.envEnabled && ev && ev.ready && ev.equirect);
-      // ── AM-031（L4）：**消费层硬门控** —— 每帧按当帧 `bandGate()` 选图 ────────────
-      //   `g > 0` ⇒ `equirect`（带光带版，白天照旧）；`g = 0` ⇒ `equirectBase`（**无光带**版）。
-      //   为什么必须在消费端再掐一次：选图原先**只在 `30-scene.js` 烘图那一刻做一次**（生产端），
-      //   贴图一旦 stale，水面就一直采着带光带那张 —— 而消费端原本**没有任何否决权**
-      //   ⇒ 症状（白天拖到夜、光带留着不走）只要生产端漏一条路径就复发。
-      //   手法与月亮柱的 `uSunRadiance × (1−g)`（上方 ③ env 段之前）**同族**：
-      //   每个消费者自己掐一次，时间一到立刻生效、**不依赖任何缓存刷新**。
-      //   稳态零影响：夜段 `equirect === equirectBase`（30-scene 复用同一对象）⇒ 选的还是那一张
-      //   ⇒ **像素逐位不变**；白天仍选 `equirect` ⇒ 同样逐位不变。
+      var eqMain = ev && ev.equirect, eqBase = ev && ev.equirectBase;
+      // 判据 8 降级：两张**任一**缺失 ⇒ 回退同槽（不炸）。正常态两张恒存。
+      var envOn = !!(SW.P.envEnabled && ev && ev.ready && (eqMain || eqBase));
+      // ── AM-032（L7）：**消费层 `mix` 权重门控**（改写 AM-031 的"二选一"）─────────────
+      //   旧版（AM-031）每帧**二选一**：`g > 0` ⇒ `equirect`；`g = 0` ⇒ `equirectBase`。
+      //     问题：那两张是**生产端按当帧 g 烘的"成品"** ⇒ 夜里从昼往夜拖时，被选中的
+      //     "带光带那张"是夜里烘的、里面根本没有环 ⇒ 必须等松手重烘才出现（雨桐症状）。
+      //   新版：生产端**恒烘两张满档**（`equirectBase` 纯圆斑 / `equirect` 纯光环 `g=1`），
+      //     消费端每帧 `uEnvMix = bandGate()` ⇒ 两张按权重混 ⇒ 门控**当帧生效**。
+      //   手法与月亮柱 `uSunRadiance ×(1−g)`（本文件 ⑥ 段前）**同频**：两者共用同一个 g。
+      // ⚠ 始终指向两张（**不再二选一**）；`uEnvMix` 缺省 0 ⇒ 夜段采 `uEnvEqBase`（纯圆斑）。
+      if (envOn) {
+        u.uEnvEq.value = eqMain || eqBase;
+        u.uEnvEqBase.value = eqBase || eqMain;
+      }
       var gSel = bandGate();
-      if (envOn) { u.uEnvEq.value = (gSel > 0) ? ev.equirect : (ev.equirectBase || ev.equirect); }
+      u.uEnvMix.value = envOn ? gSel : 0;
       u.uEnvReady.value = envOn ? 1 : 0;
-      curEnvTex = envOn ? ((gSel > 0) ? 'band' : 'base') : 'none';   // L5 的只读读数来源
+      // L8：`envTex` 由二态扩为**三态**（`uEnvMix` 的档位读数）。
+      curEnvTex = envOn ? (gSel <= 0 ? 'base' : (gSel >= 1 ? 'band' : 'mix')) : 'none';
       // ── AM-028：水面 env 反射强度逐时化（白天远端反光的**主杠杆**）──────────────
       //   实测（18:30 直渲）：0.75 → 1.10 把远端三段均值由 139.6 抬到 148.9。
       //   夜段 s=0 ⇒ 逐位等于 `P.envWaterGain`（0.75）⇒ `#13` 不受影响（刻意如此）。
@@ -809,9 +830,13 @@
         // —— UP3 / AM-017：环境反射是否在跑（降级判据 #10 读它）——
         envReady: !!(u && u.uEnvReady.value > 0.5),
         envGain: u ? u.uEnvGain.value : 0,
-        // —— AM-031（L5）：当帧采的是哪张 env 贴图（`'base'` / `'band'` / `'none'`）——
-        //   判据 1/2/3 的读数入口。`envReady=true` 时：夜段必须 `'base'`、昼段必须 `'band'`。
+        // —— AM-031（L5）／AM-032：当帧 env 门控档（**三态**）——
+        //   `'base'`（uEnvMix ≤ 0 ⇒ 纯圆斑）/ `'mix'`（0 < mix < 1）/ `'band'`（mix ≥ 1）/ `'none'`。
+        //   判据 1/2/4 的读数入口。`envReady=true` 时：夜段必须 `'base'`、昼段必须 `'band'`。
         envTex: curEnvTex,
+        // —— AM-032（L8）：**只读**当帧 `uEnvMix`（= `bandGate()`，0~1，4 位小数）——
+        //   判据 1/2/4 判"当帧跟随"的主读数：拖动中它必须随 g 单调变，且与 rebuilds 无关。
+        envMix: u ? +u.uEnvMix.value.toFixed(4) : 0,
         overBudget: tris > TRIS_BUDGET
       };
     }

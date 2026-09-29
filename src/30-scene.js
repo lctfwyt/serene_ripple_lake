@@ -1,4 +1,4 @@
-// src/30-scene.js —— 所有者：WP1 → UP3（AM-017 起环境光照段归 UP3）→ UP13（AM-024 D2a · AM-029 光带/门控/IBL 隔离）
+// src/30-scene.js —— 所有者：WP1 → UP3（AM-017 起环境光照段归 UP3）→ UP13（AM-024 D2a · AM-029 光带/门控/IBL 隔离 · AM-032 恒烘两张）
 // 签名逐字对齐 01-CONTRACT.md §2.3。其它 WP：只读。
 //
 // AM-024 D2a（本文件动作）：太阳亮瓣由 `TimeState.envSunSpread` 单标量驱动 ——
@@ -6,9 +6,14 @@
 //   `s = 0` ⇒ 逐位回到 AM-024 之前的亮瓣；`s = 1` ⇒ 白天弥散（不再是"假月亮"）。
 //   `envDist()` 已纳入 `envSunSpread`；`P.envSunSpreadGain` 变化单独监听（它在 dist 里会被约掉）。
 //
-// AM-029（L3/L4/L5，本文件动作）：非夜晚的亮瓣由**圆斑**改**等仰角光环**（横向光带），
-//   并按 `g = smoothstep(0.52, 0.70, spr)` 与圆斑互斥混合；**同一张 env 拆成两个消费者** ——
-//   水面看「带光带」版（`env.equirect`）· PMREM/石头 IBL 看「disc 版」（`rt.texture`，逐位等于现状）。
+// AM-029（L3/L4/L5，本文件动作）：非夜晚的亮瓣由**圆斑**改**等仰角光环**（横向光带）；
+//   **同一张 env 拆成两个消费者** —— 水面看「带光带」版（`env.equirect`）·
+//   PMREM/石头 IBL 看「disc 版」（`rt.texture`，逐位等于现状）。
+//   （原「按 g 在烘图时互斥混合」自 **AM-032** 起**搬到消费端** `mix`，见下。）
+//
+// AM-032（本包）：生产端不再烘「按 g 混好的成品」，改**恒烘两张满档**（`equirectBase` 纯圆斑 /
+//   `equirect` 纯光环 `g=1`，与当帧 `g` 无关）⇒ 消费端每帧 `mix(base, band, bandGate())`，
+//   光带**当帧**出/消、与月亮柱同频。稳态（`g ∈ {0,1}`）逐位不变。
 //
 // WP2 会用到的钩子（契约 §2.3 之外的**附加**便利属性，不影响冻结签名）：
 //   SW.scene.rtCamera  —— 赋一个镜像相机，WP1 的 render() 就会自动把场景渲进 SW.scene.sceneRT
@@ -21,8 +26,12 @@
 //                          ⚠ **AM-029**：`equirect` 是**水面专用**的那一张（带光带）；
 //                            石头 IBL 走 `rt.texture` 的 PMREM（disc 版）—— 两者刻意不是同一张。
 //                          🔴 **AM-031**：`equirectBase` = **无光带**版（就是 PMREM 的 disc 源那张 `eq`）。
-//                            自 AM-031 起 `60-water.js` **每帧按 bandGate() 选图** —— `g = 0`（夜段）
-//                            采 `equirectBase` ⇒ 光带**结构性为 0**，不再依赖"夜里重烘过一张"。
+//                          🔴 **AM-032（本包）**：两张改为**满档常驻、与当帧 `g` 无关**：
+//                            `equirectBase` = **纯圆斑满档**（`g = 0` 那张）·
+//                            `equirect`     = **纯光环满档**（`g = 1` 那张）。
+//                            门控搬到**消费端**每帧 `mix(base, band, bandGate())`（`60-water.js`）
+//                            ⇒ 光带当帧出/消，与月亮柱 `uSunRadiance ×(1−g)` **同频**。
+//                            ⇒ 两张**恒不同对象**（旧版"夜段同一对象"的特例**作废**）。
 (function (SW, window, document) {
   'use strict';
   var THREE = window.THREE;
@@ -332,8 +341,9 @@
     // AM-029：`gate` 追加为只读读数 —— 当前昼夜门控 g（0 = 纯圆斑 / 1 = 纯光环）
     //   ⚠ `equirect` 自 AM-029 起是**水面专用**的那一张（带光带）；石头 IBL 走 `rt.texture`（PMREM，disc 版）
     // AM-030：`deferred` 追加为只读读数 —— 因静默期（debounce）被推迟的累计次数（诊断用）
-    // AM-031：`equirectBase` 追加 —— **无光带**版（= PMREM 的 disc 源 `eq`）。夜段（`g = 0`）
-    //   `60-water.js` 改采它 ⇒ 光带**结构性为 0**，与"有没有重烘"无关。
+    // AM-031：`equirectBase` 追加 —— **无光带**版（= PMREM 的 disc 源 `eq`）。
+    // AM-032：`equirect` 语义改为**满档光环版（`g = 1`）**、`equirectBase` = **纯圆斑满档**；
+    //   两张**恒烘、恒存、恒不同对象**（与当帧 `g` 无关）。门控由消费端 `mix` 承担。
     env: { ready: false, equirect: null, equirectBase: null, rt: null, rebuilds: 0, res: '', err: '', spread: 0, gate: 0, deferred: 0 },
     _envPmrem: null, _envRT: null, _envEq: null, _envEqW: null,
     _envOldRT: null, _envOldEq: null, _envOldEqW: null,
@@ -512,28 +522,34 @@
         //       不隔离时实测石头区被照亮：正午 122.8 → 150.5、黄昏 76.8 → 98.4。
         var eq = buildEnvEquirect(s, W, H);
         var rt = this._envPmrem.fromEquirectangular(eq);
-        // ② **水面版**（带光带 × 昼夜门控）—— 只换水面这一个消费者：`env.equirect` → `uEnvEq`。
-        //    `g = 0`（夜段）时直接**复用同一张** disc 贴图 ⇒ 夜段画面逐位不变、零额外开销。
-        var g = envGate(s);
-        var eqWater = (g > 0) ? buildEnvEquirect(s, W, H, { g: g, band: P.envBand }) : eq;
+        // ② **水面版** —— 只换水面这一个消费者：`env.equirect` → `uEnvEq`。
+        //    ★ AM-032（L1）：**恒烘两张满档贴图，与当帧 `g` 无关**（旧版烘的是"按 g 混好的成品"，
+        //      成品只有一个档 ⇒ 「拖动中换档」在物理上不可能 —— 那正是「夜→昼 要松手才出现」的死结）。
+        //      `eq`     = `opt` 不传 ⇒ `g = 0` ⇒ **纯圆斑满档**（`ampDisc = amp` / `ampBand = 0`）
+        //      `eqBand` = `{ g: 1 }` ⇒ **纯光环满档**（`ampDisc = 0` / `ampBand = amp × bd.amp`）
+        //      ⇒ 门控由消费端每帧 `mix(base, band, bandGate())` 承担 ⇒ 当帧生效。
+        //      ⚠ 两张**恒不同对象**（旧版"夜段同一对象"的特例**作废**）。
+        var eqBand = buildEnvEquirect(s, W, H, { g: 1, band: P.envBand });
         // 双缓冲释放：只回收「上上张」，避免水面当帧还指着刚被 dispose 的贴图
-        //   ⚠ 夜段 `eqWater === eq`，两处引用同一对象 ⇒ 第二次 dispose 必须跳过（否则重复释放）。
+        //   保底判空保留（AM-032 后两张恒不同对象 ⇒ 判空实为恒真，留着不伤）。
         var oRT = this._envOldRT, oEq = this._envOldEq, oEqW = this._envOldEqW;
         if (oRT) { oRT.dispose(); }
         if (oEq) { oEq.dispose(); }
         if (oEqW && oEqW !== oEq) { oEqW.dispose(); }
         this._envOldRT = this._envRT; this._envOldEq = this._envEq; this._envOldEqW = this._envEqW;
-        this._envRT = rt; this._envEq = eq; this._envEqW = eqWater;
+        this._envRT = rt; this._envEq = eq; this._envEqW = eqBand;
         this.scene.environment = rt.texture;     // 石头 IBL：**disc 版**（不带光带）—— 与现状逐位一致
-        this.env.equirect = eqWater;             // 水面反射：**光带版**（夜段 === disc 版）
-        // ★ AM-031（L1）：把**本来就存在**的无光带那张（`eq`）暴露出去 —— 不新建任何贴图。
-        //   消费端（`60-water.js` L4）夜段改采它 ⇒ 光带与"生产端有没有重烘"彻底解耦。
+        this.env.equirect = eqBand;              // 水面反射：**满档光环版**（`g = 1`，与当帧 g 无关）
+        // ★ AM-031（L1）：把无光带那张（`eq`）暴露出去 —— 不新建任何贴图。
+        //   ★ AM-032：自本包起两张**恒烘、恒不同对象**，消费端由"二选一"升级为 `mix(·,·,g)`。
         this.env.equirectBase = eq;
         this.env.rt = rt;
         this.env.ready = true;
         this.env.res = W + 'x' + H;
         this.env.err = '';
-        this.env.gate = +g.toFixed(4);
+        // `env.gate` 仍是**只读诊断读数**（当帧昼夜门控 g）。AM-032 后它**不再参与烘图** ——
+        //   烘图恒为满档，门控只在消费端（`60-water.js` 的 `uEnvMix`）与水面的镜面 `×(1−g)` 上生效。
+        this.env.gate = +envGate(s).toFixed(4);
         this.env.rebuilds++;
         this._envMatPending = true;              // 材质 envMapIntensity / USE_ENVMAP 需要刷一次
         return true;
