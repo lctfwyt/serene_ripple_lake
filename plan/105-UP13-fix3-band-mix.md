@@ -382,7 +382,7 @@ $ git status --short
  M src/60-water.js
 ```
 禁区**全部为空**：`src/00-config.js` · `src/20-time.js` · `src/90-debug.js` · `plan/wp5-assert.js` ·
-`plan/wp5-env.js` · `plan/pw/__snapshots__/**` · `plan/pw/dist-baseline.txt` · `dist/**` · `01-CONTRACT.md`
+`plan/wp5-env.js` · `plan/pw/tests/__snapshots__/**` · `plan/pw/dist-baseline.txt` · `dist/**` · `01-CONTRACT.md`
 （**该变的变了**：三份白名单文件；**不该变的一字未动**：上列九项 + 冻结件 sha256）。
 
 ### 11.8 提交凭证（模式 A 独占 · 信息带 AM-032）
@@ -404,4 +404,75 @@ feat(up13): 横向光带与月亮柱同频 —— 恒烘两张满档 + 消费端
 > **非白名单文件的两处编辑（主动声明，非越权）**：`plan/04-BOARD.md`（§7 收尾四步 #4「板上 ⬜ 清零」）·
 > `plan/02-AMENDMENTS.md`（§3 生命周期「应用后翻 ✅」，与 AM-031 同款先例）。二者均**不属禁区表**，
 > 且 `00-INDEX.md §3` 波次 14 状态未动（= 主控地盘，已在板上留 ⬜ 提请）。
+
+## 12 · 主控复核（独立上下文 · 2026-09-29 23:3x）
+
+> 与 §11 **分开记**：§11 是施工方**同上下文自证**；本节是**另起一次运行的独立复核**。
+> 复核方自写脚本（临时件 `_abverify.mjs`，已删），**不复用**施工方的 `_ab-night.mjs`、不读它的中间产物。
+
+### 12.1 双端逐位对测（方法）
+
+- **取帧口径**：`__seek(h)` + `__hold(true)` + 每帧钉 `uTime = 7.0` + 隐藏 `#dbg`，
+  然后 `gl.readPixels` 直读**原始 RGBA**（不经 PNG 编码 ⇒ 排除编码器差异）→ sha256。
+- **A 端** = `git checkout 32fe53f -- src/30-scene.js src/60-water.js`（AM-031）·
+  **B 端** = HEAD（AM-032）。A 端取完**立刻** `git checkout HEAD -- …` 复原，工作区核对无误。
+- 每处**同配置复跑一次**（`det`）⇒ 三处全部 `true`（确定性自证：排除"两边只是同机噪声"）。
+- 两端 JS 错误均为 **0**。
+
+| 时刻 | A（AM-031）sha256 | B（AM-032）sha256 | 结论 |
+|---|---|---|---|
+| `12.5` 昼 `g=1` | `b03c67cbdbe4bbb5b69b8238151a8e36bceed4bef379c6420dfdfbfdd782e1fb` | 同左 | ✅ **逐位相同** |
+| `22.5` 夜 `g=0` | `1f8b8e8adf2e8d9c6553af1cb1722d57346e2d29a9a5202a5eab1f3a0d86f598` | 同左 | ✅ **逐位相同** |
+| `20.2` 过渡 `g=0.4634` | `a30306a232745ff3c5fbfbbdb3c0c40ca1cacbe9174d82a3a141424e3e8624ac` | `a8389caecad9db41aa2d1c85afafd1b7aeb9d880be2a95ca8960c1c7318f2dc0` | ⚠ 不同（§2.3 已公布） |
+
+过渡段逐像素差分（raw RGBA，`921600` px）：
+
+```
+maxdiff = 1 级/8bit · 差 >0 的像素 = 5280 / 921600 (0.57%) · 全幅平均绝对差 0.00192
+差值直方图 = {0: 916320, 1: 5280}        ← 只差 1 级，无 2 级以上
+通道累计差 R/G/B = [1947, 1629, 1727]     ← 三通道量级相当，非单通道异常
+```
+
+⇒ 与 §11.4 的 PIL 口径（`0.61%`）**同量级**。差的是「PNG 解码 vs 原始缓冲」的口径，不是结论。
+
+### 12.2 读数面确认
+
+| 时刻 | `envTex` A → B | `equirect === equirectBase` A → B |
+|---|---|---|
+| `12.5` | `band` → `band` | `false` → `false` |
+| `22.5` | `base` → `base` | **`true` → `false`** ← L9 的**有意反转**，实测确认 |
+| `20.2` | `band` → **`mix`** | `false` → `false` |
+
+### 12.3 禁区 / 冻结件（`32fe53f → HEAD` 逐文件核）
+
+`src/00-config.js` · `src/20-time.js` · `src/90-debug.js` · `plan/wp5-assert.js` · `plan/wp5-env.js` ·
+`plan/pw/tests/__snapshots__/full.png` · `plan/pw/dist-baseline.txt` · `plan/01-CONTRACT.md`
+—— **八项全部零改动** ✅
+冻结件 sha256 与 `frozen-hashes.json` 一致：`wp5-assert.js abf23d7de49fa31c…` · `wp5-env.js bd9dd0e8fc115cce…` ✅
+
+### 12.4 套件（复核方本机复跑）
+
+| 命令 | 结果 |
+|---|---|
+| `npm run pw` | **17 passed / 0 failed** —— 含新 R5；`30-pixel ③ 整幅视口` 用**一个字节未改**的基线仍绿 |
+| `assert:dist`（**真 dist 构建**） | **15/15** |
+| `pw:dist` | ✅ 逐文件一致 · 无 dev-only 引用泄漏 |
+
+### 12.5 dist 收口 + 一条机制性陷阱
+
+`dist/index.html` **788290 → 788584 B**（AM-032 净 **+294 B**）· `dist-baseline.txt` 重落 · 复检绿。
+
+⚠ **本轮实测到的陷阱**（AM-031 / AM-032 各踩一次）：`pw:dist` 只锁 `dist ≡ 基线`，
+**不锁** `dist ≡ f(src)`。`src` 改了而 `dist` 没重建时，**基线与 dist 同为旧版 ⇒ 它照样报 ✅**。
+证据链：重建**前** `pw:dist` 报 ✅（`index.html` 788290 B）→ `npm run build` → 立刻报 ❌
+（`! 788584 B  ./index.html`）→ `pw:dist:snapshot` → 复绿。
+⇒ 已记 `_STATUS §4`：凡有包改 `src/`，收口**必须**跑 `build` 并比对体积变化。
+
+### 12.6 复核方对文档的两处订正
+
+1. **本文件 §11.7 路径笔误**：`plan/pw/__snapshots__/**` → **`plan/pw/tests/__snapshots__/**`**（已改）。
+2. **协议层发现（未擅改，提请）**：本文件 §4 白名单未含 `04-BOARD.md` / `02-AMENDMENTS.md`，
+   但 `03-COLLAB-PROTOCOL §7` 收尾四步 #4 要求改它们 ⇒ 施工方每轮都要「主动声明非越权」。
+   建议在 §7.3 明确「**白名单 = 本包改动文件 ∪ 收尾四步产物**」。**已记 `_STATUS §4`，待点头再改协议。**
+
 
