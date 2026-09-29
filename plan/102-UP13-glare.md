@@ -591,3 +591,25 @@ g = smoothstep(0.52, 0.70, spr)        昼夜门控（spr = TimeState.envSunSpre
 - **`npm run pw` 未跑**：像素基线属主控地盘，且本轮画面必变 ⇒ 跑了必红。
 - **本轮无跨包改动 ⇒ 未开新变更单**（`03-COLLAB-PROTOCOL §7-3`）。
 - **观感验收（横向光带的「像不像」/ 月亮档 / 换档手感 / `envBand` 四数 / 门控两端）全部挂雨桐**。
+
+### 9.7 提交（模式 A · 独占工作区 · `§7.1`）
+
+`git add` **逐条列名**（禁 `-A`）：`src/{00-config,20-time,30-scene,60-water}.js` + `plan/{01-CONTRACT,02-AMENDMENTS,04-BOARD,102-UP13-glare,_STATUS}.md`。
+
+```
+commit ca945890cb219545b4fa75fb5b5fac590283e565
+feat(up13): 非夜晚横向光带 + 月柱非夜晚精确归零 + 石头 IBL 隔离 + 波表统一 36（AM-029）
+ plan/01-CONTRACT.md    |  34 +++++++++++++----
+ plan/02-AMENDMENTS.md  |   9 ++++-
+ plan/04-BOARD.md       |   9 +++--
+ plan/102-UP13-glare.md | 101 ++++++++++++++++++++++++++++++++++++++++++++++++-
+ plan/_STATUS.md        |  27 +++++++------
+ src/00-config.js       |  40 ++++++++++++--------
+ src/20-time.js         |  50 +++++++++++++++---------
+ src/30-scene.js        |  82 ++++++++++++++++++++++++++++++++-------
+ src/60-water.js        |  71 ++++++++++++++++++++++++++--------
+ 9 files changed, 335 insertions(+), 88 deletions(-)
+```
+
+- 未提交（gitignore，**故意不入库**）：`_rminusb.mjs` / `_am029probe.mjs`（临时诊断脚本，`_` 前缀）· `plan/shots-up4/diag-band-*.png`（实验台诊断帧，主控/雨桐侧产物）。
+- 基线段（`plan/pw/**`）**未动**（`§7.1-3` 主控地盘）。
