@@ -73,15 +73,15 @@
 | **12** | **1** | **UP13-fix1**（AM-030：env 重建闸门 —— 删终身配额 + 停稳才烘 + 成功才提交） | ✅ 09-29 21:5x（`103` · 主控直修） |
 | **13** | **1** | **UP13-fix2**（AM-031：光带**消费层**硬门控 —— 夜段结构性归零） | ✅ 09-29 22:5x（`104 §10`） |
 | **14** | **1** | **UP13-fix3**（AM-032：光带**与月亮柱同频** —— 两张常驻 + 消费端 `mix`） | ✅ 09-29 23:0x（`105 §11`） |
-| **15** | **1** | **UP14 品牌改名 + 首屏标题行**（AM-033：`静水 · still water` → `静湖微澜 · Serene Ripple Lake`） | 🔶 **已交 09-29 23:5x**（`5c35c6b` / `d7649ff` · 主控收尾待办：像素基线 **2 张**重录 + `dist` 重建 + 标题行观感挂雨桐） |
-| **16** | **1** | **UP15 splash 音效**（AM-034：划水声改造 —— 连续「流水」层 / 离散「拍击」层，二选一或并存） | ⬜ **规格待雨桐沟通**（`108 §3` 清单 · 可 ∥ 波次 15） |
+| **15** | **1** | **UP14 品牌改名 + 首屏标题行**（AM-033：`静水 · still water` → `静湖微澜 · Serene Ripple Lake`） | ✅ **已收口 09-30 00:1x**（`5c35c6b`/`d7649ff` · 标题行雨桐定档 · 主控重录 `bed-clip.png`+`full.png` + 重建 `dist`） |
+| **16** | **1** | **UP15 slap 拍击采样换源**（AM-034：`slap1~4.wav` sounds-mp3「存疑」→ 候选换 sound dino） | ⬜ **规格待雨桐沟通**（`108 §3` 清单） |
 | **17** | **1** | **UP16 上云 · Netlify 静态部署**（AM-035：`netlify.toml` + 5 条缓存头 + `deploy` script + README 部署节 · **零渲染代码**） | ⬜ 待开工（`109` · 前置 UP14 · 可 ∥ 16） |
 | **18** | **1** | **UP17 PWA 可安装 + 离线**（AM-036：`manifest.webmanifest` + `sw.js` + 图标 + 注册 · **只改构建入口**） | ⬜ 待开工（`110` · 前置 17 + **图标**） |
 | 后议 | 1 | UP1b（tree-shaking + `.glsl` 抽离） | 需先裁「着色器双入口供给」（80-UP1 §2.2） |
 | ~~后议~~ | — | ~~部署（Netlify 静态站 / PWA 可安装）~~ | ✅ **已拆包** → 波次 17（`109`）+ 波次 18（`110`）；调研 `107-DEPLOY-research.md` |
 
-**当前状态**：✅ WP1~WP5 收官 · 波次 3~9 完工复核 · **波次 10~14 已交**（第五轮 AM-029 · 缺陷修复 AM-030/031/032 · `pw` 与 `pw:dist` 全线无红）· **波次 15 已交**（UP14 品牌改名，`5c35c6b`，主控收尾待办）· **波次 16~18 已开包**（splash / Netlify / PWA）。
-**⬜ 待办**：**波次 15 主控收尾**（重录 `plan/pw/tests/__snapshots__/full.png` + `bed-clip.png` → 整份复跑 `30-pixel` 验哨兵 · `npm run build` + 重落 `dist-baseline` · 标题行观感挂雨桐）· **波次 16 = UP15 splash**（**规格待雨桐沟通** → `108 §3`）· **波次 18 = UP17 PWA**（**阻塞在图标** → `110 §3`）· `90-debug.js` 过期注释（主控已裁「随下个碰它的包一并修」）· 光带观感与「出/消是否与月亮柱同步」目检挂雨桐。
+**当前状态**：✅ WP1~WP5 收官 · 波次 3~9 完工复核 · **波次 10~14 已交**（第五轮 AM-029 · 缺陷修复 AM-030/031/032 · `pw` 与 `pw:dist` 全线无红）· **波次 15 ✅ 已收口**（UP14 品牌改名 + 标题行定档 · 主控重录基线 + 重建 `dist`）· **波次 16~18 已开包**（slap 换源 / Netlify / PWA）。
+**⬜ 待办**：**波次 16 = UP15 slap**（**规格待雨桐沟通** → `108 §3`）· **波次 18 = UP17 PWA**（**阻塞在图标** → `110 §3`）· `90-debug.js` 过期注释（主控已裁「随下个碰它的包一并修」）· 光带观感与「出/消是否与月亮柱同步」目检挂雨桐。
 **下一波次**：由主控按 `03-COLLAB-PROTOCOL §7.3` 拆包派发。UP1b 后议 · WP6 按需触发（AM-016）。
 **`caustics` 已裁：一律 `false`（AM-007 §4）** —— 不要再问。**grain 终裁 0**（AM-009 收口，想要胶片感自行 0.005~0.02）。
 **⬜ 未验收（观感 / 真机类）**：§7 六项审美（静帧 `plan/shots-wp5/`）· 移动端帧率 · 新 UI 目检（刻度尺/咔嗒/海鸟/BGM chip）。
@@ -105,8 +105,8 @@
 | 引入方式 | **经典 `<script>` 标签**，不是 `type="module"` | ES module + importmap 在 `file://` 下被 CORS 挡死 → 无法双击打开；经典脚本可以 |
 | 交付形态 | 多文件 | 单文件内联 669KB 压缩 JS 会让编辑器卡顿、栈不可读 |
 | 波纹 | **波动方程 FBO ping-pong**，不是"shader 内 N 个解析涟漪" | 后者无法互相干涉、无法自然衰减 —— 而"波纹干涉"正是治愈感核心 |
-| 划水声 | **程序化 WebAudio 合成** | ① 本机 MiniMax 脚本无 SFX 接口；② 真实录音做不到与拖动速度连续耦合 |
-| BGM | **MiniMax 文生音乐**（`music-2.5+` `--instrumental`） | 用户已选；需 `MINIMAX_API_KEY` |
+| 划水声 | **程序化 WebAudio 合成** + 离散拍击 `slap1~4.wav` | ① 合成链路无 SFX 接口；② 真实录音做不到与拖动速度连续耦合；采样只作「肉感」点缀。**采样授权存疑 → 波次 16（`108`）复核换源** |
+| BGM | **Suno 生成** `bgm-mingjing.mp3` / `bgm-weifeng.mp3` | 用户已选；商用口径见 `70 §6`。~~MiniMax 文生音乐~~ **已废案**（接口对新用户下线，2026-09-24 复测确认） |
 | 音频加载 | `<audio>` 元素 + `createMediaElementSource` | `file://` 下 `fetch`/`decodeAudioData` 被挡，媒体元素可以 |
 | 字体 | 中文走系统字体栈 | `@font-face` 从 `file://` 加载有 CORS 风险；中文 web font 动辄 3–8MB |
 | 随机数 | 唯一随机源 `mulberry32(SW.P.seed)` | 渲染路径上禁止出现 `Math.random()`，否则无法复现断言 |
@@ -167,7 +167,8 @@ C:/Users/wuyutong/.workbuddy/binaries/python/envs/default/Scripts/python.exe
 **③ 工具链**：`node v22.22.2` · `npm 10.9.7` · `pnpm 12.3.4`（未装 yarn）
 Chrome：`C:/Program Files/Google/Chrome/Application/chrome.exe`（无头断言用）
 
-**④ 凭据**：`source ~/.workbuddy/secrets.env` → `MINIMAX_API_KEY` / `MINIMAX_API_BASE`（已配置，仅 WP4 用）。
+**④ 凭据**：`source ~/.workbuddy/secrets.env` → `GEMINI_API_KEY`（备用）。
+> ~~`MINIMAX_API_KEY` / `MINIMAX_API_BASE`~~ **已废案** —— MiniMax 音乐接口对新用户下线（2026-09-24 复测），BGM 现由 **Suno** 生成（`70 §6`）。
 **Key 不得写入任何交付文件、不得进 git、不得打印到回复里。**
 
 **⑤ 已就位**：`vendor/three.min.js`（r160 UMD，669884 bytes）

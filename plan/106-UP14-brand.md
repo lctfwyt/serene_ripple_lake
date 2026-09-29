@@ -222,7 +222,7 @@ text   = "静湖微澜·Serene Ripple Lake"（三 span：.cn 13.5px/ls .20em · 
 
 **一处已知耦合（已在 `04-BOARD` UP15 箱点明）**：判据 6 里的
 「`assets/audio/` 文件名全集 = 14 件」是**硬编码**的 —— 将来若有包**新增/改名音频资产**
-（例如 UP15/AM-034 若选「新增 splash 采样」），本判据会立刻红。那是**预期行为**（它正是「不该变的没变」
+（例如 UP15/AM-034 若选「改数量/改名」），本判据会立刻红。那是**预期行为**（它正是「不该变的没变」
 的守卫），由该包的变更单一并授权改本文件即可，**不要**把这条判据放宽成"只查子集"。
 
 ### 9.5 越界核查（§7.4-2 正反两面）
@@ -242,7 +242,7 @@ $ git status --porcelain
   plan/pw/frozen-hashes.json package-lock.json vite.config.mjs` → **无输出**。
 - `git diff --name-only -- src/` → **只有 `src/85-fallback.js`**（渲染路径 12 个模块一个字节未动）。
 - 临时诊断件 `_branddelta.mjs` 已删（`_*.mjs` 本就被 `.gitignore §9` 忽略，且不入提交）。
-- ℹ `plan/108-UP15-splash.md` / `plan/109-UP16-deploy.md` 是**主控在本包施工期间（23:56）新落的派包文档**，
+- ℹ `plan/108-UP15-slap.md` / `plan/109-UP16-deploy.md` 是**主控在本包施工期间（23:56）新落的派包文档**，
   不是本包产物，本包未碰、也不会 `git add`。
 - ⚠ **共享文件的本提交边界（治理记录 · 非越权但要说清）**：提交 `5c35c6b` 里 `plan/04-BOARD.md` 的
   **`+32` 行中有一部分是主控在 23:5x 并发写入的**（UP15 / UP16 / UP17 三个新箱 + 收件箱目录三行 +

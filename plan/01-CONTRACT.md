@@ -569,7 +569,7 @@ var P = {
 | AM-033 | UP14 | `index.html` · `app/index.html` | WP1 · UP1a | 改 `<title>` + 加 `#brand` DOM/CSS | ✅ 已应用（`5c35c6b`） |
 | AM-033 | UP14 | `src/85-fallback.js` · `README.md` | WP5 | 品牌串 / 标题 | ✅ 已应用（`5c35c6b`） |
 | AM-033 | UP14 | `package.json` | 共享 | 描述串 | ✅ 已应用（`5c35c6b`） |
-| AM-034 | UP15 | `src/10-audio.js` · `assets/audio/**` | WP4→UP11 · WP4 | splash 音效改造 | ⬜ 未开工（`108`） |
+| AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` | WP4→UP11 · WP4 | slap 拍击采样换源 / 复核 | ⬜ 未开工（`108`） |
 | AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ⬜ 未开工（`109`） |
 | AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` | UP1a · UP1a · WP5 | PWA `<head>` / SW 注册块 / PWA 小节 | ⬜ 未开工（`110`） |
 
@@ -822,6 +822,6 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-29 | AM-031：§2.3 加 `env.equirectBase`（无光带版）· §2.6 加 `probe().envTex`（二态）；`60-water.js` 每帧按 `bandGate()` 选图 ⇒ 夜段光带**结构性为 0**、不依赖重烘 | UP13-fix2 |
 | 09-29 | AM-032：§2.3 两张改为「**满档常驻**」（`equirect` = 纯光环 `g=1` / `equirectBase` = 纯圆斑，与当帧 `g` 无关）· §2.6 加 `uEnvEqBase` / `uEnvMix` / `probe().envMix`，`envTex` 扩为**三态**；消费端 `mix(base, band, bandGate())` ⇒ 光带与月亮柱**同频** | UP13-fix3 |
 | 09-29 | AM-033：产品名 → `静湖微澜 · Serene Ripple Lake`（**非契约面**：`<title>` / README / package.json 描述 / 兜底页串）；**新增 §7.1 跨包写权限授权登记 + §7.2 契约偏离登记**（登记 UP14 的 2 处偏离） | UP14 |
-| 09-29 | AM-034：登记 §7.1 —— UP15 获权写 `src/10-audio.js` / `assets/audio/**`（**splash 音效规格待雨桐**，未开工） | UP15 |
+| 09-29 | AM-034：登记 §7.1 —— UP15 获权写 `src/10-audio.js` / `assets/audio/slap1~4.wav`（**slap 换源规格待雨桐**，未开工） | UP15 |
 | 09-29 | AM-035：登记 §7.1 —— UP16 获权写 `package.json` / `README.md`（Netlify 部署配置，**新增 `netlify.toml` / `.nvmrc`**，未开工） | UP16 |
 | 09-29 | AM-036：登记 §7.1 —— UP17 获权写 `app/index.html` / `app/main.js` / `README.md`；**新增 `app/public/**`**（PWA manifest + SW + 图标）。**范围裁定：只改构建入口 `app/index.html`，不动免构建入口根 `index.html`**（PWA 在 `file://` 不生效；根入口引用 manifest 会产生 `requestfailed` 污染 `netErrors`） | UP17 |

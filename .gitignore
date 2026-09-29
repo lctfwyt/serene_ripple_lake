@@ -7,7 +7,7 @@
 #
 # 由此推出的三条裁决，见 plan/70-REPO-BASELINE.md §2：
 #   · plan/shots-wp5/*.png      → **入库**（升级后渲染全变，这版再也拍不出来）
-#   · assets/audio/bgm-cand1.mp3→ **入库**（MiniMax 已下线，实际不可再生）
+#   · assets/audio/bgm-cand1.mp3→ **入库**（AI 音乐接口已下线，实际不可再生）
 #   · plan/wp5-assert.json      → **忽略**（脚本每次重跑都改写它 → 纯 diff 噪声）
 # ===========================================================================
 
