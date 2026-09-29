@@ -1,6 +1,12 @@
 # 静湖微澜 · Serene Ripple Lake
 
+https://serene-ripple-lake.netlify.app/
+
 一个治愈系的湖面网页。双击 `index.html` 就能打开 —— 不需要服务器，也不需要联网。
+
+![星夜 —— 月光柱洒在湖面上](docs/screenshot-night-moonlight.jpg)
+
+![正午 —— 阳光下清澈见底的鹅卵石](docs/screenshot-noon-glitter.jpg)
 
 ## 怎么玩
 
@@ -42,7 +48,7 @@
 
 ## 已知情况
 
-- 手机真机流畅度还没实测过；屏幕窄的会自动降低画质。
+- 虽然手机能够访问，但使用电脑屏幕可获得最佳体验。
 - 双击打开时声音走的是简化通道（够用）；用本地服务器打开能听到更完整的音效。
 
 ---
