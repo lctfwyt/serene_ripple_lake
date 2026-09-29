@@ -49,7 +49,22 @@
     本文件（构建入口）的产物 dist/ 里 manifest 与 icons/ 就在隔壁，正常命中。
   路径全用**相对**（与 #fallback 渐变、assets/audio 同款）⇒ 子路径 / 任意域名部署都成立。
 -->
-<link rel="manifest" href="manifest.webmanifest">
+<!--
+  manifest **动态插入**：只在 http(s) 下插。
+  ⚠ 为什么不直接写 <link>：`dist/` 也支持**双击打开**（README「整包下载」那条路 ⇒ `file://`），
+    而 Chrome 在 `file://` 下会因跨源策略拒绝加载 manifest ⇒ 每次打开多一条 CORS error
+    + 一条 requestfailed（实测 `npm run assert:dist` 的 Log error 2 条就是它）。
+    这是当初给**根入口**定「不加 manifest」的同一个理由，构建产物上同样成立。
+    Chrome 支持解析后动态追加 manifest link（`Page.getAppManifest` 实测仍零错误）。
+-->
+<script>
+  if (location.protocol === 'http:' || location.protocol === 'https:') {
+    var _m = document.createElement('link');
+    _m.rel = 'manifest';
+    _m.href = 'manifest.webmanifest';
+    document.head.appendChild(_m);
+  }
+</script>
 <meta name="theme-color" content="#0b1418">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/favicon.ico" sizes="any">

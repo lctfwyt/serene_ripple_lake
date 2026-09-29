@@ -583,7 +583,7 @@ var P = {
 | AM-034 | UP15 | `src/10-audio.js` · `assets/audio/slap1~4.wav` · **新建 `plan/audio-slap-cut.py`** | WP4→UP11 · WP4 · 本包 | ① 试听段（工具）· ② 落地段（同名替换 + `SLAP_LUFS_TRIM`）· ③ **混音段**（`syncVolumes()` + 增益节点） | ✅ **已收口（2026-09-30 02:1x）**（`108 §11` / `§11.8` / `§12`~`§14`） |
 | AM-034 | UP15 | `src/00-config.js` · `src/90-debug.js` | WP1 · WP1 | **第三段扩权**：音频段加 `flowVolume`/`slapVolume`；`?debug=1` 加「音频（实时）」滑杆组 | ✅ **已收口（2026-09-30 02:1x）**（`108 §12`~`§14`） |
 | AM-035 | UP16 | `package.json` · `README.md` | 共享 · WP5 | `deploy` script / 部署节 | ✅ **已应用（`ab36aa9` · 2026-09-30 02:5x）**（另有新建 `netlify.toml` / `.nvmrc`，无需授权）· ⬜ 判据 7 真机上线挂雨桐 |
-| AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` · **新建 `app/public/**`** | UP1a · UP1a · WP5 · 无主 | PWA `<head>` / SW 注册块 / PWA 小节 / manifest+sw+icons | 🔶 **已开工**（`110` · **图标并入包内** `§3`） |
+| AM-036 | UP17 | `app/index.html` · `app/main.js` · `README.md` · **新建 `app/public/**`** | UP1a · UP1a · WP5 · 无主 | PWA `<head>`（manifest **动态插入**）/ SW 注册块 / PWA 小节 / manifest+sw+icons | ✅ **已完工 + 收口**（`110`） |
 
 ### 7.2 契约偏离登记（由主控裁决后登记；**不是**「先做后报」的免罪符）
 
@@ -842,3 +842,4 @@ viewport = (--window-size 的 W − 26, H − 156)        // 实测，不是 (W�
 | 09-30 | AM-035 **已应用（`ab36aa9`）**：`netlify.toml`（构建 `npm run build` / 发布 `dist` / `NODE_VERSION=22` + **5 条缓存头**）· `.nvmrc`(22) · `package.json` 加 `deploy` 一行 · README 新增「部署」节。**零渲染改动** ⇒ 两入口 15/15 · `pw:frozen` ✅ · `pw:dist` 与基线逐文件一致 · **刻意不重建 `dist`** · ⬜ 判据 7 真机上线挂雨桐。**主控收尾**：README 过期项订正（BGM 生成主体 `海绵音乐` → **Suno**、`?debug=1` 滑杆 8 → **24**、音频 7.3 MB → **8.2 MB**、构建版体积数字重测、文件表补 `65-post`/`99-main`）+ 部署节精简 | UP16 / 主控 |
 | 09-29 | AM-036：登记 §7.1 —— UP17 获权写 `app/index.html` / `app/main.js` / `README.md`；**新增 `app/public/**`**（PWA manifest + SW + 图标）。**范围裁定：只改构建入口 `app/index.html`，不动免构建入口根 `index.html`**（PWA 在 `file://` 不生效；根入口引用 manifest 会产生 `requestfailed` 污染 `netErrors`） | UP17 |
 | 09-30 | **UP17 图标归属改判（雨桐裁定）**：「**图标放入 UP17，我和 UP17 多轮对话中解决**」⇒ 图标**不再是开工前置门**，并入本包由雨桐与施工方多轮定（图形 / 配色 / maskable 安全区）。波次 18 **已开工**（前置 UP16 ✅ 已合并）。`110` 新增 `§3.0` 施工顺序（① 候选页 → ② 骨架段（占位图标） → ③ 落图段）与 `§10` 记账粒度（多轮打磨包 = 一行 AM，协议 §3）；判据 3 补实现提示（读像素用无头 Chrome，**禁引 `sharp`**） | UP17 |
+| 09-30 | **UP17 收口（主控）**：① 修 `dist/` 在 `file://` 下的 manifest CORS error —— `app/index.html` 的 manifest 改**动态插入**（仅 http/https；静态 `<link>` 无法守卫，解析即发请求）；② 应用名定「静湖微澜」+ `VERSION srl-v2`（manifest 走 cache-first ⇒ 改它必须 bump）；③ favicon 透明底（雨桐定，§3.6-⑥ 规格同步）；④ README 定位改「部署后给访客看」，开发向内容迁 `111-DEV-NOTES.md`；⑤ 新增 `plan/pw/verify-pwa.mjs` + `plan/pw/serve-dist.mjs`（`npm run pw:pwa` / `serve:dist`） | 主控 |
