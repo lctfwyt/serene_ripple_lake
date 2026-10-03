@@ -756,8 +756,9 @@
 
   function sndText() {
     var A = SW.audio;
-    if (!A || A.ready === false) { return '声音 · 未启动'; }
-    return sndOn ? '声音 开' : '声音 关';
+    // UP18：三段状态统一成 `声音 · X` 的轻量同构表达（原 `声音 · 未启动` 偏长）。
+    if (!A || A.ready === false) { return '声音 · 待'; }
+    return sndOn ? '声音 · 开' : '声音 · 关';
   }
 
   function paint(force) {
