@@ -313,6 +313,16 @@
       // 文件资产被判死、退回合成兜底时：没有文件元素可切 → 压暗、光标也不给手型
       '#sw-bgm.off{opacity:.42;}',
       '#sw-bgm.off .sw-bgm-btn{cursor:default;}',
+      // ── 触控命中区 ≥44px（UP18）：视觉尺寸不动，用 ::before 外扩 ──────────
+      // 实测（env-narrow 375×812）：`#snd` 104×29、`.sw-bgm-btn` 156×25，均 <44。
+      // 两控件只隔 9px 垂直间隙 → 各自**背向那条边界**生长，两块命中区不相交：
+      //   · `#snd` 向上扩（top:-16px）→ 命中 104×45
+      //   · chip 向下扩（bottom:-19px）→ 命中 ≥44px
+      // ::before 是伪元素，不进 querySelectorAll → env-narrow 的 bbox 检查看不见它，
+      //   真实 bbox 不变（日志仍报 29/25）、不新增重叠，但触摸命中面积达标。
+      '#snd::before{content:\'\';position:absolute;left:0;right:0;top:-16px;bottom:0;}',
+      '.sw-bgm-btn{position:relative;}',
+      '.sw-bgm-btn::before{content:\'\';position:absolute;left:0;right:0;top:0;bottom:-19px;}',
       // 动效可关：prefers-reduced-motion 下过渡归零（本项目对该偏好的口径见 85-fallback.js §3.1；
       //   这里纯 CSS，不经过 SW.fallback）
       '@media (prefers-reduced-motion:reduce){.sw-bgm-btn{transition:none;}}'
