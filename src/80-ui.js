@@ -8,10 +8,7 @@
 //   （`plan/pw/tests/30-pixel.spec.mjs:66`）—— 左上时段面板必须始终是 `#ui` 的第一个 div。
 //   任何新控件只能**追加在后面**。
 //
-// 设计基调（WP3 §4.6）：极简、低对比、半透明，不抢画面。
-//   UP18/AM-037：叠加层字色不再写死白，改为随**雾色亮度**自适应 —— 夜间白
-//   `rgba(255,255,255,α)`、正午近黑 `rgba(18,30,34,α)`（见下方 `INK` / `paintInk()`）。
-//   带半透明药丸底的控件（`#snd` / `.sw-bgm-btn`）同样跟随，保证各时段可读。
+// 设计基调（WP3 §4.6）：极简、低对比、半透明，不抢画面。字色 rgba(255,255,255,.72)。
 // AM-002 §5 的「四角 UI 布局」**未采纳**，本文件不实现它。
 //
 // ── AM-011（UP10 时间刻度尺，95-UP10-timeruler.md）────────────────────────────
@@ -134,29 +131,6 @@
     //   写进 `.sw-bgm-btn` 的 CSS 里与 `#snd` 的建法并排放着，改一个能看见另一个。
   };
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 自适应墨色（AM-037 / UP18 可读性）
-  // 问题（雨桐实测抓图）：叠加层文字恒 `rgba(255,255,255,.72)`，只在夜间够对比；
-  //   正午（fogL≈190）白字对比≈1.9:1、黄昏 18:30（fogL≈146）≈3.1:1，肉眼几乎消失。
-  // 依据**不是时刻**，而是**当前雾色亮度**（= 远景背景亮度代理）：
-  //   夜 fogL≈90（深）→ 白字；正午 fogL≈190（亮）→ 近黑字。
-  // 算 `fogL` 用的算式与 `90-debug.js §fogL()` **逐字相同**（fog OKLCH → 线性 sRGB →
-  //   `srgbEnc` → 0.2126/0.7152/0.0722 加权 → ×255），只是信号源改读
-  //   `SW.time.current().fogColor`（与 scene.fog.color 同源），**不依赖 SW.scene 是否就绪**。
-  // 切换阈值：白/黑墨的对比交叉点 `(1.05)/(Y+0.05) = (Y+0.05)/0.05` ⇒ Y≈0.179 ⇒ fogL≈**117**。
-  //   ⇒ 117 以上用近黑墨、以下用白墨，两端都 ≥4.2:1。
-  // ⚠ **刻意不跨带混合**：白↔黑的中间是灰，而过渡带背景恰在中灰附近，混合中途对比会掉到
-  //   ≈1.2:1（比两端都差）；在交叉点上**跳变**反而两端都可读。fogL 移动慢（≈0.27/min）
-  //   ⇒ 观感是一次换墨，不是闪烁。
-  // 例外：`#snd` / `.sw-bgm-btn` 自带深色药丸底，白字恒可读 ⇒ **不动**（是保留的设计，非遗漏）。
-  var INK = {
-    white: [255, 255, 255],
-    dark: [18, 30, 34],      // 近黑（略偏水面青蓝，不刺眼）
-    shadowDark: [0, 0, 0],   // 白墨的底影
-    shadowLight: [255, 255, 255],
-    th: 117.5                // fogL(0–255) 阈值；`90-debug.js §fogL()` 口径
-  };
-
   var el = {};
   var built = false;
   var sndOn = true;          // 本地开关意图（音频未就绪时先记着，就绪后补发）
@@ -164,7 +138,6 @@
   var dragging = false;
   var lastTxt = '';
   var lastSndTxt = '';
-  var lastInk = -1;          // 上次墨态（0=白 / 1=近黑），避免每帧重写 CSS 变量
 
   // ── 刻度尺运行时：带宽 / 每多少 px 一小时 ───────────────────────────────
   var rulerW = 0;
@@ -183,11 +156,8 @@
   var flingV = 0, flingH = 0;  // 滑行速度 / 滑行中的小时累加值（不取 mod，避免回读丢精度）
   var acting = false;          // 中线突出层的当前可见状态（拖动 或 滑行）
 
-  // `--sw-ink` / `--sw-shadow` 由 paintInk() 按雾色亮度写在 `#ui` 上（AM-037）；
-  // 默认回退白墨/暗影 = 旧观感（SW.time 取不到时也是这套）。
   var CSS_BASE = 'position:absolute;font-family:inherit;letter-spacing:.14em;' +
-    'color:rgba(var(--sw-ink,255,255,255),.72);' +
-    'text-shadow:0 1px 3px rgba(var(--sw-shadow,0,0,0),.35);user-select:none;';
+    'color:rgba(255,255,255,.72);text-shadow:0 1px 3px rgba(0,0,0,.35);user-select:none;';
 
   function norm24(h) { return ((h % 24) + 24) % 24; }
 
@@ -207,26 +177,6 @@
   }
   function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
 
-  // ── 自适应墨色（AM-037）：算式与 90-debug.js §fogL() 逐字相同，信号源见 INK 说明 ──
-  function srgbEnc(v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; }
-  function fogL() {
-    var c = (SW.time && SW.time.current) ? SW.time.current() : null;
-    var f = c && c.fogColor;
-    if (!f) { return 0; }        // 取不到 → 当夜处理（白墨），与旧观感一致、不抛错
-    return 255 * (0.2126 * srgbEnc(f[0]) + 0.7152 * srgbEnc(f[1]) + 0.0722 * srgbEnc(f[2]));
-  }
-  function inkStr(c) { return c[0] + ',' + c[1] + ',' + c[2]; }
-  // 每帧调；只在跨过阈值时写一次 CSS 变量（`#ui` 的 `--sw-ink` / `--sw-shadow`）
-  function paintInk() {
-    if (!el.root) { return; }
-    var dark = fogL() >= INK.th;
-    var key = dark ? 1 : 0;
-    if (key === lastInk) { return; }
-    lastInk = key;
-    el.root.style.setProperty('--sw-ink', inkStr(dark ? INK.dark : INK.white));
-    el.root.style.setProperty('--sw-shadow', inkStr(dark ? INK.shadowLight : INK.shadowDark));
-  }
-
   // range 的伪元素没法用 cssText 写 → 注入一条 <style>（仍然不动 index.html）
   // AM-011：删掉 `#sw-hour` 那套 range 伪元素样式（range 本体已删），换成刻度尺的样式。
   function injectStyle() {
@@ -238,7 +188,7 @@
       '-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);' +
       'mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);}',
       '#hour:focus{outline:none;}',
-      '#hour:focus-visible{outline:1px solid rgba(var(--sw-ink,255,255,255),.5);outline-offset:5px;border-radius:2px;}',
+      '#hour:focus-visible{outline:1px solid rgba(255,255,255,.5);outline-offset:5px;border-radius:2px;}',
       // 拖动/滑行中：常态刻度略提亮（抓得住），中线的「突出层」浮上来
       '#hour.act #sw-ruler-track{opacity:1;}',
       '#hour:hover #sw-ruler-track{opacity:1;}',   // 悬停即提亮 → 命中区扩大后"能点"这件事可发现
@@ -259,67 +209,50 @@
       // 「当前时刻」竖线：拖动时拉长 + 起一点光晕（全尺唯一允许的高对比元素）
       // 尺寸/颜色**必须写在 CSS 里**：写进 inline style 会被内联优先级压住，act 变体不会生效
       '#sw-ruler-head{width:1px;height:12px;margin-left:-.5px;' +
-      'background:rgba(var(--sw-ink,255,255,255),' + R.alphaHead + ');' +
+      'background:rgba(255,255,255,' + R.alphaHead + ');' +
       'transition:height .18s ease,width .18s ease,margin-left .18s ease,box-shadow .18s ease;}',
       '#hour.act #sw-ruler-head{height:' + R.hot.headPx + 'px;width:2px;margin-left:-1px;' +
-      'box-shadow:0 0 9px rgba(var(--sw-shadow,0,0,0),.30);}',
+      'box-shadow:0 0 9px rgba(255,255,255,.30);}',
       '.sw-ruler-label{transition:color .18s ease,transform .18s ease;transform-origin:0 50%;}',
-      // ── 声音开关（#snd）：焦点/悬停态对齐 `.sw-bgm-btn`（同族）──────────
-      // 与 chip 同一说法：去掉原生 outline，键盘可达性靠**描边提亮**（不占地方）。
-      // 字色/描边都走 `--sw-ink`（夜白昼黑）——若写死白字，正午半透明药丸底仅≈1.9:1。
-      // `#snd` 的 border/background 写在 inline（见下方 `el.snd = mk(...)`），
-      //   内联优先级高于本样式表 → 状态覆盖必须 !important。
-      '#snd{transition:background-color .22s ease,border-color .22s ease,color .22s ease;}',
-      '#snd:hover{border-color:rgba(var(--sw-ink,255,255,255),.36) !important;' +
-      'color:rgba(var(--sw-ink,255,255,255),.94) !important;}',
-      '#snd:focus-visible{outline:none;border-color:rgba(var(--sw-ink,255,255,255),.42) !important;}',
-      '#snd:active{background-color:rgba(10,18,22,.42) !important;}',
       // ── BGM 选曲（AM-015）──────────────────────────────────────────────
       // 设计口径：与 `#snd` **同族**。面 / 描边 / 圆角 / 字距 / 字号五样 token 与它逐字同源
       // （`#snd` 建法见下面 `el.snd = mk('button', ...)`），只在两处刻意偏离：
       //   ① 常态面比 chip 透一档（.26 → .20）—— 它是第二顺位的控件，雨桐 2026-09-25
       //      两次要求"更透明"；
       //   ② 多一个 `.on` 选中态 —— `#snd` 是开关，本控件是三选一，必须有"哪个在响"的落点。
-      // UP18：字色/描边同样跟随 `--sw-ink`（与 `#snd` 一致）——原写死白字在半透明
-      //   药丸底上正午仅≈1.9:1，改用自适应墨色后夜白昼黑，各时段均 ≥4:1（见 112 §6）。
       // 「BGM：」标签：纯文本、不吃指针（点它不该做任何事），右对齐到首个 chip 左侧。
       '.sw-bgm-tag{font-size:11px;letter-spacing:.08em;line-height:1;' +
       'min-width:' + B.labelW + 'px;text-align:right;align-self:center;' +
-      'color:rgba(var(--sw-ink,255,255,255),.62);pointer-events:none;user-select:none;}',
+      'color:rgba(255,255,255,.62);pointer-events:none;user-select:none;}',
       // 触发面 —— 逐字对齐 `#snd`：padding 6/13、radius 14、描边 .22、字号 11、字距 .08em、
       // 模糊 6px。`appearance:none` + `outline:none` 去掉按钮的原生壳（否则会顶出一圈框）。
       '.sw-bgm-btn{font-family:inherit;font-size:11px;letter-spacing:.08em;line-height:1;' +
       'padding:6px 13px;border-radius:14px;cursor:pointer;' +
-      'border:1px solid rgba(var(--sw-ink,255,255,255),.22);background-color:rgba(10,18,22,.20);' +
-      'color:rgba(var(--sw-ink,255,255,255),.72);' +
+      'border:1px solid rgba(255,255,255,.22);background-color:rgba(10,18,22,.20);' +
+      'color:rgba(255,255,255,.72);' +
       '-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);' +
       'appearance:none;-webkit-appearance:none;-moz-appearance:none;outline:none;' +
       'transition:background-color .22s ease,border-color .22s ease,color .22s ease,' +
       'transform ' + B.durPress + 's ease;}',
       // 悬停：只动描边与字色（这一档描边 = 与 `#snd` 同一档），面不动 —— 面留给"按住"
-      '.sw-bgm-btn:hover{border-color:rgba(var(--sw-ink,255,255,255),.36);color:rgba(var(--sw-ink,255,255,255),.94);}',
+      '.sw-bgm-btn:hover{border-color:rgba(255,255,255,.36);color:rgba(255,255,255,.94);}',
       // 🔴 不要外围框（雨桐 2026-09-25 两次确认）—— `outline` 与原生焦点环一律去掉。
       //    键盘可达性靠**描边提亮**保留（不是把提示删掉，是换一种不占地方的说法）。
-      '.sw-bgm-btn:focus-visible{outline:none;border-color:rgba(var(--sw-ink,255,255,255),.42);}',
+      '.sw-bgm-btn:focus-visible{outline:none;border-color:rgba(255,255,255,.42);}',
       // 选中：面比常态深一档、字提亮到 .96 —— 一行里只允许一个"亮"的。
       // ⚠ 必须排在 `:active` **之前**：两者特异性相同（0,2,0），后写的胜；
       //   若 `.on` 在后，按住已选中那枚就只剩缩放、面不加深 → 按下反馈被吃掉一半。
-      '.sw-bgm-btn.on{background-color:rgba(10,18,22,.38);border-color:rgba(var(--sw-ink,255,255,255),.34);' +
-      'color:rgba(var(--sw-ink,255,255,255),.96);}',
-      '.sw-bgm-btn.on:hover{border-color:rgba(var(--sw-ink,255,255,255),.48);}',
+      '.sw-bgm-btn.on{background-color:rgba(10,18,22,.38);border-color:rgba(255,255,255,.34);' +
+      'color:rgba(255,255,255,.96);}',
+      '.sw-bgm-btn.on:hover{border-color:rgba(255,255,255,.48);}',
       // 「点上去」的反馈：面加深两档（.20 → .42）+ 3% 的按下缩放。
       //   缩放只做在 chip 上、幅度 <5%：够"按下去"，又不至于让整列 UI 跟着跳。
       '.sw-bgm-btn:active{background-color:rgba(10,18,22,.42);transform:scale(.97);}',
       // 文件资产被判死、退回合成兜底时：没有文件元素可切 → 压暗、光标也不给手型
       '#sw-bgm.off{opacity:.42;}',
       '#sw-bgm.off .sw-bgm-btn{cursor:default;}',
-      // ── 触控命中区 ≥44px（UP18）：视觉尺寸不动，用 ::before 外扩 ──────────
-      // 实测（env-narrow 375×812）：`#snd` 104×29、`.sw-bgm-btn` 156×25，均 <44。
-      // 两控件只隔 9px 垂直间隙 → 各自**背向那条边界**生长，两块命中区不相交：
-      //   · `#snd` 向上扩（top:-16px）→ 命中 104×45
-      //   · chip 向下扩（bottom:-19px）→ 命中 ≥44px
-      // ::before 是伪元素，不进 querySelectorAll → env-narrow 的 bbox 检查看不见它，
-      //   真实 bbox 不变（日志仍报 29/25）、不新增重叠，但触摸命中面积达标。
+      // 触控命中区 ≥44px：视觉尺寸不动，用 ::before 在控件外侧补一圈可点区域。
+      //   `#snd` 向上、BGM 芯片向下，各自避开两者之间约 9px 的间隙，两块命中区不重叠。
       '#snd::before{content:\'\';position:absolute;left:0;right:0;top:-16px;bottom:0;}',
       '.sw-bgm-btn{position:relative;}',
       '.sw-bgm-btn::before{content:\'\';position:absolute;left:0;right:0;top:0;bottom:-19px;}',
@@ -360,9 +293,9 @@
     var minorP = pph * R.minorStepH;
     el.track.style.backgroundImage =
       'repeating-linear-gradient(90deg,' +
-      'rgba(var(--sw-ink,255,255,255),' + R.alphaMinor + ') 0 1px,transparent 1px 100%),' +
+      'rgba(255,255,255,' + R.alphaMinor + ') 0 1px,transparent 1px 100%),' +
       'repeating-linear-gradient(90deg,' +
-      'rgba(var(--sw-ink,255,255,255),' + R.alphaMajor + ') 0 1px,transparent 1px 100%)';
+      'rgba(255,255,255,' + R.alphaMajor + ') 0 1px,transparent 1px 100%)';
     el.track.style.backgroundRepeat = 'repeat-x,repeat-x';
     el.track.style.backgroundSize =
       minorP.toFixed(2) + 'px ' + R.minorPx + 'px,' +
@@ -371,8 +304,8 @@
     // 中线突出层（::before）的动态参数：同一套 gradient，只是更亮更长；
     // halfPx 交给 mask（calc(50% ± var)），相位 --sw-x0 由 paintRuler 每帧写
     el.track.style.setProperty('--sw-hotimg',
-      'repeating-linear-gradient(90deg,rgba(var(--sw-ink,255,255,255),' + R.hot.alphaMinor + ') 0 1px,transparent 1px 100%),' +
-      'repeating-linear-gradient(90deg,rgba(var(--sw-ink,255,255,255),' + R.hot.alphaMajor + ') 0 1px,transparent 1px 100%)');
+      'repeating-linear-gradient(90deg,rgba(255,255,255,' + R.hot.alphaMinor + ') 0 1px,transparent 1px 100%),' +
+      'repeating-linear-gradient(90deg,rgba(255,255,255,' + R.hot.alphaMajor + ') 0 1px,transparent 1px 100%)');
     el.track.style.setProperty('--sw-hotsize',
       minorP.toFixed(2) + 'px ' + R.hot.minorPx + 'px,' + pph.toFixed(2) + 'px ' + R.hot.majorPx + 'px');
     el.track.style.setProperty('--sw-hotw', R.hot.halfPx.toFixed(0) + 'px');
@@ -419,7 +352,7 @@
       if (lb.textContent !== t) { lb.textContent = t; }
       // 中线附近的读数跟着突出层一起亮、一起放大（只在 act 时生效）
       var near = acting && Math.abs(x - cx) < hotPx;
-      var col = 'rgba(var(--sw-ink,255,255,255),' + (near ? R.hot.alphaLabel : R.alphaLabel) + ')';
+      var col = 'rgba(255,255,255,' + (near ? R.hot.alphaLabel : R.alphaLabel) + ')';
       var tf = near ? 'scale(' + R.hot.labelScale + ')' : 'none';
       if (lb.style.color !== col) { lb.style.color = col; }
       if (lb.style.transform !== tf) { lb.style.transform = tf; }
@@ -585,7 +518,6 @@
   }
 
   function build(ui) {
-    el.root = ui;              // AM-037：`--sw-ink` / `--sw-shadow` 的写入锚点（元素不直接用它们，靠继承）
     injectStyle();
 
     // ── 左上：时段名 + 时刻（保持在 #ui 的第一个子节点 —— pw 的 ui-panel 快照盯的就是它）──
@@ -596,8 +528,8 @@
 
     // ── 右上：声音开关 ─────────────────────────────────────────────────
     el.snd = mk('button', CSS_BASE + 'right:22px;top:18px;padding:6px 13px;border-radius:14px;' +
-      'border:1px solid rgba(var(--sw-ink,255,255,255),.22);background:rgba(10,18,22,.26);' +
-      'font-size:11px;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);', ui);
+      'border:1px solid rgba(255,255,255,.22);background:rgba(10,18,22,.26);' +
+      'font-size:11px;cursor:pointer;backdrop-filter:blur(6px);', ui);
     el.snd.id = 'snd';
     el.snd.type = 'button';
     el.snd.addEventListener('click', function () {
@@ -637,7 +569,7 @@
     for (var i = 0; i < R.labelN; i++) {
       var lb0 = mk('div', 'position:absolute;left:0;top:' + R.labelTop + 'px;' +
         'font-size:9px;letter-spacing:.06em;white-space:nowrap;display:none;' +
-        'color:rgba(var(--sw-ink,255,255,255),' + R.alphaLabel + ');', el.track);
+        'color:rgba(255,255,255,' + R.alphaLabel + ');', el.track);
       lb0.className = 'sw-ruler-label';
       el.labels.push(lb0);
     }
@@ -756,13 +688,11 @@
 
   function sndText() {
     var A = SW.audio;
-    // UP18：三段状态统一成 `声音 · X` 的轻量同构表达（原 `声音 · 未启动` 偏长）。
-    if (!A || A.ready === false) { return '声音 · 待'; }
-    return sndOn ? '声音 · 开' : '声音 · 关';
+    if (!A || A.ready === false) { return '声音 · 未启动'; }
+    return sndOn ? '声音 开' : '声音 关';
   }
 
   function paint(force) {
-    paintInk();               // AM-037：墨色跟着雾色亮度走（每帧一次短路比较，跨阈值才写 DOM）
     var T = SW.time;
     if (!T || !T.getHour) { return; }
     var h = T.getHour();
