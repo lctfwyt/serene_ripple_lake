@@ -256,9 +256,13 @@
       '#snd::before{content:\'\';position:absolute;left:0;right:0;top:-16px;bottom:0;}',
       '.sw-bgm-btn{position:relative;}',
       '.sw-bgm-btn::before{content:\'\';position:absolute;left:0;right:0;top:0;bottom:-19px;}',
+      // 首屏画布淡入：整块从透明浮起（build 末尾给 #c 挂 .enter）。
+      //   兜底页 #c 被 display:none、不参与；prefers-reduced-motion 下直接跳终态。
+      '#c.enter{animation:sw-fade .6s ease;}',
+      '@keyframes sw-fade{from{opacity:0}to{opacity:1}}',
       // 动效可关：prefers-reduced-motion 下过渡归零（本项目对该偏好的口径见 85-fallback.js §3.1；
       //   这里纯 CSS，不经过 SW.fallback）
-      '@media (prefers-reduced-motion:reduce){.sw-bgm-btn{transition:none;}}'
+      '@media (prefers-reduced-motion:reduce){.sw-bgm-btn{transition:none;}#c.enter{animation:none;}}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -682,6 +686,9 @@
         if (SW.time && SW.time.setMode) { SW.time.setMode('auto'); }
       });
     }
+
+    // 首帧在 boot 结束后才进 rAF，这里挂类 ⇒ 首帧即从透明浮起（见 injectStyle 的 #c.enter）
+    if (canvas && canvas.classList) { canvas.classList.add('enter'); }
 
     built = true;
   }
