@@ -131,6 +131,29 @@
     //   写进 `.sw-bgm-btn` 的 CSS 里与 `#snd` 的建法并排放着，改一个能看见另一个。
   };
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // 自适应墨色（AM-037 / UP18 可读性）
+  // 问题（雨桐实测抓图）：叠加层文字恒 `rgba(255,255,255,.72)`，只在夜间够对比；
+  //   正午（fogL≈190）白字对比≈1.9:1、黄昏 18:30（fogL≈146）≈3.1:1，肉眼几乎消失。
+  // 依据**不是时刻**，而是**当前雾色亮度**（= 远景背景亮度代理）：
+  //   夜 fogL≈90（深）→ 白字；正午 fogL≈190（亮）→ 近黑字。
+  // 算 `fogL` 用的算式与 `90-debug.js §fogL()` **逐字相同**（fog OKLCH → 线性 sRGB →
+  //   `srgbEnc` → 0.2126/0.7152/0.0722 加权 → ×255），只是信号源改读
+  //   `SW.time.current().fogColor`（与 scene.fog.color 同源），**不依赖 SW.scene 是否就绪**。
+  // 切换阈值：白/黑墨的对比交叉点 `(1.05)/(Y+0.05) = (Y+0.05)/0.05` ⇒ Y≈0.179 ⇒ fogL≈**117**。
+  //   ⇒ 117 以上用近黑墨、以下用白墨，两端都 ≥4.2:1。
+  // ⚠ **刻意不跨带混合**：白↔黑的中间是灰，而过渡带背景恰在中灰附近，混合中途对比会掉到
+  //   ≈1.2:1（比两端都差）；在交叉点上**跳变**反而两端都可读。fogL 移动慢（≈0.27/min）
+  //   ⇒ 观感是一次换墨，不是闪烁。
+  // 例外：`#snd` / `.sw-bgm-btn` 自带深色药丸底，白字恒可读 ⇒ **不动**（是保留的设计，非遗漏）。
+  var INK = {
+    white: [255, 255, 255],
+    dark: [18, 30, 34],      // 近黑（略偏水面青蓝，不刺眼）
+    shadowDark: [0, 0, 0],   // 白墨的底影
+    shadowLight: [255, 255, 255],
+    th: 117.5                // fogL(0–255) 阈值；`90-debug.js §fogL()` 口径
+  };
+
   var el = {};
   var built = false;
   var sndOn = true;          // 本地开关意图（音频未就绪时先记着，就绪后补发）
@@ -138,6 +161,7 @@
   var dragging = false;
   var lastTxt = '';
   var lastSndTxt = '';
+  var lastInk = -1;          // 上次墨态（0=白 / 1=近黑），避免每帧重写 CSS 变量
 
   // ── 刻度尺运行时：带宽 / 每多少 px 一小时 ───────────────────────────────
   var rulerW = 0;
@@ -156,8 +180,11 @@
   var flingV = 0, flingH = 0;  // 滑行速度 / 滑行中的小时累加值（不取 mod，避免回读丢精度）
   var acting = false;          // 中线突出层的当前可见状态（拖动 或 滑行）
 
+  // `--sw-ink` / `--sw-shadow` 由 paintInk() 按雾色亮度写在 `#ui` 上（AM-037）；
+  // 默认回退白墨/暗影 = 旧观感（SW.time 取不到时也是这套）。
   var CSS_BASE = 'position:absolute;font-family:inherit;letter-spacing:.14em;' +
-    'color:rgba(255,255,255,.72);text-shadow:0 1px 3px rgba(0,0,0,.35);user-select:none;';
+    'color:rgba(var(--sw-ink,255,255,255),.72);' +
+    'text-shadow:0 1px 3px rgba(var(--sw-shadow,0,0,0),.35);user-select:none;';
 
   function norm24(h) { return ((h % 24) + 24) % 24; }
 
@@ -177,6 +204,26 @@
   }
   function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
 
+  // ── 自适应墨色（AM-037）：算式与 90-debug.js §fogL() 逐字相同，信号源见 INK 说明 ──
+  function srgbEnc(v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; }
+  function fogL() {
+    var c = (SW.time && SW.time.current) ? SW.time.current() : null;
+    var f = c && c.fogColor;
+    if (!f) { return 0; }        // 取不到 → 当夜处理（白墨），与旧观感一致、不抛错
+    return 255 * (0.2126 * srgbEnc(f[0]) + 0.7152 * srgbEnc(f[1]) + 0.0722 * srgbEnc(f[2]));
+  }
+  function inkStr(c) { return c[0] + ',' + c[1] + ',' + c[2]; }
+  // 每帧调；只在跨过阈值时写一次 CSS 变量（`#ui` 的 `--sw-ink` / `--sw-shadow`）
+  function paintInk() {
+    if (!el.root) { return; }
+    var dark = fogL() >= INK.th;
+    var key = dark ? 1 : 0;
+    if (key === lastInk) { return; }
+    lastInk = key;
+    el.root.style.setProperty('--sw-ink', inkStr(dark ? INK.dark : INK.white));
+    el.root.style.setProperty('--sw-shadow', inkStr(dark ? INK.shadowLight : INK.shadowDark));
+  }
+
   // range 的伪元素没法用 cssText 写 → 注入一条 <style>（仍然不动 index.html）
   // AM-011：删掉 `#sw-hour` 那套 range 伪元素样式（range 本体已删），换成刻度尺的样式。
   function injectStyle() {
@@ -188,7 +235,7 @@
       '-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);' +
       'mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);}',
       '#hour:focus{outline:none;}',
-      '#hour:focus-visible{outline:1px solid rgba(255,255,255,.5);outline-offset:5px;border-radius:2px;}',
+      '#hour:focus-visible{outline:1px solid rgba(var(--sw-ink,255,255,255),.5);outline-offset:5px;border-radius:2px;}',
       // 拖动/滑行中：常态刻度略提亮（抓得住），中线的「突出层」浮上来
       '#hour.act #sw-ruler-track{opacity:1;}',
       '#hour:hover #sw-ruler-track{opacity:1;}',   // 悬停即提亮 → 命中区扩大后"能点"这件事可发现
@@ -209,10 +256,10 @@
       // 「当前时刻」竖线：拖动时拉长 + 起一点光晕（全尺唯一允许的高对比元素）
       // 尺寸/颜色**必须写在 CSS 里**：写进 inline style 会被内联优先级压住，act 变体不会生效
       '#sw-ruler-head{width:1px;height:12px;margin-left:-.5px;' +
-      'background:rgba(255,255,255,' + R.alphaHead + ');' +
+      'background:rgba(var(--sw-ink,255,255,255),' + R.alphaHead + ');' +
       'transition:height .18s ease,width .18s ease,margin-left .18s ease,box-shadow .18s ease;}',
       '#hour.act #sw-ruler-head{height:' + R.hot.headPx + 'px;width:2px;margin-left:-1px;' +
-      'box-shadow:0 0 9px rgba(255,255,255,.30);}',
+      'box-shadow:0 0 9px rgba(var(--sw-shadow,0,0,0),.30);}',
       '.sw-ruler-label{transition:color .18s ease,transform .18s ease;transform-origin:0 50%;}',
       // ── BGM 选曲（AM-015）──────────────────────────────────────────────
       // 设计口径：与 `#snd` **同族**。面 / 描边 / 圆角 / 字距 / 字号五样 token 与它逐字同源
@@ -223,7 +270,7 @@
       // 「BGM：」标签：纯文本、不吃指针（点它不该做任何事），右对齐到首个 chip 左侧。
       '.sw-bgm-tag{font-size:11px;letter-spacing:.08em;line-height:1;' +
       'min-width:' + B.labelW + 'px;text-align:right;align-self:center;' +
-      'color:rgba(255,255,255,.62);pointer-events:none;user-select:none;}',
+      'color:rgba(var(--sw-ink,255,255,255),.62);pointer-events:none;user-select:none;}',
       // 触发面 —— 逐字对齐 `#snd`：padding 6/13、radius 14、描边 .22、字号 11、字距 .08em、
       // 模糊 6px。`appearance:none` + `outline:none` 去掉按钮的原生壳（否则会顶出一圈框）。
       '.sw-bgm-btn{font-family:inherit;font-size:11px;letter-spacing:.08em;line-height:1;' +
@@ -288,9 +335,9 @@
     var minorP = pph * R.minorStepH;
     el.track.style.backgroundImage =
       'repeating-linear-gradient(90deg,' +
-      'rgba(255,255,255,' + R.alphaMinor + ') 0 1px,transparent 1px 100%),' +
+      'rgba(var(--sw-ink,255,255,255),' + R.alphaMinor + ') 0 1px,transparent 1px 100%),' +
       'repeating-linear-gradient(90deg,' +
-      'rgba(255,255,255,' + R.alphaMajor + ') 0 1px,transparent 1px 100%)';
+      'rgba(var(--sw-ink,255,255,255),' + R.alphaMajor + ') 0 1px,transparent 1px 100%)';
     el.track.style.backgroundRepeat = 'repeat-x,repeat-x';
     el.track.style.backgroundSize =
       minorP.toFixed(2) + 'px ' + R.minorPx + 'px,' +
@@ -299,8 +346,8 @@
     // 中线突出层（::before）的动态参数：同一套 gradient，只是更亮更长；
     // halfPx 交给 mask（calc(50% ± var)），相位 --sw-x0 由 paintRuler 每帧写
     el.track.style.setProperty('--sw-hotimg',
-      'repeating-linear-gradient(90deg,rgba(255,255,255,' + R.hot.alphaMinor + ') 0 1px,transparent 1px 100%),' +
-      'repeating-linear-gradient(90deg,rgba(255,255,255,' + R.hot.alphaMajor + ') 0 1px,transparent 1px 100%)');
+      'repeating-linear-gradient(90deg,rgba(var(--sw-ink,255,255,255),' + R.hot.alphaMinor + ') 0 1px,transparent 1px 100%),' +
+      'repeating-linear-gradient(90deg,rgba(var(--sw-ink,255,255,255),' + R.hot.alphaMajor + ') 0 1px,transparent 1px 100%)');
     el.track.style.setProperty('--sw-hotsize',
       minorP.toFixed(2) + 'px ' + R.hot.minorPx + 'px,' + pph.toFixed(2) + 'px ' + R.hot.majorPx + 'px');
     el.track.style.setProperty('--sw-hotw', R.hot.halfPx.toFixed(0) + 'px');
@@ -347,7 +394,7 @@
       if (lb.textContent !== t) { lb.textContent = t; }
       // 中线附近的读数跟着突出层一起亮、一起放大（只在 act 时生效）
       var near = acting && Math.abs(x - cx) < hotPx;
-      var col = 'rgba(255,255,255,' + (near ? R.hot.alphaLabel : R.alphaLabel) + ')';
+      var col = 'rgba(var(--sw-ink,255,255,255),' + (near ? R.hot.alphaLabel : R.alphaLabel) + ')';
       var tf = near ? 'scale(' + R.hot.labelScale + ')' : 'none';
       if (lb.style.color !== col) { lb.style.color = col; }
       if (lb.style.transform !== tf) { lb.style.transform = tf; }
@@ -513,6 +560,7 @@
   }
 
   function build(ui) {
+    el.root = ui;              // AM-037：`--sw-ink` / `--sw-shadow` 的写入锚点（元素不直接用它们，靠继承）
     injectStyle();
 
     // ── 左上：时段名 + 时刻（保持在 #ui 的第一个子节点 —— pw 的 ui-panel 快照盯的就是它）──
@@ -564,7 +612,7 @@
     for (var i = 0; i < R.labelN; i++) {
       var lb0 = mk('div', 'position:absolute;left:0;top:' + R.labelTop + 'px;' +
         'font-size:9px;letter-spacing:.06em;white-space:nowrap;display:none;' +
-        'color:rgba(255,255,255,' + R.alphaLabel + ');', el.track);
+        'color:rgba(var(--sw-ink,255,255,255),' + R.alphaLabel + ');', el.track);
       lb0.className = 'sw-ruler-label';
       el.labels.push(lb0);
     }
@@ -688,6 +736,7 @@
   }
 
   function paint(force) {
+    paintInk();               // AM-037：墨色跟着雾色亮度走（每帧一次短路比较，跨阈值才写 DOM）
     var T = SW.time;
     if (!T || !T.getHour) { return; }
     var h = T.getHour();
