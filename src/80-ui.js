@@ -8,7 +8,10 @@
 //   （`plan/pw/tests/30-pixel.spec.mjs:66`）—— 左上时段面板必须始终是 `#ui` 的第一个 div。
 //   任何新控件只能**追加在后面**。
 //
-// 设计基调（WP3 §4.6）：极简、低对比、半透明，不抢画面。字色 rgba(255,255,255,.72)。
+// 设计基调（WP3 §4.6）：极简、低对比、半透明，不抢画面。
+//   UP18/AM-037：叠加层字色不再写死白，改为随**雾色亮度**自适应 —— 夜间白
+//   `rgba(255,255,255,α)`、正午近黑 `rgba(18,30,34,α)`（见下方 `INK` / `paintInk()`）。
+//   带半透明药丸底的控件（`#snd` / `.sw-bgm-btn`）同样跟随，保证各时段可读。
 // AM-002 §5 的「四角 UI 布局」**未采纳**，本文件不实现它。
 //
 // ── AM-011（UP10 时间刻度尺，95-UP10-timeruler.md）────────────────────────────
@@ -261,12 +264,24 @@
       '#hour.act #sw-ruler-head{height:' + R.hot.headPx + 'px;width:2px;margin-left:-1px;' +
       'box-shadow:0 0 9px rgba(var(--sw-shadow,0,0,0),.30);}',
       '.sw-ruler-label{transition:color .18s ease,transform .18s ease;transform-origin:0 50%;}',
+      // ── 声音开关（#snd）：焦点/悬停态对齐 `.sw-bgm-btn`（同族）──────────
+      // 与 chip 同一说法：去掉原生 outline，键盘可达性靠**描边提亮**（不占地方）。
+      // 字色/描边都走 `--sw-ink`（夜白昼黑）——若写死白字，正午半透明药丸底仅≈1.9:1。
+      // `#snd` 的 border/background 写在 inline（见下方 `el.snd = mk(...)`），
+      //   内联优先级高于本样式表 → 状态覆盖必须 !important。
+      '#snd{transition:background-color .22s ease,border-color .22s ease,color .22s ease;}',
+      '#snd:hover{border-color:rgba(var(--sw-ink,255,255,255),.36) !important;' +
+      'color:rgba(var(--sw-ink,255,255,255),.94) !important;}',
+      '#snd:focus-visible{outline:none;border-color:rgba(var(--sw-ink,255,255,255),.42) !important;}',
+      '#snd:active{background-color:rgba(10,18,22,.42) !important;}',
       // ── BGM 选曲（AM-015）──────────────────────────────────────────────
       // 设计口径：与 `#snd` **同族**。面 / 描边 / 圆角 / 字距 / 字号五样 token 与它逐字同源
       // （`#snd` 建法见下面 `el.snd = mk('button', ...)`），只在两处刻意偏离：
       //   ① 常态面比 chip 透一档（.26 → .20）—— 它是第二顺位的控件，雨桐 2026-09-25
       //      两次要求"更透明"；
       //   ② 多一个 `.on` 选中态 —— `#snd` 是开关，本控件是三选一，必须有"哪个在响"的落点。
+      // UP18：字色/描边同样跟随 `--sw-ink`（与 `#snd` 一致）——原写死白字在半透明
+      //   药丸底上正午仅≈1.9:1，改用自适应墨色后夜白昼黑，各时段均 ≥4:1（见 112 §6）。
       // 「BGM：」标签：纯文本、不吃指针（点它不该做任何事），右对齐到首个 chip 左侧。
       '.sw-bgm-tag{font-size:11px;letter-spacing:.08em;line-height:1;' +
       'min-width:' + B.labelW + 'px;text-align:right;align-self:center;' +
@@ -275,23 +290,23 @@
       // 模糊 6px。`appearance:none` + `outline:none` 去掉按钮的原生壳（否则会顶出一圈框）。
       '.sw-bgm-btn{font-family:inherit;font-size:11px;letter-spacing:.08em;line-height:1;' +
       'padding:6px 13px;border-radius:14px;cursor:pointer;' +
-      'border:1px solid rgba(255,255,255,.22);background-color:rgba(10,18,22,.20);' +
-      'color:rgba(255,255,255,.72);' +
+      'border:1px solid rgba(var(--sw-ink,255,255,255),.22);background-color:rgba(10,18,22,.20);' +
+      'color:rgba(var(--sw-ink,255,255,255),.72);' +
       '-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);' +
       'appearance:none;-webkit-appearance:none;-moz-appearance:none;outline:none;' +
       'transition:background-color .22s ease,border-color .22s ease,color .22s ease,' +
       'transform ' + B.durPress + 's ease;}',
       // 悬停：只动描边与字色（这一档描边 = 与 `#snd` 同一档），面不动 —— 面留给"按住"
-      '.sw-bgm-btn:hover{border-color:rgba(255,255,255,.36);color:rgba(255,255,255,.94);}',
+      '.sw-bgm-btn:hover{border-color:rgba(var(--sw-ink,255,255,255),.36);color:rgba(var(--sw-ink,255,255,255),.94);}',
       // 🔴 不要外围框（雨桐 2026-09-25 两次确认）—— `outline` 与原生焦点环一律去掉。
       //    键盘可达性靠**描边提亮**保留（不是把提示删掉，是换一种不占地方的说法）。
-      '.sw-bgm-btn:focus-visible{outline:none;border-color:rgba(255,255,255,.42);}',
+      '.sw-bgm-btn:focus-visible{outline:none;border-color:rgba(var(--sw-ink,255,255,255),.42);}',
       // 选中：面比常态深一档、字提亮到 .96 —— 一行里只允许一个"亮"的。
       // ⚠ 必须排在 `:active` **之前**：两者特异性相同（0,2,0），后写的胜；
       //   若 `.on` 在后，按住已选中那枚就只剩缩放、面不加深 → 按下反馈被吃掉一半。
-      '.sw-bgm-btn.on{background-color:rgba(10,18,22,.38);border-color:rgba(255,255,255,.34);' +
-      'color:rgba(255,255,255,.96);}',
-      '.sw-bgm-btn.on:hover{border-color:rgba(255,255,255,.48);}',
+      '.sw-bgm-btn.on{background-color:rgba(10,18,22,.38);border-color:rgba(var(--sw-ink,255,255,255),.34);' +
+      'color:rgba(var(--sw-ink,255,255,255),.96);}',
+      '.sw-bgm-btn.on:hover{border-color:rgba(var(--sw-ink,255,255,255),.48);}',
       // 「点上去」的反馈：面加深两档（.20 → .42）+ 3% 的按下缩放。
       //   缩放只做在 chip 上、幅度 <5%：够"按下去"，又不至于让整列 UI 跟着跳。
       '.sw-bgm-btn:active{background-color:rgba(10,18,22,.42);transform:scale(.97);}',
@@ -571,8 +586,8 @@
 
     // ── 右上：声音开关 ─────────────────────────────────────────────────
     el.snd = mk('button', CSS_BASE + 'right:22px;top:18px;padding:6px 13px;border-radius:14px;' +
-      'border:1px solid rgba(255,255,255,.22);background:rgba(10,18,22,.26);' +
-      'font-size:11px;cursor:pointer;backdrop-filter:blur(6px);', ui);
+      'border:1px solid rgba(var(--sw-ink,255,255,255),.22);background:rgba(10,18,22,.26);' +
+      'font-size:11px;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);', ui);
     el.snd.id = 'snd';
     el.snd.type = 'button';
     el.snd.addEventListener('click', function () {
